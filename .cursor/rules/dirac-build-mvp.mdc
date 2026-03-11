@@ -1,0 +1,54 @@
+---
+description: Dirac build spec condensed: MVP scope, IA, AI sidebar behavior, and priorities
+alwaysApply: true
+---
+
+# Dirac build spec (condensed)
+
+## One-sentence definition
+Dirac is a unified communications workspace (“Cursor for messages”) where users triage, understand, and respond fast with an AI copilot across many platforms (start with **Gmail**, but design multi-platform from day one).
+
+## “Cursor for messages” meaning (implementation bar)
+- AI must be embedded in workflow (context-aware, action-first).
+- Prioritize **manipulation**: summarize / condense / rewrite / extract tasks / rank urgency.
+- Clarify with short structured MCQs (don’t chat endlessly).
+
+## Daily loop (core UX)
+- Open Unified Inbox → pick thread(s) → read thread → use AI sidebar actions → send/edit → mark done/snooze/tag.
+
+## Top-level pages (keep minimal)
+- **Inbox** (Unified)
+- **Compose**
+- **Activity** (Sent + Drafts)
+- **Settings**
+
+## Inbox (Unified) essentials
+- Left: thread list (platform icon, sender, snippet, unread, timestamp).
+- Center: thread timeline.
+- Right: AI sidebar (toggleable).
+- Must support: filters, search, multi-select, tag/done/snooze; platform actions only when available.
+
+## AI sidebar (must-have behaviors)
+- Always show **explicit scope** (current thread vs selected threads).
+- Prefer short, usable outputs (draft/summary/checklist/ranking).
+- Quick actions row: Reply / What it means / Summarize / Next actions / More…
+- If missing critical info: one MCQ block, max 3 questions; proceed after answers.
+
+## Unified data model (cross-platform)
+- Account, Thread/Conversation, Message, Contact/Participant
+- Dirac metadata: tags, status, urgency, snoozeUntil, pinned, assignedTo, etc.
+- Don’t force Gmail semantics onto everything; keep Dirac-level actions universal.
+
+## MVP scope (recommended)
+- Phase 1: Gmail connect, list threads, read thread, reply, compose new email.
+- AI: summarize, draft reply, rewrite/shorten, extract tasks/deadlines, rank urgency.
+- Local drafts autosave + Activity/Drafts to reopen.
+- UI includes multi-platform scaffolding/indicators even if execution is Gmail-only initially.
+
+## Tech stack defaults (if choosing)
+- Next.js (App Router) + React + TypeScript (run as a **Node server**, containerized)
+- Tailwind + shadcn/ui
+- Postgres + Prisma
+- Auth: Auth.js (NextAuth) or custom OAuth (Gmail OAuth requires safe server-side token handling)
+- Jobs: **BullMQ + Redis** with a separate **worker** service; realtime: SSE/WebSockets as needed
+- Deployment: follow `dirac-tech-stack-deployment.mdc` (Railway-first, web + worker + Postgres + Redis)

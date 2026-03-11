@@ -1,0 +1,713 @@
+"use client";
+
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  type ReactNode,
+} from "react";
+import { useSession } from "next-auth/react";
+import { AppContext, type AppState, type AiContextItem, type ToneProfile } from "@/lib/store";
+import type { DiracThread, DiracMessage, InboxFilter, TriageCategory } from "@/lib/types";
+
+// ─── Local storage helpers for starred / urgent state ────
+
+const STARRED_KEY = "dirac_starred";
+const URGENT_KEY = "dirac_urgent_manual";
+const URGENT_DISMISSED_KEY = "dirac_urgent_dismissed";
+const TONE_KEY = "dirac_tone_profile";
+
+function loadSet(key: string): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) return new Set(JSON.parse(raw));
+  } catch {}
+  return new Set();
+}
+
+function saveSet(key: string, ids: Set<string>) {
+  try {
+    localStorage.setItem(key, JSON.stringify(Array.from(ids)));
+  } catch {}
+}
+
+function loadStarred(): Set<string> {
+  return loadSet(STARRED_KEY);
+}
+
+function saveStarred(ids: Set<string>) {
+  saveSet(STARRED_KEY, ids);
+}
+
+// ─── Provider ───────────────────────────────────────────
+
+export function AppProvider({ children }: { children: ReactNode }) {
+  const { data: session } = useSession();
+
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const [aiSidebarOpen, setAiSidebarOpen] = useState(true);
+  const [inboxFilter, setInboxFilter] = useState<InboxFilter>("all");
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [composeMinimized, setComposeMinimized] = useState(false);
+
+  // Tone profile (persisted in localStorage)
+  const [toneProfile, setToneProfileState] = useState<ToneProfile | null>(null);
+
+  const setToneProfile = useCallback((profile: ToneProfile | null) => {
+    setToneProfileState(profile);
+    try {
+      if (profile) {
+        localStorage.setItem(TONE_KEY, JSON.stringify(profile));
+      } else {
+        localStorage.removeItem(TONE_KEY);
+      }
+    } catch {}
+  }, []);
+
+  // Triage categories (AI-classified)
+  const [triageMap, setTriageMap] = useState<Record<string, TriageCategory>>({});
+  const [triageLoading, setTriageLoading] = useState(false);
+
+  // Thread list state (per-platform, merged for display)
+  const [gmailThreads, setGmailThreads] = useState<DiracThread[]>([]);
+  const [outlookThreads, setOutlookThreads] = useState<DiracThread[]>([]);
+  const [discordThreads, setDiscordThreads] = useState<DiracThread[]>([]);
+  const [threadsLoading, setThreadsLoading] = useState(false);
+
+  // Starred IDs (persisted in localStorage, seeded from Gmail STARRED label)
+  const [starredIds, setStarredIds] = useState<Set<string>>(new Set());
+
+  // Urgent IDs (AI-detected + manually toggled + dismissed)
+  const [urgentIds, setUrgentIds] = useState<Set<string>>(new Set());
+  const [manualUrgentIds, setManualUrgentIds] = useState<Set<string>>(new Set());
+  const [dismissedUrgentIds, setDismissedUrgentIds] = useState<Set<string>>(new Set());
+
+  // Load persisted state from localStorage on mount
+  useEffect(() => {
+    setStarredIds(loadStarred());
+    setManualUrgentIds(loadSet(URGENT_KEY));
+    setDismissedUrgentIds(loadSet(URGENT_DISMISSED_KEY));
+    try {
+      const raw = localStorage.getItem(TONE_KEY);
+      if (raw) setToneProfileState(JSON.parse(raw));
+    } catch {}
+  }, []);
+
+  // Merged + sorted threads with starred/urgent overlays
+  const threads = useMemo(() => {
+    const all = [...gmailThreads, ...outlookThreads, ...discordThreads];
+    return all
+      .map((t) => {
+        const dismissed = dismissedUrgentIds.has(t.id);
+        return {
+          ...t,
+          isStarred: t.isStarred || starredIds.has(t.id),
+          isUrgent: dismissed
+            ? false
+            : t.isUrgent || urgentIds.has(t.id) || manualUrgentIds.has(t.id),
+        };
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.lastMessageAt).getTime() -
+          new Date(a.lastMessageAt).getTime(),
+      );
+  }, [gmailThreads, outlookThreads, discordThreads, starredIds, urgentIds, manualUrgentIds, dismissedUrgentIds]);
+
+  // Connection statuses
+  const [outlookConnected, setOutlookConnected] = useState(false);
+  const [discordConnected, setDiscordConnected] = useState(false);
+
+  // Messages for selected thread
+  const [messages, setMessages] = useState<DiracMessage[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+
+  // AI context
+  const [aiContext, setAiContext] = useState<AiContextItem[]>([]);
+
+  // AI query handoff (spotlight → sidebar)
+  const [pendingAiQuery, setPendingAiQuery] = useState<string | null>(null);
+
+  // ─── QoL state ────────────────────────────────────────
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [density, setDensityState] = useState<"compact" | "comfortable">("comfortable");
+  const [selectedThreadIds, setSelectedThreadIds] = useState<Set<string>>(new Set());
+
+  const setDensity = useCallback((d: "compact" | "comfortable") => {
+    setDensityState(d);
+    try { localStorage.setItem("dirac_density", d); } catch {}
+  }, []);
+
+  // Load density from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("dirac_density");
+      if (saved === "compact" || saved === "comfortable") setDensityState(saved);
+    } catch {}
+  }, []);
+
+  const toggleBulkSelect = useCallback((id: string) => {
+    setSelectedThreadIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const selectAll = useCallback((ids: string[]) => {
+    setSelectedThreadIds(new Set(ids));
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelectedThreadIds(new Set());
+  }, []);
+
+  // ─── Toggle starred ───────────────────────────────────
+  const toggleStarred = useCallback((threadId: string) => {
+    setStarredIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(threadId)) {
+        next.delete(threadId);
+      } else {
+        next.add(threadId);
+      }
+      saveStarred(next);
+      return next;
+    });
+  }, []);
+
+  // ─── Toggle urgent ──────────────────────────────────
+  const toggleUrgent = useCallback((threadId: string) => {
+    // Check if thread is currently urgent (from any source)
+    const isCurrentlyUrgent =
+      urgentIds.has(threadId) ||
+      manualUrgentIds.has(threadId);
+
+    if (isCurrentlyUrgent) {
+      // Removing urgency: add to dismissed so AI won't re-flag it
+      setDismissedUrgentIds((prev) => {
+        const next = new Set(prev);
+        next.add(threadId);
+        saveSet(URGENT_DISMISSED_KEY, next);
+        return next;
+      });
+      setManualUrgentIds((prev) => {
+        if (!prev.has(threadId)) return prev;
+        const next = new Set(prev);
+        next.delete(threadId);
+        saveSet(URGENT_KEY, next);
+        return next;
+      });
+      setUrgentIds((prev) => {
+        if (!prev.has(threadId)) return prev;
+        const next = new Set(prev);
+        next.delete(threadId);
+        return next;
+      });
+    } else {
+      // Adding urgency: remove from dismissed, add to manual
+      setDismissedUrgentIds((prev) => {
+        if (!prev.has(threadId)) return prev;
+        const next = new Set(prev);
+        next.delete(threadId);
+        saveSet(URGENT_DISMISSED_KEY, next);
+        return next;
+      });
+      setManualUrgentIds((prev) => {
+        const next = new Set(prev);
+        next.add(threadId);
+        saveSet(URGENT_KEY, next);
+        return next;
+      });
+    }
+  }, [urgentIds, manualUrgentIds]);
+
+  // ─── Mark thread as unread (optimistic + API) ──────
+  const markThreadUnread = useCallback(
+    (threadId: string) => {
+      const isOutlook = threadId.startsWith("outlook-");
+      const isDiscord = threadId.startsWith("discord-");
+
+      // Optimistic update
+      if (isOutlook) {
+        setOutlookThreads((prev) =>
+          prev.map((t) => (t.id === threadId ? { ...t, isUnread: true } : t)),
+        );
+      } else if (!isDiscord) {
+        setGmailThreads((prev) =>
+          prev.map((t) => (t.id === threadId ? { ...t, isUnread: true } : t)),
+        );
+      }
+
+      // Deselect if currently selected (mimics closing it)
+      if (selectedThreadId === threadId) {
+        setSelectedThreadId(null);
+      }
+
+      // API call (fire-and-forget)
+      if (!isDiscord) {
+        const apiUrl = isOutlook
+          ? `/api/outlook/threads/${threadId}`
+          : `/api/gmail/threads/${threadId}`;
+        fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "mark-unread" }),
+        }).catch(() => {});
+      }
+    },
+    [selectedThreadId],
+  );
+
+  // ─── Mark thread as read (optimistic + API) ────────
+  const markThreadRead = useCallback((threadId: string) => {
+    const isOutlook = threadId.startsWith("outlook-");
+    const isDiscord = threadId.startsWith("discord-");
+
+    if (isOutlook) {
+      setOutlookThreads((prev) =>
+        prev.map((t) => (t.id === threadId ? { ...t, isUnread: false } : t)),
+      );
+    } else if (!isDiscord) {
+      setGmailThreads((prev) =>
+        prev.map((t) => (t.id === threadId ? { ...t, isUnread: false } : t)),
+      );
+    }
+
+    if (!isDiscord) {
+      const apiUrl = isOutlook
+        ? `/api/outlook/threads/${threadId}`
+        : `/api/gmail/threads/${threadId}`;
+      fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "mark-read" }),
+      }).catch(() => {});
+    }
+  }, []);
+
+  // ─── Archive thread (optimistic remove + API) ──────
+  const archiveThread = useCallback(
+    (threadId: string) => {
+      const isOutlook = threadId.startsWith("outlook-");
+      const isDiscord = threadId.startsWith("discord-");
+
+      // Remove from list optimistically
+      if (isOutlook) {
+        setOutlookThreads((prev) => prev.filter((t) => t.id !== threadId));
+      } else if (!isDiscord) {
+        setGmailThreads((prev) => prev.filter((t) => t.id !== threadId));
+      }
+
+      if (selectedThreadId === threadId) {
+        setSelectedThreadId(null);
+      }
+
+      if (!isDiscord) {
+        const apiUrl = isOutlook
+          ? `/api/outlook/threads/${threadId}`
+          : `/api/gmail/threads/${threadId}`;
+        fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "archive" }),
+        }).catch(() => {});
+      }
+    },
+    [selectedThreadId],
+  );
+
+  // ─── Trash thread (optimistic remove + API) ────────
+  const trashThread = useCallback(
+    (threadId: string) => {
+      const isOutlook = threadId.startsWith("outlook-");
+      const isDiscord = threadId.startsWith("discord-");
+
+      if (isOutlook) {
+        setOutlookThreads((prev) => prev.filter((t) => t.id !== threadId));
+      } else if (!isDiscord) {
+        setGmailThreads((prev) => prev.filter((t) => t.id !== threadId));
+      }
+
+      if (selectedThreadId === threadId) {
+        setSelectedThreadId(null);
+      }
+
+      if (!isDiscord) {
+        const apiUrl = isOutlook
+          ? `/api/outlook/threads/${threadId}`
+          : `/api/gmail/threads/${threadId}`;
+        fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "trash" }),
+        }).catch(() => {});
+      }
+    },
+    [selectedThreadId],
+  );
+
+  // ─── AI context helpers ───────────────────────────────
+  const addToAiContext = useCallback((item: AiContextItem) => {
+    setAiContext((prev) => {
+      if (prev.some((c) => c.id === item.id)) return prev;
+      return [...prev, item];
+    });
+  }, []);
+
+  const removeFromAiContext = useCallback((id: string) => {
+    setAiContext((prev) => prev.filter((c) => c.id !== id));
+  }, []);
+
+  const toggleAiContext = useCallback((item: AiContextItem) => {
+    setAiContext((prev) => {
+      if (prev.some((c) => c.id === item.id)) {
+        return prev.filter((c) => c.id !== item.id);
+      }
+      return [...prev, item];
+    });
+  }, []);
+
+  const isInAiContext = useCallback(
+    (id: string) => aiContext.some((c) => c.id === id),
+    [aiContext],
+  );
+
+  // ─── Check connector statuses ─────────────────────────
+  useEffect(() => {
+    async function checkConnectors() {
+      const [outlookRes, discordRes] = await Promise.allSettled([
+        fetch("/api/outlook/status").then((r) => r.json()),
+        fetch("/api/discord/status").then((r) => r.json()),
+      ]);
+      if (outlookRes.status === "fulfilled") {
+        setOutlookConnected(outlookRes.value.connected ?? false);
+      }
+      if (discordRes.status === "fulfilled") {
+        setDiscordConnected(discordRes.value.connected ?? false);
+      }
+    }
+    checkConnectors();
+  }, []);
+
+  // ─── Fetch threads from all connected platforms ───────
+  const fetchThreads = useCallback(async () => {
+    setThreadsLoading(true);
+
+    const promises: Promise<void>[] = [];
+
+    if (session?.gmailConnected) {
+      promises.push(
+        fetch("/api/gmail/threads")
+          .then((res) => {
+            if (!res.ok) throw new Error("Gmail fetch failed");
+            return res.json();
+          })
+          .then((data) => {
+            const threads: DiracThread[] = data.threads ?? [];
+            setGmailThreads(threads);
+
+            // Seed starred from Gmail's STARRED label (merge, don't overwrite)
+            const gmailStarred = threads
+              .filter((t) => t.isStarred)
+              .map((t) => t.id);
+            if (gmailStarred.length > 0) {
+              setStarredIds((prev) => {
+                const next = new Set(prev);
+                let changed = false;
+                for (const id of gmailStarred) {
+                  if (!next.has(id)) {
+                    next.add(id);
+                    changed = true;
+                  }
+                }
+                if (changed) saveStarred(next);
+                return changed ? next : prev;
+              });
+            }
+          })
+          .catch((err) => {
+            console.error("Gmail threads error:", err);
+            setGmailThreads([]);
+          }),
+      );
+    } else {
+      setGmailThreads([]);
+    }
+
+    if (outlookConnected) {
+      promises.push(
+        fetch("/api/outlook/threads")
+          .then((res) => {
+            if (!res.ok) throw new Error("Outlook fetch failed");
+            return res.json();
+          })
+          .then((data) => setOutlookThreads(data.threads ?? []))
+          .catch((err) => {
+            console.error("Outlook threads error:", err);
+            setOutlookThreads([]);
+          }),
+      );
+    } else {
+      setOutlookThreads([]);
+    }
+
+    if (discordConnected) {
+      promises.push(
+        fetch("/api/discord/threads")
+          .then((res) => {
+            if (!res.ok) throw new Error("Discord fetch failed");
+            return res.json();
+          })
+          .then((data) => setDiscordThreads(data.threads ?? []))
+          .catch((err) => {
+            console.error("Discord threads error:", err);
+            setDiscordThreads([]);
+          }),
+      );
+    } else {
+      setDiscordThreads([]);
+    }
+
+    if (promises.length > 0) {
+      await Promise.allSettled(promises);
+    }
+
+    setThreadsLoading(false);
+  }, [session?.gmailConnected, outlookConnected, discordConnected]);
+
+  useEffect(() => {
+    fetchThreads();
+  }, [fetchThreads]);
+
+  // ─── Triage classification ─────────────────────────────
+  const runTriageForThreads = useCallback(
+    async (allThreads: DiracThread[]) => {
+      if (allThreads.length === 0) return;
+      setTriageLoading(true);
+      try {
+        const userEmail = session?.user?.email ?? "";
+        const summaries = allThreads.slice(0, 20).map((t) => ({
+          threadId: t.id,
+          subject: t.subject,
+          snippet: t.snippet,
+          lastSenderIsMe: t.participants[0]?.email === userEmail,
+          isUnread: t.isUnread,
+        }));
+
+        const res = await fetch("/api/ai/triage", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ threads: summaries }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const map: Record<string, TriageCategory> = {};
+          for (const r of data.results ?? []) {
+            if (r.threadId && r.category) {
+              map[r.threadId] = r.category;
+            }
+          }
+          setTriageMap(map);
+        }
+      } catch {
+        // Non-critical
+      } finally {
+        setTriageLoading(false);
+      }
+    },
+    [session?.user?.email],
+  );
+
+  const runTriage = useCallback(() => {
+    const allThreads = [...gmailThreads, ...outlookThreads];
+    runTriageForThreads(allThreads);
+  }, [gmailThreads, outlookThreads, runTriageForThreads]);
+
+  // ─── Run urgency detection + triage after threads load ─
+  useEffect(() => {
+    const allThreads = [...gmailThreads, ...outlookThreads];
+    if (allThreads.length === 0) return;
+
+    async function detectUrgency() {
+      try {
+        const res = await fetch("/api/ai/urgency", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            threads: allThreads.map((t) => ({
+              id: t.id,
+              subject: t.subject,
+              snippet: t.snippet,
+              lastMessageAt: t.lastMessageAt,
+            })),
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setUrgentIds(new Set(data.urgentIds ?? []));
+        }
+      } catch {
+        // Silently fail — urgency is non-critical
+      }
+    }
+
+    detectUrgency();
+
+    // Also run triage classification
+    runTriageForThreads(allThreads);
+  }, [gmailThreads, outlookThreads]);
+
+  // ─── Fetch messages when thread is selected ───────────
+  useEffect(() => {
+    if (!selectedThreadId) {
+      setMessages([]);
+      return;
+    }
+
+    // Guard: only fetch if the thread actually exists locally
+    const allLocalThreads = [...gmailThreads, ...outlookThreads, ...discordThreads];
+    if (!allLocalThreads.some((t) => t.id === selectedThreadId)) {
+      setMessages([]);
+      return;
+    }
+
+    const isDiscordThread = selectedThreadId.startsWith("discord-");
+    const isOutlookThread = selectedThreadId.startsWith("outlook-");
+    const isGmail = !isDiscordThread && !isOutlookThread;
+
+    if (isGmail && !session?.gmailConnected) {
+      setMessages([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadMessages() {
+      setMessagesLoading(true);
+      try {
+        const apiUrl = isDiscordThread
+          ? `/api/discord/threads/${selectedThreadId}`
+          : isOutlookThread
+            ? `/api/outlook/threads/${selectedThreadId}`
+            : `/api/gmail/threads/${selectedThreadId}`;
+
+        const res = await fetch(apiUrl);
+        if (!res.ok) throw new Error("Failed to fetch messages");
+        const data = await res.json();
+        if (!cancelled) {
+          setMessages(data.messages ?? []);
+
+          if (isGmail) {
+            setGmailThreads((prev) =>
+              prev.map((t) =>
+                t.id === selectedThreadId ? { ...t, isUnread: false } : t,
+              ),
+            );
+          } else if (isOutlookThread) {
+            setOutlookThreads((prev) =>
+              prev.map((t) =>
+                t.id === selectedThreadId ? { ...t, isUnread: false } : t,
+              ),
+            );
+          }
+        }
+      } catch (err) {
+        console.error("Message fetch error:", err);
+        if (!cancelled) setMessages([]);
+      } finally {
+        if (!cancelled) setMessagesLoading(false);
+      }
+    }
+
+    loadMessages();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedThreadId, session?.gmailConnected]);
+
+  // ─── Context value ────────────────────────────────────
+  const value = useMemo<AppState>(
+    () => ({
+      selectedThreadId,
+      setSelectedThreadId,
+      aiSidebarOpen,
+      setAiSidebarOpen,
+      inboxFilter,
+      setInboxFilter,
+      threads,
+      threadsLoading,
+      messages,
+      messagesLoading,
+      refreshThreads: fetchThreads,
+      composeOpen,
+      setComposeOpen,
+      composeMinimized,
+      setComposeMinimized,
+      toneProfile,
+      setToneProfile,
+      toggleStarred,
+      toggleUrgent,
+      markThreadUnread,
+      markThreadRead,
+      archiveThread,
+      trashThread,
+      aiContext,
+      addToAiContext,
+      removeFromAiContext,
+      toggleAiContext,
+      isInAiContext,
+      triageMap,
+      triageLoading,
+      runTriage,
+      pendingAiQuery,
+      setPendingAiQuery,
+      searchQuery,
+      setSearchQuery,
+      density,
+      setDensity,
+      selectedThreadIds,
+      toggleBulkSelect,
+      selectAll,
+      clearSelection,
+      unreadCount: threads.filter(t => t.isUnread).length,
+    }),
+    [
+      selectedThreadId,
+      aiSidebarOpen,
+      inboxFilter,
+      threads,
+      threadsLoading,
+      messages,
+      messagesLoading,
+      fetchThreads,
+      composeOpen,
+      composeMinimized,
+      toneProfile,
+      setToneProfile,
+      toggleStarred,
+      toggleUrgent,
+      markThreadUnread,
+      markThreadRead,
+      archiveThread,
+      trashThread,
+      aiContext,
+      addToAiContext,
+      removeFromAiContext,
+      toggleAiContext,
+      isInAiContext,
+      triageMap,
+      triageLoading,
+      runTriage,
+      pendingAiQuery,
+      searchQuery,
+      density,
+      selectedThreadIds,
+    ],
+  );
+
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+}

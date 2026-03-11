@@ -1,0 +1,67 @@
+---
+description: Visual design system: inspirations, colorways, typography, spacing, and anti-vibe-coded guardrails
+alwaysApply: true
+---
+
+# Dirac visual design system (clean, modern, not “vibe-coded”)
+
+## Inspirations (the feel, not a copy)
+- **Linear**: calm density, crisp borders, restrained color, excellent hierarchy.
+- **Vercel dashboard / shadcn/ui defaults**: neutral surfaces, predictable components, low ornament.
+- **Superhuman (restraint)**: speed-first layout, tight list rows, keyboard affordances.
+- **Notion**: typography-led UI, subtle dividers, content-forward.
+
+## “Not vibe-coded” guardrails (avoid these)
+- No neon gradients, glassmorphism, glow/shimmer effects, or “hero-landing-page” visuals.
+- No random 20+px blur shadows; keep shadows rare and subtle.
+- Don’t over-round everything (avoid bubbly \(r \ge 16\) everywhere).
+- Don’t use more than **one** accent hue at a time; status colors are the only exception.
+- Avoid oversized headings; keep hierarchy compact and product-like.
+
+## Colorways (pick one and stick to it)
+Dirac should ship with **Light + Dark**. Use neutral bases + one accent.
+
+### Colorway A (recommended): Slate + Blue (classic “tool”)
+- **Accent**: Blue \(~500/600\) for primary actions, selection, focus ring.
+- **Neutrals**: Slate/Zinc for background/surfaces and text.
+- **Vibe**: familiar, trustworthy, doesn’t scream “AI app.”
+
+### Colorway B: Neutral + Indigo (slightly more editorial)
+- **Accent**: Indigo \(~500/600\)
+- **Vibe**: a bit more distinct, still professional.
+
+### Colorway C: Neutral + Emerald (ops/work-queue energy)
+- **Accent**: Emerald \(~500/600\)
+- **Vibe**: “done/triage” oriented; keep it restrained.
+
+## Token intent (design decisions expressed as tokens)
+- **bg**: app background (lowest contrast)
+- **surface**: panels/cards (thread list, thread view, AI pane)
+- **surface-2**: hover/selected row background
+- **border**: separators/dividers (1px)
+- **text**: primary text
+- **muted**: secondary metadata
+- **accent** + **accent-foreground**: primary buttons, focus, selection
+- **ring**: focus ring color (accent at ~40–60% opacity)
+- **success / warning / danger**: statuses only (never as general accents)
+
+## Typography (content-first)
+- Use a neutral UI font: **Inter** or system \(SF\).
+- Base size **14–15px**, tight line-height (1.35–1.5).
+- Prefer weight changes and spacing over color for hierarchy.
+- Message content can be slightly larger than chrome, but keep it subtle.
+
+## Spacing, radius, and borders (crisp UI)
+- **8pt grid** for layout spacing; use 4/8/12/16/24.
+- **Radius**: 8px default, 10–12px for large panels max.
+- **Borders**: 1px subtle borders; rely on dividers more than shadows.
+- **Shadows**: only for floating elements (menus/dialogs), and keep them light.
+
+## Interaction visuals
+- **Selected row**: background tint + left 2px accent bar (optional) + bold sender/subject.
+- **Hover**: surface-2 background only; no transforms.
+- **Focus**: visible ring (keyboard-first), never rely on color alone.
+
+## Iconography
+- Simple outline icons, consistent stroke (e.g., 1.5–2px), no filled mixed sets.
+- Platform icons should be small and subdued (they indicate, they don’t dominate).
