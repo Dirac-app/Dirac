@@ -39,6 +39,9 @@ interface RequestBody {
     threadId: string;
     subject: string;
     messages: { from: string; body: string; sentAt: string }[];
+    category?: string;
+    triage?: string;
+    lastMessageAt?: string;
   }[];
   toneProfile?: ToneProfile | null;
 }
@@ -162,6 +165,26 @@ Rules for actions:
 - If the user asks to sort/organize but it's unclear what action to take, ask MCQs first.
 - CRITICAL: If the user says "find" or "show" — use "results", NOT "actions". Only use "actions" when the user states an action verb.
 
+## Batch operations (compound queries)
+Users may ask compound queries that combine filtering + action. Examples:
+- "Show me all unanswered customer emails from this week"
+- "Archive everything from GitHub notifications older than 3 days"
+- "Draft a follow-up for every investor thread I haven't heard back from"
+
+For batch queries:
+1. First, identify matching threads from context using the metadata (category, triage status, dates).
+2. If the query is a SEARCH (show/find/list), produce a "results" block.
+3. If the query is an ACTION (archive/star/mark), produce an "actions" block.
+4. If the query asks for DRAFTS for multiple threads, produce multiple "draft" blocks, each preceded by the thread subject.
+5. Always show a confirmation step — list what will be affected before acting.
+
+Thread metadata available in context:
+- "category": investor, customer, vendor, outreach, automated, personal
+- "triage": needs_reply, waiting_on, fyi, automated
+- "lastMessageAt": ISO date of the last message
+
+Use this metadata to filter threads for batch operations. When the user says "customer emails", filter by category="customer". When they say "unanswered", filter by triage="needs_reply".
+
 ## Other response shapes
 - **Summary**: tight bullets — what changed, what needs reply.
 - **Checklist**: action items with owner + deadline if present.
@@ -236,10 +259,16 @@ export async function POST(request: NextRequest) {
   if (body.context && body.context.length > 0) {
     const contextText = body.context
       .map((ctx) => {
+        const meta: string[] = [];
+        if (ctx.category) meta.push(`category=${ctx.category}`);
+        if (ctx.triage) meta.push(`triage=${ctx.triage}`);
+        if (ctx.lastMessageAt) meta.push(`lastMessage=${ctx.lastMessageAt}`);
+        const metaStr = meta.length > 0 ? ` (${meta.join(", ")})` : "";
+
         const msgText = ctx.messages
           .map((m) => `[${m.sentAt}] ${m.from}: ${m.body}`)
           .join("\n\n");
-        return `--- Thread: ${ctx.subject} ---\n${msgText}`;
+        return `--- Thread [${ctx.threadId}]: ${ctx.subject}${metaStr} ---\n${msgText}`;
       })
       .join("\n\n");
 

@@ -164,6 +164,8 @@ export function AiSidebar() {
     setComposeMinimized,
     pendingAiQuery,
     setPendingAiQuery,
+    triageMap,
+    categoryMap,
   } = useAppState();
 
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -221,7 +223,7 @@ export function AiSidebar() {
     const query = pendingAiQuery;
     setPendingAiQuery(null);
 
-    // Build thread summaries as lightweight context for the AI
+    // Build thread summaries with category/triage metadata for batch intelligence
     const threadSummaries = threads.slice(0, 20).map((t) => ({
       threadId: t.id,
       subject: t.subject,
@@ -232,6 +234,9 @@ export function AiSidebar() {
           sentAt: t.lastMessageAt,
         },
       ],
+      category: categoryMap[t.id],
+      triage: triageMap[t.id],
+      lastMessageAt: t.lastMessageAt,
     }));
 
     const userMsg: ChatMessage = {
@@ -318,7 +323,7 @@ export function AiSidebar() {
 
       return next;
     });
-  }, [pendingAiQuery, aiSidebarOpen, threads, toneProfile, setPendingAiQuery]);
+  }, [pendingAiQuery, aiSidebarOpen, threads, toneProfile, setPendingAiQuery, categoryMap, triageMap]);
 
   // ─── Build context payload ────────────────────────────
   const buildContextPayload = async () => {
@@ -334,6 +339,9 @@ export function AiSidebar() {
               sentAt: thread.lastMessageAt,
             }))
           : [],
+        category: thread ? categoryMap[thread.id] : undefined,
+        triage: thread ? triageMap[thread.id] : undefined,
+        lastMessageAt: thread?.lastMessageAt,
       };
     });
 
@@ -361,6 +369,9 @@ export function AiSidebar() {
                 sentAt: m.sentAt,
               }),
             ),
+            category: ctx.category,
+            triage: ctx.triage,
+            lastMessageAt: ctx.lastMessageAt,
           };
         } catch {
           return ctx;

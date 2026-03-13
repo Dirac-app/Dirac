@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import {
   Archive,
   Check,
@@ -20,6 +20,9 @@ import {
   ThumbsDown,
   HelpCircle,
   Zap,
+  Mail,
+  AlertTriangle,
+  User,
 } from "lucide-react";
 import { useAppState } from "@/lib/store";
 import { Button } from "@/components/ui/button";
@@ -31,7 +34,16 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import {
+  FOUNDER_CATEGORY_LABELS,
+  FOUNDER_CATEGORY_COLORS,
+} from "@/lib/types";
 
 function getInitials(name: string) {
   return name
@@ -54,6 +66,17 @@ export function ThreadView() {
     removeFromAiContext,
     setAiSidebarOpen,
     toggleStarred,
+    markDone,
+    unmarkDone,
+    doneThreads,
+    snoozeThread,
+    unsnoozeThread,
+    snoozedThreads,
+    archiveThread,
+    commitments,
+    triageMap,
+    categoryMap,
+    getRelationshipContext,
   } = useAppState();
 
   if (!selectedThreadId) {
@@ -74,6 +97,16 @@ export function ThreadView() {
 
   const isDiscord = thread.platform === "DISCORD";
   const inContext = isInAiContext(thread.id);
+  const isDone = doneThreads.has(thread.id);
+  const snoozeState = snoozedThreads.find((s) => s.threadId === thread.id);
+  const isSnoozed = !!snoozeState;
+  const threadCommitments = commitments.filter((c) => c.threadId === thread.id);
+  const triage = triageMap[thread.id];
+  const category = categoryMap[thread.id];
+  const primaryContact = thread.participants[0];
+  const relationshipCtx = primaryContact
+    ? getRelationshipContext(primaryContact.email)
+    : null;
 
   const handleToggleContext = () => {
     if (inContext) {
@@ -96,6 +129,41 @@ export function ThreadView() {
             <h2 className="truncate text-sm font-semibold text-foreground">
               {thread.subject}
             </h2>
+            {triage === "needs_reply" && !isDone && (
+              <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">
+                Needs reply
+              </span>
+            )}
+            {triage === "waiting_on" && !isDone && (
+              <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600">
+                Waiting on
+              </span>
+            )}
+            {category && (
+              <span
+                className={cn(
+                  "rounded px-1.5 py-0.5 text-[10px] font-medium",
+                  FOUNDER_CATEGORY_COLORS[category],
+                )}
+              >
+                {FOUNDER_CATEGORY_LABELS[category]}
+              </span>
+            )}
+            {isDone && (
+              <span className="rounded bg-green-500/10 px-1.5 py-0.5 text-[10px] font-medium text-green-600">
+                Done
+              </span>
+            )}
+            {isSnoozed && (
+              <span className="rounded bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-medium text-purple-600">
+                Snoozed
+                {snoozeState?.mode === "time" && snoozeState.until
+                  ? ` until ${format(new Date(snoozeState.until), "MMM d, h:mm a")}`
+                  : snoozeState?.mode === "reply"
+                    ? " until reply"
+                    : ""}
+              </span>
+            )}
           </div>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {thread.participants.map((p) => p.name).join(", ")} &middot;{" "}
@@ -106,16 +174,12 @@ export function ThreadView() {
 
         {/* Thread actions */}
         <div className="flex items-center gap-1">
-          {/* Add to AI context */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant={inContext ? "default" : "ghost"}
                 size="icon"
-                className={cn(
-                  "h-8 w-8",
-                  inContext && "h-8 w-8",
-                )}
+                className="h-8 w-8"
                 onClick={handleToggleContext}
               >
                 <Sparkles className="h-4 w-4" />
@@ -126,9 +190,6 @@ export function ThreadView() {
             </TooltipContent>
           </Tooltip>
 
-
-
-          {/* Star toggle */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -156,46 +217,193 @@ export function ThreadView() {
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <CheckCircle2 className="h-4 w-4" />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => isDone ? unmarkDone(thread.id) : markDone(thread.id)}
+              >
+                <CheckCircle2
+                  className={cn("h-4 w-4", isDone && "text-green-500")}
+                />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Mark done</TooltipContent>
+            <TooltipContent>{isDone ? "Move to inbox" : "Mark done"}</TooltipContent>
           </Tooltip>
+
+          <Popover>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                  >
+                    <Clock
+                      className={cn("h-4 w-4", isSnoozed && "text-purple-500")}
+                    />
+                  </Button>
+                </PopoverTrigger>
+              </TooltipTrigger>
+              <TooltipContent>{isSnoozed ? "Snoozed" : "Snooze"}</TooltipContent>
+            </Tooltip>
+            <PopoverContent className="w-48 p-1" align="end">
+              {isSnoozed ? (
+                <button
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
+                  onClick={() => unsnoozeThread(thread.id)}
+                >
+                  <Inbox className="h-4 w-4" /> Unsnooze
+                </button>
+              ) : (
+                <>
+                  <button
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
+                    onClick={() =>
+                      snoozeThread(thread.id, {
+                        mode: "time",
+                        until: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
+                      })
+                    }
+                  >
+                    <Clock className="h-4 w-4" /> 3 hours
+                  </button>
+                  <button
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
+                    onClick={() => {
+                      const tomorrow = new Date();
+                      tomorrow.setDate(tomorrow.getDate() + 1);
+                      tomorrow.setHours(9, 0, 0, 0);
+                      snoozeThread(thread.id, {
+                        mode: "time",
+                        until: tomorrow.toISOString(),
+                      });
+                    }}
+                  >
+                    <Clock className="h-4 w-4" /> Tomorrow morning
+                  </button>
+                  <button
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
+                    onClick={() => {
+                      const nextWeek = new Date();
+                      nextWeek.setDate(nextWeek.getDate() + 7);
+                      nextWeek.setHours(9, 0, 0, 0);
+                      snoozeThread(thread.id, {
+                        mode: "time",
+                        until: nextWeek.toISOString(),
+                      });
+                    }}
+                  >
+                    <Clock className="h-4 w-4" /> Next week
+                  </button>
+                  <Separator className="my-1" />
+                  <button
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
+                    onClick={() =>
+                      snoozeThread(thread.id, { mode: "reply" })
+                    }
+                  >
+                    <Mail className="h-4 w-4" /> Until they reply
+                  </button>
+                  <button
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
+                    onClick={() => {
+                      const friday = new Date();
+                      const daysUntilFri = (5 - friday.getDay() + 7) % 7 || 7;
+                      friday.setDate(friday.getDate() + daysUntilFri);
+                      friday.setHours(9, 0, 0, 0);
+                      snoozeThread(thread.id, {
+                        mode: "condition",
+                        until: friday.toISOString(),
+                        condition: "Resurface if no reply by Friday",
+                      });
+                    }}
+                  >
+                    <AlertTriangle className="h-4 w-4" /> If no reply by Friday
+                  </button>
+                </>
+              )}
+            </PopoverContent>
+          </Popover>
+
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <Clock className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Snooze</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <Tag className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Tag</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => archiveThread(thread.id)}
+              >
                 <Archive className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Archive</TooltipContent>
           </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>More</TooltipContent>
-          </Tooltip>
         </div>
       </div>
+
+      {/* Commitments banner */}
+      {threadCommitments.length > 0 && (
+        <div className="border-b border-border bg-amber-500/5 px-6 py-2">
+          <div className="flex items-center gap-2 text-xs font-medium text-amber-700 dark:text-amber-400">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            {threadCommitments.length} commitment{threadCommitments.length !== 1 ? "s" : ""}
+          </div>
+          <div className="mt-1 space-y-1">
+            {threadCommitments.map((c) => (
+              <div
+                key={c.id}
+                className={cn(
+                  "flex items-center gap-2 text-xs",
+                  c.isOverdue ? "text-red-600 dark:text-red-400" : "text-muted-foreground",
+                )}
+              >
+                <span className={cn(
+                  "h-1.5 w-1.5 rounded-full shrink-0",
+                  c.owner === "me" ? "bg-blue-500" : "bg-amber-500",
+                )} />
+                <span className="flex-1">{c.description}</span>
+                {c.dueDate && (
+                  <span className="shrink-0 font-medium">
+                    {c.isOverdue ? "Overdue" : format(new Date(c.dueDate), "MMM d")}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Relationship context panel (Direction B.4) */}
+      {relationshipCtx && relationshipCtx.totalThreads > 1 && (
+        <div className="border-b border-border px-6 py-2">
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <User className="h-3.5 w-3.5 shrink-0" />
+            <span className="font-medium text-foreground">
+              {relationshipCtx.name}
+            </span>
+            <span>{relationshipCtx.totalThreads} threads total</span>
+            {relationshipCtx.lastContacted && (
+              <span>
+                Last: {formatDistanceToNow(new Date(relationshipCtx.lastContacted), { addSuffix: true })}
+              </span>
+            )}
+          </div>
+          {relationshipCtx.recentSubjects.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {relationshipCtx.recentSubjects.map((s, i) => (
+                <span
+                  key={i}
+                  className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                >
+                  {s}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Messages */}
       <ScrollArea className="flex-1">
@@ -266,6 +474,7 @@ export function ThreadView() {
         threadSubject={thread.subject}
         platform={thread.platform}
         participants={thread.participants}
+        category={category}
         onOpenAi={() => {
           addToAiContext({ id: thread.id, label: thread.subject });
           setAiSidebarOpen(true);
@@ -284,7 +493,7 @@ interface QuickAction {
   prompt: string;
 }
 
-const QUICK_ACTIONS: QuickAction[] = [
+const DEFAULT_ACTIONS: QuickAction[] = [
   {
     id: "ack",
     label: "Acknowledge",
@@ -305,23 +514,56 @@ const QUICK_ACTIONS: QuickAction[] = [
   },
 ];
 
+import type { FounderCategory } from "@/lib/types";
+
+const CATEGORY_ACTIONS: Record<FounderCategory, QuickAction[]> = {
+  customer: [
+    { id: "ack_customer", label: "Acknowledge", icon: ThumbsUp, prompt: "Acknowledge the customer's message warmly. Let them know their message was received and will be addressed." },
+    { id: "ask_details", label: "Ask for details", icon: HelpCircle, prompt: "Politely ask the customer for more details to better help them. Be specific about what info would help." },
+    { id: "escalate", label: "Escalate internally", icon: Zap, prompt: "Draft a brief internal note about this customer issue to escalate to the team. Summarize the problem and urgency." },
+  ],
+  investor: [
+    { id: "express_interest", label: "Express interest", icon: ThumbsUp, prompt: "Reply expressing interest in what the investor is proposing or discussing. Be professional and enthusiastic." },
+    { id: "decline_polite", label: "Politely decline", icon: ThumbsDown, prompt: "Politely decline the investor's offer or proposal. Be respectful, leave the door open for future opportunities." },
+    { id: "request_meeting", label: "Request meeting", icon: HelpCircle, prompt: "Reply requesting a meeting or call to discuss further. Suggest a couple of time slots or ask for their availability." },
+  ],
+  vendor: [
+    { id: "ack_vendor", label: "Acknowledge", icon: ThumbsUp, prompt: "Briefly acknowledge the vendor's message. Keep it professional and short." },
+    { id: "archive_vendor", label: "Got it, archive", icon: Check, prompt: "Send a brief 'noted, thanks' reply suitable for a vendor/service email." },
+    { id: "more_info_vendor", label: "Need more info", icon: HelpCircle, prompt: "Ask the vendor for more details or clarification about their service, pricing, or offer." },
+  ],
+  outreach: [
+    { id: "not_interested", label: "Not interested", icon: ThumbsDown, prompt: "Politely decline this cold outreach. Be brief and clear but not rude." },
+    { id: "tell_more", label: "Tell me more", icon: HelpCircle, prompt: "Reply expressing some interest and asking for more specific information about their offer." },
+    { id: "schedule_call", label: "Schedule call", icon: Zap, prompt: "Reply suggesting a call to discuss their proposal further. Ask for their availability or suggest a couple of times." },
+  ],
+  automated: [
+    { id: "ack_auto", label: "Acknowledge", icon: ThumbsUp, prompt: "Send a brief acknowledgment if needed." },
+  ],
+  personal: DEFAULT_ACTIONS,
+};
+
 function QuickActions({
   threadId,
   threadSubject,
   platform,
   participants,
   onOpenAi,
+  category,
 }: {
   threadId: string;
   threadSubject: string;
   platform: string;
   participants: { name: string; email: string }[];
   onOpenAi: () => void;
+  category?: FounderCategory;
 }) {
   const { toneProfile } = useAppState();
   const [sending, setSending] = useState<string | null>(null);
   const [sent, setSent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const actions = category ? (CATEGORY_ACTIONS[category] ?? DEFAULT_ACTIONS) : DEFAULT_ACTIONS;
 
   const handleQuickAction = async (action: QuickAction) => {
     setSending(action.id);
@@ -411,7 +653,7 @@ function QuickActions({
     <div className="border-t border-border px-6 py-3">
       <div className="flex items-center gap-2">
         <div className="flex items-center gap-1.5">
-          {QUICK_ACTIONS.map((action) => {
+          {actions.map((action) => {
             const Icon = action.icon;
             const isSending = sending === action.id;
             const isSent = sent === action.id;
