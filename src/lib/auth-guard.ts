@@ -35,6 +35,27 @@ export async function requireAuth(): Promise<AuthGuardResult> {
 }
 
 /**
+ * Lighter auth check — only requires a signed-in user, not a database userId.
+ * Use for endpoints that can function without per-user DB state (e.g. AI chat
+ * using a global API key).
+ */
+export async function requireSession(): Promise<
+  { userId: string | null; error?: never; response?: never }
+  | { userId?: never; error: string; response: NextResponse }
+> {
+  const session = await auth();
+
+  if (!session?.user) {
+    return {
+      error: "Not authenticated",
+      response: NextResponse.json({ error: "Not authenticated" }, { status: 401 }),
+    };
+  }
+
+  return { userId: session.userId ?? null };
+}
+
+/**
  * Validates session and that the user has an active Gmail connection.
  */
 export async function requireGmail(): Promise<

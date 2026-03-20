@@ -2,6 +2,9 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import ReactMarkdown from "react-markdown";
+import { motion, AnimatePresence } from "framer-motion";
+import { formatDistanceToNow } from "date-fns";
 import {
   Sparkles,
   X,
@@ -25,11 +28,22 @@ import {
   PlayCircle,
   CheckCircle2,
   ArrowRight,
+  Inbox,
+  User,
+  History,
+  ChevronDown,
 } from "lucide-react";
 import { useAppState } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import {
+  FOUNDER_CATEGORY_LABELS,
+  FOUNDER_CATEGORY_COLORS,
+  TOPIC_TAG_LABELS,
+  TOPIC_TAG_COLORS,
+} from "@/lib/types";
+import type { TopicTag } from "@/lib/types";
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -73,6 +87,62 @@ interface ChatMessage {
   context?: string[];
   segments?: ParsedSegment[];
   mcqAnswered?: boolean;
+}
+
+// ─── Chat session (history) ─────────────────────────────
+
+interface ChatSession {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+const CHAT_SESSIONS_KEY = "dirac_chat_sessions";
+const ACTIVE_CHAT_KEY = "dirac_active_chat";
+
+function generateChatId() {
+  return `chat-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function deriveChatTitle(messages: ChatMessage[]): string {
+  const firstUser = messages.find((m) => m.role === "user");
+  if (!firstUser) return "New chat";
+  const text = firstUser.content.slice(0, 50);
+  return text.length < firstUser.content.length ? text + "..." : text;
+}
+
+function loadChatSessions(): ChatSession[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(CHAT_SESSIONS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveChatSessions(sessions: ChatSession[]) {
+  try {
+    localStorage.setItem(CHAT_SESSIONS_KEY, JSON.stringify(sessions));
+  } catch {}
+}
+
+function loadActiveChatId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return localStorage.getItem(ACTIVE_CHAT_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function saveActiveChatId(id: string | null) {
+  try {
+    if (id) localStorage.setItem(ACTIVE_CHAT_KEY, id);
+    else localStorage.removeItem(ACTIVE_CHAT_KEY);
+  } catch {}
 }
 
 // ─── Parsing helpers ────────────────────────────────────
@@ -151,6 +221,7 @@ export function AiSidebar() {
     setSelectedThreadId,
     threads,
     aiContext,
+    addToAiContext,
     toggleAiContext,
     removeFromAiContext,
     toneProfile,
@@ -166,9 +237,90 @@ export function AiSidebar() {
     setPendingAiQuery,
     triageMap,
     categoryMap,
+    topicMap,
+    commitments,
+    selectedThreadIds,
   } = useAppState();
 
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  // ─── Chat session management ────────────────────────────
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  useEffect(() => {
+    const loaded = loadChatSessions();
+    setSessions(loaded);
+    const savedId = loadActiveChatId();
+    if (savedId && loaded.some((s) => s.id === savedId)) {
+      setActiveChatId(savedId);
+    }
+  }, []);
+
+  const activeSession = sessions.find((s) => s.id === activeChatId);
+  const chatMessages = activeSession?.messages ?? [];
+
+  const setChatMessages = useCallback(
+    (updater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
+      setSessions((prevSessions) => {
+        let currentId = activeChatId;
+
+        if (!currentId) {
+          currentId = generateChatId();
+          setActiveChatId(currentId);
+          saveActiveChatId(currentId);
+        }
+
+        const now = new Date().toISOString();
+        const existing = prevSessions.find((s) => s.id === currentId);
+        const prevMessages = existing?.messages ?? [];
+        const nextMessages =
+          typeof updater === "function" ? updater(prevMessages) : updater;
+
+        const title = deriveChatTitle(nextMessages);
+
+        const updatedSession: ChatSession = existing
+          ? { ...existing, messages: nextMessages, title, updatedAt: now }
+          : { id: currentId!, title, messages: nextMessages, createdAt: now, updatedAt: now };
+
+        const next = [
+          updatedSession,
+          ...prevSessions.filter((s) => s.id !== currentId),
+        ];
+        saveChatSessions(next);
+        return next;
+      });
+    },
+    [activeChatId],
+  );
+
+  const handleNewChat = useCallback(() => {
+    const id = generateChatId();
+    setActiveChatId(id);
+    saveActiveChatId(id);
+    setHistoryOpen(false);
+  }, []);
+
+  const handleSwitchChat = useCallback((id: string) => {
+    setActiveChatId(id);
+    saveActiveChatId(id);
+    setHistoryOpen(false);
+  }, []);
+
+  const handleDeleteChat = useCallback(
+    (id: string) => {
+      setSessions((prev) => {
+        const next = prev.filter((s) => s.id !== id);
+        saveChatSessions(next);
+        return next;
+      });
+      if (activeChatId === id) {
+        setActiveChatId(null);
+        saveActiveChatId(null);
+      }
+    },
+    [activeChatId],
+  );
+
   const [input, setInput] = useState("");
   const [contextPickerOpen, setContextPickerOpen] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -179,6 +331,7 @@ export function AiSidebar() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
+  const historyRef = useRef<HTMLDivElement>(null);
   const isStreamingRef = useRef(false);
   const chatMessagesRef = useRef(chatMessages);
   chatMessagesRef.current = chatMessages;
@@ -639,10 +792,23 @@ export function AiSidebar() {
     }
   };
 
-  // ─── Clear chat ───────────────────────────────────────
+  // ─── Clear chat (start fresh) ─────────────────────────
   const handleClearChat = () => {
-    setChatMessages([]);
+    handleNewChat();
   };
+
+  // ─── Close history on outside click ────────────────────
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (historyRef.current && !historyRef.current.contains(e.target as Node)) {
+        setHistoryOpen(false);
+      }
+    }
+    if (historyOpen) {
+      document.addEventListener("mousedown", handleClick);
+      return () => document.removeEventListener("mousedown", handleClick);
+    }
+  }, [historyOpen]);
 
   // Resolve a thread ID — the AI may hallucinate IDs, so fall back to matching by subject
   const resolveThreadId = useCallback(
@@ -695,33 +861,135 @@ export function AiSidebar() {
 
   const hasContext = aiContext.length > 0;
 
+  // Current thread for contextual suggestions
+  const selectedThread = threads.find((t) => t.id === selectedThreadId);
+
+  const handleSuggestionClick = (prompt: string) => {
+    if (selectedThread && !aiContext.some((c) => c.id === selectedThread.id)) {
+      addToAiContext({ id: selectedThread.id, label: selectedThread.subject });
+    }
+    setInput("");
+    setPendingAiQuery(prompt);
+  };
+
+  const handleInboxSuggestionClick = (prompt: string) => {
+    setInput("");
+    setPendingAiQuery(prompt);
+  };
+
   if (!aiSidebarOpen) return null;
 
+  const nonEmptySessions = sessions.filter((s) => s.messages.length > 0);
+
   return (
-    <div className="dirac-panel flex w-80 flex-col overflow-hidden">
+    <div className="dirac-panel ai-panel-glow flex w-80 flex-col overflow-hidden">
       {/* ─── Header ─────────────────────────────────────── */}
-      <div className="flex h-[49px] items-center justify-between border-b border-border px-3">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-primary" />
-          <span className="text-sm font-semibold text-foreground">AI</span>
-          {hasContext && (
-            <span className="text-[10px] text-muted-foreground">
-              {aiContext.length} thread{aiContext.length !== 1 ? "s" : ""}
+      <div className="ai-glow-header flex h-[49px] items-center justify-between border-b border-border px-3">
+        <div className="relative flex items-center gap-2 min-w-0" ref={historyRef}>
+          <Sparkles className="ai-sparkle-glow h-4 w-4 text-primary shrink-0" />
+
+          {/* Chat title / selector */}
+          <button
+            onClick={() => setHistoryOpen(!historyOpen)}
+            className="flex items-center gap-1 min-w-0 group"
+          >
+            <span className="text-sm font-semibold text-foreground truncate max-w-[140px]">
+              {chatMessages.length > 0 && activeSession
+                ? activeSession.title.slice(0, 24) + (activeSession.title.length > 24 ? "..." : "")
+                : "AI"
+              }
             </span>
-          )}
+            <ChevronDown className={cn(
+              "h-3 w-3 shrink-0 text-muted-foreground/50 transition-transform",
+              historyOpen && "rotate-180",
+            )} />
+          </button>
+
+          {/* History dropdown */}
+          <AnimatePresence>
+            {historyOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: -4, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                transition={{ duration: 0.15 }}
+                className="absolute left-0 top-full z-50 mt-1 w-72 rounded-lg border border-border bg-popover shadow-lg"
+              >
+                <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+                  <span className="text-xs font-medium text-muted-foreground">Chat history</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 gap-1 px-2 text-[11px]"
+                    onClick={handleNewChat}
+                  >
+                    <Plus className="h-3 w-3" />
+                    New
+                  </Button>
+                </div>
+                <div className="max-h-64 overflow-y-auto">
+                  {nonEmptySessions.length === 0 ? (
+                    <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+                      No past chats
+                    </div>
+                  ) : (
+                    nonEmptySessions.map((session) => (
+                      <div
+                        key={session.id}
+                        className={cn(
+                          "group flex items-center gap-2 px-3 py-2 transition-colors hover:bg-accent/50",
+                          session.id === activeChatId && "bg-accent/60",
+                        )}
+                      >
+                        <button
+                          onClick={() => handleSwitchChat(session.id)}
+                          className="flex min-w-0 flex-1 flex-col text-left"
+                        >
+                          <span className="text-[12px] font-medium text-foreground truncate">
+                            {session.title}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground/60">
+                            {formatDistanceToNow(new Date(session.updatedAt), { addSuffix: true })}
+                          </span>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteChat(session.id);
+                          }}
+                          className="shrink-0 rounded p-1 opacity-0 group-hover:opacity-60 hover:!opacity-100 text-muted-foreground hover:text-red-500 transition-opacity"
+                          title="Delete chat"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
+
         <div className="flex items-center gap-0.5">
-          {chatMessages.length > 0 && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-foreground"
-              onClick={handleClearChat}
-              title="Clear chat"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            onClick={() => setHistoryOpen(!historyOpen)}
+            title="Chat history"
+          >
+            <History className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            onClick={handleNewChat}
+            title="New chat"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -737,15 +1005,17 @@ export function AiSidebar() {
       <ScrollArea className="flex-1">
         <div className="flex flex-col gap-3 px-3 py-3">
           {chatMessages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <Sparkles className="mb-3 h-8 w-8 text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">
-                Ask anything, or add threads for context
-              </p>
-              <p className="mt-1.5 text-xs text-muted-foreground/60">
-                Summarize, draft, extract tasks, and more
-              </p>
-            </div>
+            <SidebarIdleState
+              threads={threads}
+              selectedThread={selectedThread ?? null}
+              triageMap={triageMap}
+              categoryMap={categoryMap}
+              topicMap={topicMap}
+              commitments={commitments}
+              selectedThreadIds={selectedThreadIds}
+              onSuggestionClick={handleSuggestionClick}
+              onInboxSuggestionClick={handleInboxSuggestionClick}
+            />
           ) : (
             chatMessages.map((msg, idx) => (
               <ChatBubble
@@ -772,7 +1042,7 @@ export function AiSidebar() {
       </ScrollArea>
 
       {/* ─── Input area ──────────────────────────────────── */}
-      <div className="border-t border-border">
+      <div className="border-t border-border ai-glow-input">
         {/* Context chips */}
         {hasContext && (
           <div className="flex flex-wrap gap-1 px-3 pt-2">
@@ -822,7 +1092,11 @@ export function AiSidebar() {
               }
             }}
             placeholder={
-              hasContext ? "Ask about this thread..." : "Ask anything..."
+              hasContext
+                ? "Ask about this thread..."
+                : selectedThread
+                  ? `Ask about "${selectedThread.subject.slice(0, 30)}..."`
+                  : "Ask anything..."
             }
             rows={1}
             className="w-full resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
@@ -928,7 +1202,7 @@ export function AiSidebar() {
           {/* Right: send */}
           <Button
             size="sm"
-            className="h-7 w-7 p-0"
+            className="h-7 w-7 p-0 ai-send-glow"
             onClick={handleSend}
             disabled={!input.trim() || isStreaming}
           >
@@ -1065,13 +1339,13 @@ function ChatBubble({
           );
         }
 
-        // Plain text
+        // Rendered markdown
         return (
           <div
             key={segIdx}
-            className="mr-2 rounded-lg bg-muted px-3 py-2 text-[13px] leading-relaxed text-foreground"
+            className="mr-2 rounded-lg bg-muted px-3 py-2 text-[13px] leading-relaxed text-foreground prose prose-sm prose-neutral dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:text-sm prose-headings:font-semibold prose-headings:mt-2 prose-headings:mb-1"
           >
-            <div className="whitespace-pre-wrap">{seg.content}</div>
+            <ReactMarkdown>{seg.content}</ReactMarkdown>
           </div>
         );
       })}
@@ -1447,5 +1721,334 @@ function ResultsBlock({
         ))}
       </div>
     </div>
+  );
+}
+
+// ─── Sidebar Idle State (insight cards + suggestions) ────
+
+import type {
+  DiracThread,
+  TriageCategory,
+  FounderCategory,
+  Commitment,
+} from "@/lib/types";
+
+function SidebarIdleState({
+  threads,
+  selectedThread,
+  triageMap,
+  categoryMap,
+  topicMap,
+  commitments,
+  selectedThreadIds,
+  onSuggestionClick,
+  onInboxSuggestionClick,
+}: {
+  threads: DiracThread[];
+  selectedThread: DiracThread | null;
+  triageMap: Record<string, TriageCategory>;
+  categoryMap: Record<string, FounderCategory>;
+  topicMap: Record<string, TopicTag[]>;
+  commitments: Commitment[];
+  selectedThreadIds: Set<string>;
+  onSuggestionClick: (prompt: string) => void;
+  onInboxSuggestionClick: (prompt: string) => void;
+}) {
+  const [bulkCardIndex, setBulkCardIndex] = useState(0);
+
+  const bulkThreads = threads.filter((t) => selectedThreadIds.has(t.id));
+  const hasBulk = bulkThreads.length > 1;
+
+  // Reset index when selection changes
+  useEffect(() => {
+    setBulkCardIndex(0);
+  }, [selectedThreadIds.size]);
+
+  const activeThread = hasBulk ? bulkThreads[bulkCardIndex] : selectedThread;
+
+  const category = activeThread ? categoryMap[activeThread.id] : undefined;
+  const topics = activeThread ? ((topicMap[activeThread.id] ?? []) as TopicTag[]) : [];
+  const triage = activeThread ? triageMap[activeThread.id] : undefined;
+  const threadCommitments = activeThread
+    ? commitments.filter((c) => c.threadId === activeThread.id)
+    : [];
+  const sender = activeThread?.participants[0];
+
+  const threadSuggestions = activeThread
+    ? hasBulk
+      ? [
+          { label: `Summarize all ${bulkThreads.length} threads`, prompt: `Summarize these ${bulkThreads.length} threads: ${bulkThreads.map((t) => `"${t.subject}"`).join(", ")}. For each, give key points and action items.` },
+          { label: "Compare these threads", prompt: `Compare these ${bulkThreads.length} threads: ${bulkThreads.map((t) => `"${t.subject}"`).join(", ")}. What do they have in common? Any patterns?` },
+          { label: "Draft batch reply", prompt: `Draft brief replies for each of these ${bulkThreads.length} threads: ${bulkThreads.map((t) => `"${t.subject}"`).join(", ")}. Keep each concise and in my tone.` },
+          { label: "Prioritize these", prompt: `Rank these ${bulkThreads.length} threads by urgency: ${bulkThreads.map((t) => `"${t.subject}"`).join(", ")}. Which should I handle first and why?` },
+        ]
+      : [
+          { label: "Summarize", prompt: `Summarize the thread "${activeThread.subject}" — key points, action items, and what needs a response.` },
+          { label: "Draft a reply", prompt: `Draft a reply to "${activeThread.subject}" in my tone. Keep it concise.` },
+          { label: "Extract action items", prompt: `What action items or commitments are in the thread "${activeThread.subject}"? List who owes what.` },
+          { label: "What's the tone?", prompt: `Analyze the tone and sentiment of the thread "${activeThread.subject}". Is the sender happy, frustrated, neutral?` },
+          { label: "Follow-up needed?", prompt: `For the thread "${activeThread.subject}" — do I need to follow up? If yes, suggest what to say.` },
+        ]
+    : [];
+
+  const inboxSuggestions = [
+    { label: "What needs my attention?", prompt: "What emails need my attention most urgently? Consider unread threads, anything awaiting my reply, and upcoming deadlines." },
+    { label: "Summarize my inbox", prompt: "Give me a brief summary of my inbox — how many unread, what's urgent, and any patterns you notice." },
+    { label: "Find unanswered threads", prompt: "Find threads where someone is waiting for my reply. List them with the sender and how long they've been waiting." },
+    { label: "Draft a new email", prompt: "I want to compose a new email. Ask me who it's to, what it's about, and the tone I want." },
+  ];
+
+  const handleFlick = (direction: 1 | -1) => {
+    setBulkCardIndex((prev) => {
+      const next = prev + direction;
+      if (next < 0) return bulkThreads.length - 1;
+      if (next >= bulkThreads.length) return 0;
+      return next;
+    });
+  };
+
+  return (
+    <div className="relative flex flex-col gap-3 px-1 py-3 min-h-[400px]">
+      {/* Ambient gradient orbs */}
+      <div className="absolute inset-0 overflow-hidden rounded-lg pointer-events-none">
+        <div className="ai-orb ai-orb-1" />
+        <div className="ai-orb ai-orb-2" />
+        <div className="ai-orb ai-orb-3" />
+      </div>
+
+      {/* Bulk card stack OR single thread snapshot */}
+      <AnimatePresence mode="wait">
+        {hasBulk ? (
+          <div key="bulk-stack" className="relative z-10 mx-1">
+            {/* Stacked card shadows behind */}
+            <div className="absolute inset-0 top-1 rounded-lg border border-border/30 bg-background/40 backdrop-blur-sm translate-x-1 translate-y-1" />
+            {bulkThreads.length > 2 && (
+              <div className="absolute inset-0 top-1 rounded-lg border border-border/20 bg-background/20 backdrop-blur-sm translate-x-2 translate-y-2" />
+            )}
+
+            {/* Active card */}
+            <motion.div
+              key={activeThread?.id}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="relative rounded-lg border border-border/60 bg-background/90 backdrop-blur-sm p-3 ai-glow-card"
+            >
+              {/* Navigation header */}
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10">
+                    <Inbox className="h-3 w-3 text-primary" />
+                  </div>
+                  <span className="text-[10px] font-medium text-muted-foreground">
+                    {bulkCardIndex + 1} / {bulkThreads.length} selected
+                  </span>
+                </div>
+                <div className="flex items-center gap-0.5">
+                  <button
+                    onClick={() => handleFlick(-1)}
+                    className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors"
+                  >
+                    <ArrowRight className="h-3 w-3 rotate-180" />
+                  </button>
+                  <button
+                    onClick={() => handleFlick(1)}
+                    className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors"
+                  >
+                    <ArrowRight className="h-3 w-3" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Card content */}
+              {activeThread && (
+                <ThreadCardContent
+                  thread={activeThread}
+                  category={category}
+                  triage={triage}
+                  topics={topics}
+                  commitments={threadCommitments}
+                  sender={sender}
+                />
+              )}
+            </motion.div>
+
+            {/* Dot indicators */}
+            <div className="flex items-center justify-center gap-1 mt-2">
+              {bulkThreads.map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setBulkCardIndex(i)}
+                  className={cn(
+                    "h-1.5 rounded-full transition-all",
+                    i === bulkCardIndex
+                      ? "w-4 bg-primary"
+                      : "w-1.5 bg-muted-foreground/20 hover:bg-muted-foreground/40",
+                  )}
+                />
+              ))}
+            </div>
+          </div>
+        ) : activeThread ? (
+          <motion.div
+            key={activeThread.id}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="relative z-10 mx-1 rounded-lg border border-border/60 bg-background/80 backdrop-blur-sm p-3 ai-glow-card"
+          >
+            <ThreadCardContent
+              thread={activeThread}
+              category={category}
+              triage={triage}
+              topics={topics}
+              commitments={threadCommitments}
+              sender={sender}
+            />
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      {/* Suggestion chips — thread-specific */}
+      {activeThread && (
+        <div className="relative z-10 flex flex-col gap-1 mt-1">
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.15 }}
+            className="px-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-0.5"
+          >
+            {hasBulk ? `${bulkThreads.length} threads` : "This thread"}
+          </motion.p>
+          {threadSuggestions.map((chip, i) => (
+            <motion.button
+              key={chip.label}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.25, ease: "easeOut", delay: 0.1 + i * 0.04 }}
+              onClick={() => onSuggestionClick(chip.prompt)}
+              className="ai-chip-shimmer flex items-center gap-2 rounded-md px-3 py-2 text-left text-[13px] text-foreground transition-colors hover:bg-accent/60"
+            >
+              <ArrowRight className="h-3 w-3 shrink-0 text-primary/40" />
+              {chip.label}
+            </motion.button>
+          ))}
+        </div>
+      )}
+
+      {/* Suggestion chips — general / inbox */}
+      <div className="relative z-10 flex flex-col gap-1 mt-1">
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: activeThread ? 0.35 : 0.15 }}
+          className="px-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-0.5"
+        >
+          General
+        </motion.p>
+        {inboxSuggestions.map((chip, i) => (
+          <motion.button
+            key={chip.label}
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.25, ease: "easeOut", delay: (activeThread ? 0.35 : 0.1) + i * 0.04 }}
+            onClick={() => onInboxSuggestionClick(chip.prompt)}
+            className="ai-chip-shimmer flex items-center gap-2 rounded-md px-3 py-2 text-left text-[13px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+          >
+            <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground/30" />
+            {chip.label}
+          </motion.button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Thread card content (shared between single + bulk) ──
+
+function ThreadCardContent({
+  thread,
+  category,
+  triage,
+  topics,
+  commitments: threadCommitments,
+  sender,
+}: {
+  thread: DiracThread;
+  category?: FounderCategory;
+  triage?: TriageCategory;
+  topics: TopicTag[];
+  commitments: Commitment[];
+  sender?: { name: string; email: string };
+}) {
+  return (
+    <>
+      <div className="flex items-center gap-2 mb-1.5">
+        <div className="flex h-5 w-5 items-center justify-center rounded-full bg-accent shrink-0">
+          <User className="h-3 w-3 text-muted-foreground" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold text-foreground truncate">
+            {sender?.name ?? sender?.email ?? "Unknown"}
+          </p>
+          {sender?.email && sender.name && (
+            <p className="text-[10px] text-muted-foreground/60 truncate">{sender.email}</p>
+          )}
+        </div>
+      </div>
+
+      <p className="text-[12px] text-foreground font-medium truncate mb-2 pl-7">
+        {thread.subject}
+      </p>
+
+      {(category || triage || topics.length > 0) && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {category && (
+            <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", FOUNDER_CATEGORY_COLORS[category])}>
+              {FOUNDER_CATEGORY_LABELS[category]}
+            </span>
+          )}
+          {triage === "needs_reply" && (
+            <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-600 dark:text-blue-400">
+              Needs reply
+            </span>
+          )}
+          {triage === "waiting_on" && (
+            <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+              Waiting on
+            </span>
+          )}
+          {topics.map((tag) => (
+            <span
+              key={tag}
+              className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium leading-none", TOPIC_TAG_COLORS[tag] ?? "text-muted-foreground bg-muted")}
+            >
+              {TOPIC_TAG_LABELS[tag] ?? tag}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+        <span>{thread.messageCount} message{thread.messageCount !== 1 ? "s" : ""}</span>
+        <span>&middot;</span>
+        <span>{formatDistanceToNow(new Date(thread.lastMessageAt), { addSuffix: true })}</span>
+      </div>
+
+      {threadCommitments.length > 0 && (
+        <div className="mt-2 pt-2 border-t border-border/40">
+          <p className="text-[10px] font-medium text-amber-700 dark:text-amber-400 mb-1">
+            {threadCommitments.length} commitment{threadCommitments.length !== 1 ? "s" : ""}
+          </p>
+          {threadCommitments.slice(0, 2).map((c) => (
+            <p key={c.id} className={cn("text-[10px] truncate", c.isOverdue ? "text-red-600 dark:text-red-400" : "text-muted-foreground")}>
+              {c.owner === "me" ? "You" : "They"}: {c.description}
+            </p>
+          ))}
+        </div>
+      )}
+    </>
   );
 }

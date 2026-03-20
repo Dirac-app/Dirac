@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth-guard";
+import { requireSession } from "@/lib/auth-guard";
 import { validateBody, AiChatSchema } from "@/lib/validation";
 import { getModelForUser, getApiKeyForUser } from "@/lib/user-db";
 
@@ -197,10 +197,14 @@ For these, use plain text (no special fences needed).`;
  * Streams an AI response via OpenRouter.
  */
 export async function POST(request: NextRequest) {
-  const guard = await requireAuth();
+  const guard = await requireSession();
   if (guard.error) return guard.response;
 
-  const apiKey = await getApiKeyForUser(guard.userId!) ?? process.env.OPENROUTER_API_KEY ?? null;
+  let apiKey: string | null = null;
+  if (guard.userId) {
+    try { apiKey = await getApiKeyForUser(guard.userId); } catch {}
+  }
+  if (!apiKey) apiKey = process.env.OPENROUTER_API_KEY ?? null;
 
   if (!apiKey) {
     return NextResponse.json(

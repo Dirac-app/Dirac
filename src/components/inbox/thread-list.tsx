@@ -2,7 +2,7 @@
 
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
-import { useRef, useCallback, useEffect } from "react";
+import { useRef, useCallback } from "react";
 import {
   Mail,
   MessageSquare,
@@ -16,15 +16,13 @@ import {
   MailOpen,
   MailX,
   BrainCircuit,
-  Copy,
-  Search,
+  FileText,
   X,
   CheckSquare,
   Square,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAppState } from "@/lib/store";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -34,7 +32,8 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import type { DiracThread, InboxFilter } from "@/lib/types";
+import type { DiracThread, InboxFilter, TopicTag } from "@/lib/types";
+import { TOPIC_TAG_LABELS, TOPIC_TAG_COLORS } from "@/lib/types";
 
 const FILTER_TABS: { value: InboxFilter; label: string }[] = [
   { value: "all",        label: "All"       },
@@ -53,6 +52,7 @@ function ThreadRow({
   onSelect,
   onBulkToggle,
   compact,
+  bulkThreads,
 }: {
   thread: DiracThread;
   isSelected: boolean;
@@ -60,21 +60,28 @@ function ThreadRow({
   onSelect: () => void;
   onBulkToggle: (e: React.MouseEvent) => void;
   compact: boolean;
+  bulkThreads: DiracThread[];
 }) {
   const {
     toggleStarred,
     toggleUrgent,
     markThreadUnread,
     markThreadRead,
-    archiveThread,
     trashThread,
     toggleAiContext,
     isInAiContext,
+    setAiSidebarOpen,
+    addToAiContext,
+    setPendingAiQuery,
+    topicMap,
   } = useAppState();
 
   const sender = thread.participants[0]?.name ?? thread.participants[0]?.email ?? "Unknown";
   const timeAgo = formatDistanceToNow(new Date(thread.lastMessageAt), { addSuffix: false });
-  const inContext = isInAiContext(thread.id);
+  const topics = (topicMap[thread.id] ?? []) as TopicTag[];
+
+  const hasBulk = isBulkSelected && bulkThreads.length > 1;
+  const targets = hasBulk ? bulkThreads : [thread];
 
   const py = compact ? "py-2" : "py-3";
 
@@ -155,33 +162,34 @@ function ThreadRow({
             </div>
           </div>
 
-          {/* Subject */}
-          <div className={cn(
-            "truncate text-sm",
-            thread.isUnread ? "font-medium text-foreground" : "text-muted-foreground",
-          )}>
-            {thread.subject}
+          {/* Subject + topic pills */}
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className={cn(
+              "truncate text-sm",
+              thread.isUnread ? "font-medium text-foreground" : "text-muted-foreground",
+            )}>
+              {thread.subject}
+            </span>
+            {topics.length > 0 && (
+              <div className="flex items-center gap-1 shrink-0">
+                {topics.map(tag => (
+                  <span
+                    key={tag}
+                    className={cn(
+                      "rounded px-1.5 py-0.5 text-[10px] font-medium leading-none",
+                      TOPIC_TAG_COLORS[tag] ?? "text-muted-foreground bg-muted",
+                    )}
+                  >
+                    {TOPIC_TAG_LABELS[tag] ?? tag}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Snippet (hidden in compact mode) */}
           {!compact && (
             <div className="truncate text-xs text-muted-foreground">{thread.snippet}</div>
-          )}
-
-          {/* Tags */}
-          {thread.tags.length > 0 && (
-            <div className="mt-0.5 flex gap-1">
-              {thread.tags.map(tag => (
-                <Badge key={tag} variant="secondary" className="h-5 px-1.5 text-[10px] font-normal">
-                  {tag}
-                </Badge>
-              ))}
-            </div>
-          )}
-
-          {/* Message count */}
-          {thread.messageCount > 1 && (
-            <span className="text-[10px] text-muted-foreground">{thread.messageCount} messages</span>
           )}
 
           {/* Unread dot */}
@@ -191,49 +199,64 @@ function ThreadRow({
         </button>
       </ContextMenuTrigger>
 
-      <ContextMenuContent className="w-52">
-        <ContextMenuItem onClick={() => toggleStarred(thread.id)}>
-          <Star className={cn("h-4 w-4", thread.isStarred && "fill-yellow-400 text-yellow-400")} />
-          {thread.isStarred ? "Unstar" : "Star"}
-        </ContextMenuItem>
-
-        {thread.isUnread ? (
-          <ContextMenuItem onClick={() => markThreadRead(thread.id)}>
-            <MailOpen className="h-4 w-4" /> Mark as read
-          </ContextMenuItem>
-        ) : (
-          <ContextMenuItem onClick={() => markThreadUnread(thread.id)}>
-            <MailX className="h-4 w-4" /> Mark as unread
-          </ContextMenuItem>
+      <ContextMenuContent className="w-56">
+        {hasBulk && (
+          <>
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+              {targets.length} threads selected
+            </div>
+            <ContextMenuSeparator />
+          </>
         )}
 
-        <ContextMenuItem onClick={() => toggleUrgent(thread.id)}>
-          <AlertTriangle className={cn("h-4 w-4", thread.isUrgent && "text-red-500")} />
-          {thread.isUrgent ? "Remove urgent" : "Mark as urgent"}
+        <ContextMenuItem
+          onClick={() => {
+            for (const t of targets) {
+              addToAiContext({ id: t.id, label: t.subject });
+            }
+            const subjects = targets.map(t => `"${t.subject}"`).join(", ");
+            setPendingAiQuery(
+              targets.length === 1
+                ? `Summarize the thread ${subjects} — key points, action items, and what needs a response.`
+                : `Summarize these ${targets.length} threads: ${subjects}. For each, give key points, action items, and what needs a response.`
+            );
+            setAiSidebarOpen(true);
+          }}
+        >
+          <FileText className="h-4 w-4" />
+          Summarize{hasBulk ? ` ${targets.length} threads` : ""}
         </ContextMenuItem>
 
         <ContextMenuSeparator />
 
-        <ContextMenuItem onClick={() => toggleAiContext({ id: thread.id, label: thread.subject })}>
+        <ContextMenuItem onClick={() => targets.forEach(t => toggleStarred(t.id))}>
+          <Star className={cn("h-4 w-4", !hasBulk && thread.isStarred && "fill-yellow-400 text-yellow-400")} />
+          {!hasBulk && thread.isStarred ? "Unstar" : "Star"}
+        </ContextMenuItem>
+
+        <ContextMenuItem onClick={() => targets.forEach(t => markThreadRead(t.id))}>
+          <MailOpen className="h-4 w-4" /> Mark as read
+        </ContextMenuItem>
+
+        <ContextMenuItem onClick={() => targets.forEach(t => markThreadUnread(t.id))}>
+          <MailX className="h-4 w-4" /> Mark as unread
+        </ContextMenuItem>
+
+        <ContextMenuItem onClick={() => targets.forEach(t => toggleUrgent(t.id))}>
+          <AlertTriangle className={cn("h-4 w-4", !hasBulk && thread.isUrgent && "text-red-500")} />
+          {!hasBulk && thread.isUrgent ? "Remove urgent" : "Mark as urgent"}
+        </ContextMenuItem>
+
+        <ContextMenuSeparator />
+
+        <ContextMenuItem onClick={() => targets.forEach(t => toggleAiContext({ id: t.id, label: t.subject }))}>
           <BrainCircuit className="h-4 w-4" />
-          {inContext ? "Remove from AI context" : "Add to AI context"}
+          Add to AI context
         </ContextMenuItem>
 
-        <ContextMenuItem onClick={() => navigator.clipboard.writeText(thread.subject)}>
-          <Copy className="h-4 w-4" /> Copy subject
-        </ContextMenuItem>
-
-        <ContextMenuSeparator />
-
-        {thread.platform !== "DISCORD" && (
-          <ContextMenuItem onClick={() => archiveThread(thread.id)}>
-            <Archive className="h-4 w-4" /> Archive
-          </ContextMenuItem>
-        )}
-
-        {thread.platform !== "DISCORD" && (
-          <ContextMenuItem variant="destructive" onClick={() => trashThread(thread.id)}>
-            <Trash2 className="h-4 w-4" /> Delete
+        {targets.every(t => t.platform !== "DISCORD") && (
+          <ContextMenuItem variant="destructive" onClick={() => targets.forEach(t => trashThread(t.id))}>
+            <Trash2 className="h-4 w-4" /> Delete{hasBulk ? ` ${targets.length} threads` : ""}
           </ContextMenuItem>
         )}
       </ContextMenuContent>
@@ -257,22 +280,22 @@ function BulkToolbar({
   onClear: () => void;
 }) {
   return (
-    <div className="flex items-center gap-2 border-b border-border bg-accent/40 px-3 py-2">
-      <span className="text-xs font-medium text-foreground mr-auto">
+    <div className="flex items-center gap-1 border-b border-border bg-accent/40 px-2 py-1.5">
+      <span className="text-[11px] font-medium text-foreground mr-auto shrink-0">
         {count} selected
       </span>
-      <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs px-2" onClick={onMarkRead}>
-        <MailOpen className="h-3.5 w-3.5" /> Read
+      <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={onMarkRead} title="Mark as read">
+        <MailOpen className="h-3 w-3" />
       </Button>
-      <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs px-2" onClick={onArchive}>
-        <Archive className="h-3.5 w-3.5" /> Archive
+      <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={onArchive} title="Archive">
+        <Archive className="h-3 w-3" />
       </Button>
-      <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs px-2 text-red-600 hover:text-red-600" onClick={onTrash}>
-        <Trash2 className="h-3.5 w-3.5" /> Delete
+      <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-red-600 hover:text-red-600" onClick={onTrash} title="Delete">
+        <Trash2 className="h-3 w-3" />
       </Button>
-      <button onClick={onClear} className="ml-1 text-muted-foreground hover:text-foreground">
-        <X className="h-3.5 w-3.5" />
-      </button>
+      <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={onClear} title="Clear selection">
+        <X className="h-3 w-3" />
+      </Button>
     </div>
   );
 }
@@ -292,7 +315,6 @@ export function ThreadList() {
     setComposeMinimized,
     triageMap,
     searchQuery,
-    setSearchQuery,
     density,
     selectedThreadIds,
     toggleBulkSelect,
@@ -304,13 +326,6 @@ export function ThreadList() {
   } = useAppState();
 
   const lastClickedIdxRef = useRef<number | null>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const handler = () => searchInputRef.current?.focus();
-    window.addEventListener("dirac:focus-search", handler);
-    return () => window.removeEventListener("dirac:focus-search", handler);
-  }, []);
 
   // Apply filter + search
   const filtered = threads.filter(t => {
@@ -342,6 +357,7 @@ export function ThreadList() {
   const waitingCount   = threads.filter(t => triageMap[t.id] === "waiting_on").length;
   const bulkCount      = selectedThreadIds.size;
   const compact        = density === "compact";
+  const bulkThreads    = threads.filter(t => selectedThreadIds.has(t.id));
 
   // Shift-click range select
   const handleSelect = useCallback((idx: number, threadId: string, e: React.MouseEvent) => {
@@ -394,28 +410,6 @@ export function ThreadList() {
           >
             <RefreshCw className={cn("h-3 w-3", threadsLoading && "animate-spin")} />
           </Button>
-        </div>
-      </div>
-
-      {/* Search bar */}
-      <div className="border-b border-border px-3 py-2">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-          <input
-            ref={searchInputRef}
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search threads…"
-            className="w-full rounded-md border border-border bg-muted/40 pl-8 pr-7 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/50 transition-colors"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery("")}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          )}
         </div>
       </div>
 
@@ -493,14 +487,6 @@ export function ThreadList() {
                 <Link href="/settings">Connect an account →</Link>
               </Button>
             </div>
-          ) : searchQuery ? (
-            <div className="flex flex-col items-center justify-center px-6 py-16 text-center gap-2">
-              <Search className="h-8 w-8 text-muted-foreground/30" />
-              <p className="text-sm font-medium text-muted-foreground">No results for &ldquo;{searchQuery}&rdquo;</p>
-              <button onClick={() => setSearchQuery("")} className="text-xs text-primary underline underline-offset-2">
-                Clear search
-              </button>
-            </div>
           ) : (
             <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
               <Inbox className="mb-3 h-10 w-10 text-muted-foreground/30" />
@@ -521,6 +507,7 @@ export function ThreadList() {
                 isSelected={thread.id === selectedThreadId}
                 isBulkSelected={selectedThreadIds.has(thread.id)}
                 compact={compact}
+                bulkThreads={bulkThreads}
                 onSelect={() => setSelectedThreadId(thread.id)}
                 onBulkToggle={e => {
                   e.stopPropagation();

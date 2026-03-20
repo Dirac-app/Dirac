@@ -1,7 +1,18 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import type { DiracThread, DiracMessage, InboxFilter, TriageCategory } from "./types";
+import type {
+  DiracThread,
+  DiracMessage,
+  InboxFilter,
+  TriageCategory,
+  FounderCategory,
+  Commitment,
+  SnoozeState,
+  RelationshipContext,
+  PatternSuggestion,
+  TopicTag,
+} from "./types";
 
 export interface AiContextItem {
   id: string;
@@ -96,7 +107,30 @@ export interface AppState {
   clearSelection: () => void;
   // Unread count
   unreadCount: number;
-  setPendingAiQuery: (query: string | null) => void;
+  // Thread lifecycle (Direction A)
+  snoozedThreads: SnoozeState[];
+  snoozeThread: (threadId: string, snooze: Omit<SnoozeState, "threadId" | "snoozedAt">) => void;
+  unsnoozeThread: (threadId: string) => void;
+  doneThreads: Set<string>;
+  markDone: (threadId: string) => void;
+  unmarkDone: (threadId: string) => void;
+  commitments: Commitment[];
+  setCommitments: (commitments: Commitment[]) => void;
+  dismissCommitment: (id: string) => void;
+  // Founder categories (Direction B)
+  categoryMap: Record<string, FounderCategory>;
+  categoryLoading: boolean;
+  runCategorization: () => void;
+  // Pattern suggestions (Direction B.3)
+  patternSuggestions: PatternSuggestion[];
+  dismissPattern: (id: string) => void;
+  applyPattern: (id: string) => void;
+  // Relationship context (Direction B.4)
+  getRelationshipContext: (email: string) => RelationshipContext | null;
+  // Topic tags (AI-generated from fixed set)
+  topicMap: Record<string, TopicTag[]>;
+  topicLoading: boolean;
+  runTopicTagging: () => void;
 }
 
 export const AppContext = createContext<AppState | null>(null);

@@ -49,6 +49,7 @@ import { cn } from "@/lib/utils";
 export function SpotlightSearch() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [mounted, setMounted] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const pathname = usePathname();
@@ -75,6 +76,8 @@ export function SpotlightSearch() {
     clearSelection,
     selectedThreadIds,
   } = useAppState();
+
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -384,6 +387,8 @@ export function SpotlightSearch() {
     },
     [handleAskAi],
   );
+
+  if (!mounted) return null;
 
   return (
     <div onKeyDown={handleKeyDown}>

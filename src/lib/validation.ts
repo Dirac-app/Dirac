@@ -71,6 +71,9 @@ const ContextThreadSchema = z.object({
   threadId: z.string().max(255),
   subject: z.string().max(998),
   messages: z.array(ContextMessageSchema).max(200),
+  category: z.string().max(50).optional(),
+  triage: z.string().max(50).optional(),
+  lastMessageAt: z.string().max(100).optional(),
 });
 
 export const AiChatSchema = z.object({

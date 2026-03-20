@@ -62,6 +62,21 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         };
       }
 
+      // ── Retry DB upsert if it failed on initial sign-in (max once per 60s) ──
+      const now = Date.now();
+      const lastRetry = (token.dbRetryAt as number) ?? 0;
+      if (!token.dbUserId && token.email && now - lastRetry > 60_000) {
+        token.dbRetryAt = now;
+        try {
+          const userId = await upsertUser({
+            email: token.email as string,
+            name: (token.name as string) ?? null,
+            avatarUrl: (token.picture as string) ?? null,
+          });
+          token.dbUserId = userId;
+        } catch {}
+      }
+
       // ── Token still valid ─────────────────────────────────
       const expiresAt = (token.expiresAt as number) ?? 0;
       if (Date.now() / 1000 < expiresAt - 60) return token;

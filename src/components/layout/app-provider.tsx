@@ -9,7 +9,18 @@ import {
 } from "react";
 import { useSession } from "next-auth/react";
 import { AppContext, type AppState, type AiContextItem, type ToneProfile } from "@/lib/store";
-import type { DiracThread, DiracMessage, InboxFilter, TriageCategory } from "@/lib/types";
+import type {
+  DiracThread,
+  DiracMessage,
+  InboxFilter,
+  TriageCategory,
+  FounderCategory,
+  Commitment,
+  SnoozeState,
+  RelationshipContext,
+  PatternSuggestion,
+  TopicTag,
+} from "@/lib/types";
 
 // ─── Local storage helpers for starred / urgent state ────
 
@@ -17,6 +28,12 @@ const STARRED_KEY = "dirac_starred";
 const URGENT_KEY = "dirac_urgent_manual";
 const URGENT_DISMISSED_KEY = "dirac_urgent_dismissed";
 const TONE_KEY = "dirac_tone_profile";
+const SNOOZED_KEY = "dirac_snoozed";
+const DONE_KEY = "dirac_done";
+const COMMITMENTS_KEY = "dirac_commitments";
+const CATEGORIES_KEY = "dirac_categories";
+const PATTERNS_KEY = "dirac_patterns";
+const TOPICS_KEY = "dirac_topics";
 
 function loadSet(key: string): Set<string> {
   if (typeof window === "undefined") return new Set();
@@ -93,6 +110,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const raw = localStorage.getItem(TONE_KEY);
       if (raw) setToneProfileState(JSON.parse(raw));
     } catch {}
+    try {
+      const s = localStorage.getItem(SNOOZED_KEY);
+      if (s) setSnoozedThreads(JSON.parse(s));
+    } catch {}
+    try {
+      const d = localStorage.getItem(DONE_KEY);
+      if (d) setDoneThreadIds(new Set(JSON.parse(d)));
+    } catch {}
+    try {
+      const c = localStorage.getItem(COMMITMENTS_KEY);
+      if (c) setCommitmentsState(JSON.parse(c));
+    } catch {}
+    try {
+      const cat = localStorage.getItem(CATEGORIES_KEY);
+      if (cat) setCategoryMap(JSON.parse(cat));
+    } catch {}
+    try {
+      const p = localStorage.getItem(PATTERNS_KEY);
+      if (p) setPatternSuggestions(JSON.parse(p));
+    } catch {}
+    try {
+      const tp = localStorage.getItem(TOPICS_KEY);
+      if (tp) setTopicMap(JSON.parse(tp));
+    } catch {}
   }, []);
 
   // Merged + sorted threads with starred/urgent overlays
@@ -129,6 +170,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // AI query handoff (spotlight → sidebar)
   const [pendingAiQuery, setPendingAiQuery] = useState<string | null>(null);
+
+  // ─── Thread lifecycle (Direction A) ─────────────────────
+  const [snoozedThreads, setSnoozedThreads] = useState<SnoozeState[]>([]);
+  const [doneThreadIds, setDoneThreadIds] = useState<Set<string>>(new Set());
+  const [commitments, setCommitmentsState] = useState<Commitment[]>([]);
+
+  // ─── Founder categories (Direction B) ───────────────────
+  const [categoryMap, setCategoryMap] = useState<Record<string, FounderCategory>>({});
+  const [categoryLoading, setCategoryLoading] = useState(false);
+
+  // ─── Pattern suggestions (Direction B.3) ────────────────
+  const [patternSuggestions, setPatternSuggestions] = useState<PatternSuggestion[]>([]);
+
+  // ─── Topic tags (AI-generated) ──────────────────────────
+  const [topicMap, setTopicMap] = useState<Record<string, TopicTag[]>>({});
+  const [topicLoading, setTopicLoading] = useState(false);
 
   // ─── QoL state ────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -375,6 +432,198 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [aiContext],
   );
 
+  // ─── Snooze helpers (Direction A.2) ─────────────────────
+  const snoozeThread = useCallback(
+    (threadId: string, snooze: Omit<SnoozeState, "threadId" | "snoozedAt">) => {
+      setSnoozedThreads((prev) => {
+        const next = [
+          ...prev.filter((s) => s.threadId !== threadId),
+          { ...snooze, threadId, snoozedAt: new Date().toISOString() },
+        ];
+        try { localStorage.setItem(SNOOZED_KEY, JSON.stringify(next)); } catch {}
+        return next;
+      });
+      if (selectedThreadId === threadId) setSelectedThreadId(null);
+    },
+    [selectedThreadId],
+  );
+
+  const unsnoozeThread = useCallback((threadId: string) => {
+    setSnoozedThreads((prev) => {
+      const next = prev.filter((s) => s.threadId !== threadId);
+      try { localStorage.setItem(SNOOZED_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const checkSnoozes = () => {
+      const now = Date.now();
+      setSnoozedThreads((prev) => {
+        const expired = prev.filter(
+          (s) => s.mode === "time" && s.until && new Date(s.until).getTime() <= now,
+        );
+        if (expired.length === 0) return prev;
+        const next = prev.filter(
+          (s) => !(s.mode === "time" && s.until && new Date(s.until).getTime() <= now),
+        );
+        try { localStorage.setItem(SNOOZED_KEY, JSON.stringify(next)); } catch {}
+        return next;
+      });
+    };
+    checkSnoozes();
+    const interval = setInterval(checkSnoozes, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // ─── Done helpers (Direction A.1) ───────────────────────
+  const markDone = useCallback((threadId: string) => {
+    setDoneThreadIds((prev) => {
+      const next = new Set(prev);
+      next.add(threadId);
+      try { localStorage.setItem(DONE_KEY, JSON.stringify(Array.from(next))); } catch {}
+      return next;
+    });
+  }, []);
+
+  const unmarkDone = useCallback((threadId: string) => {
+    setDoneThreadIds((prev) => {
+      const next = new Set(prev);
+      next.delete(threadId);
+      try { localStorage.setItem(DONE_KEY, JSON.stringify(Array.from(next))); } catch {}
+      return next;
+    });
+  }, []);
+
+  // ─── Commitments helpers (Direction A.3) ────────────────
+  const setCommitments = useCallback((c: Commitment[]) => {
+    setCommitmentsState(c);
+    try { localStorage.setItem(COMMITMENTS_KEY, JSON.stringify(c)); } catch {}
+  }, []);
+
+  const dismissCommitment = useCallback((id: string) => {
+    setCommitmentsState((prev) => {
+      const next = prev.filter((c) => c.id !== id);
+      try { localStorage.setItem(COMMITMENTS_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
+  // ─── Founder categories (Direction B.1) ─────────────────
+  const runCategorization = useCallback(async () => {
+    const allThreads = [...gmailThreads, ...outlookThreads];
+    if (allThreads.length === 0) return;
+    setCategoryLoading(true);
+    try {
+      const summaries = allThreads.slice(0, 25).map((t) => ({
+        threadId: t.id,
+        subject: t.subject,
+        snippet: t.snippet,
+        from: t.participants[0]?.email ?? "",
+        fromName: t.participants[0]?.name ?? "",
+      }));
+      const res = await fetch("/api/ai/categorize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threads: summaries }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const map: Record<string, FounderCategory> = {};
+        for (const r of data.results ?? []) {
+          if (r.threadId && r.category) map[r.threadId] = r.category;
+        }
+        setCategoryMap(map);
+        try { localStorage.setItem(CATEGORIES_KEY, JSON.stringify(map)); } catch {}
+      }
+    } catch {} finally {
+      setCategoryLoading(false);
+    }
+  }, [gmailThreads, outlookThreads]);
+
+  // ─── Topic tagging (AI-generated) ──────────────────────
+  const runTopicTagging = useCallback(async () => {
+    const allThreads = [...gmailThreads, ...outlookThreads];
+    if (allThreads.length === 0) return;
+    setTopicLoading(true);
+    try {
+      const summaries = allThreads.slice(0, 25).map((t) => ({
+        threadId: t.id,
+        subject: t.subject,
+        snippet: t.snippet,
+        from: t.participants[0]?.email ?? "",
+      }));
+      const res = await fetch("/api/ai/topics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threads: summaries }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const map: Record<string, TopicTag[]> = {};
+        for (const r of data.results ?? []) {
+          if (r.threadId && r.topics?.length) map[r.threadId] = r.topics;
+        }
+        setTopicMap(map);
+        try { localStorage.setItem(TOPICS_KEY, JSON.stringify(map)); } catch {}
+      }
+    } catch {} finally {
+      setTopicLoading(false);
+    }
+  }, [gmailThreads, outlookThreads]);
+
+  // ─── Pattern detection (Direction B.3) ──────────────────
+  const dismissPattern = useCallback((id: string) => {
+    setPatternSuggestions((prev) => {
+      const next = prev.map((p) => (p.id === id ? { ...p, dismissed: true } : p));
+      try { localStorage.setItem(PATTERNS_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
+  const applyPattern = useCallback(
+    (id: string) => {
+      const pattern = patternSuggestions.find((p) => p.id === id);
+      if (!pattern) return;
+      const matchingThreads = [...gmailThreads, ...outlookThreads].filter((t) =>
+        t.participants.some((p) => p.email === pattern.senderEmail),
+      );
+      for (const t of matchingThreads) {
+        switch (pattern.suggestedAction) {
+          case "archive": archiveThread(t.id); break;
+          case "star": toggleStarred(t.id); break;
+          case "mark_read": markThreadRead(t.id); break;
+          case "mark_urgent": toggleUrgent(t.id); break;
+        }
+      }
+      dismissPattern(id);
+    },
+    [patternSuggestions, gmailThreads, outlookThreads, archiveThread, toggleStarred, markThreadRead, toggleUrgent, dismissPattern],
+  );
+
+  // ─── Relationship context (Direction B.4) ───────────────
+  const getRelationshipContext = useCallback(
+    (email: string): RelationshipContext | null => {
+      const allThreads = [...gmailThreads, ...outlookThreads];
+      const matching = allThreads.filter((t) =>
+        t.participants.some((p) => p.email === email),
+      );
+      if (matching.length === 0) return null;
+      const participant = matching[0].participants.find((p) => p.email === email);
+      return {
+        email,
+        name: participant?.name ?? email,
+        totalThreads: matching.length,
+        avgResponseTimeHours: null,
+        theirAvgResponseTimeHours: null,
+        toneUsed: null,
+        recentSubjects: matching.slice(0, 3).map((t) => t.subject),
+        lastContacted: matching[0]?.lastMessageAt ?? null,
+      };
+    },
+    [gmailThreads, outlookThreads],
+  );
+
   // ─── Check connector statuses ─────────────────────────
   useEffect(() => {
     async function checkConnectors() {
@@ -559,6 +808,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // Also run triage classification
     runTriageForThreads(allThreads);
+
+    // Run founder-category classification (Direction B.1)
+    runCategorization();
+
+    // Run topic tagging
+    runTopicTagging();
   }, [gmailThreads, outlookThreads]);
 
   // ─── Fetch messages when thread is selected ───────────
@@ -674,6 +929,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
       selectAll,
       clearSelection,
       unreadCount: threads.filter(t => t.isUnread).length,
+      snoozedThreads,
+      snoozeThread,
+      unsnoozeThread,
+      doneThreads: doneThreadIds,
+      markDone,
+      unmarkDone,
+      commitments,
+      setCommitments,
+      dismissCommitment,
+      categoryMap,
+      categoryLoading,
+      runCategorization,
+      patternSuggestions: patternSuggestions.filter((p) => !p.dismissed),
+      dismissPattern,
+      applyPattern,
+      getRelationshipContext,
+      topicMap,
+      topicLoading,
+      runTopicTagging,
     }),
     [
       selectedThreadId,
@@ -706,6 +980,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
       searchQuery,
       density,
       selectedThreadIds,
+      snoozedThreads,
+      snoozeThread,
+      unsnoozeThread,
+      doneThreadIds,
+      markDone,
+      unmarkDone,
+      commitments,
+      setCommitments,
+      dismissCommitment,
+      categoryMap,
+      categoryLoading,
+      runCategorization,
+      patternSuggestions,
+      dismissPattern,
+      applyPattern,
+      getRelationshipContext,
+      topicMap,
+      topicLoading,
+      runTopicTagging,
     ],
   );
 

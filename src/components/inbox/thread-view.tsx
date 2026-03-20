@@ -1,28 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { format, formatDistanceToNow } from "date-fns";
+import { format } from "date-fns";
 import {
   Archive,
   Check,
-  Clock,
   CheckCircle2,
   Inbox,
   Loader2,
   MessageSquare,
-  MoreHorizontal,
   Reply,
   Send,
   Sparkles,
   Star,
-  Tag,
   ThumbsUp,
   ThumbsDown,
   HelpCircle,
   Zap,
   Mail,
   AlertTriangle,
-  User,
 } from "lucide-react";
 import { useAppState } from "@/lib/store";
 import { Button } from "@/components/ui/button";
@@ -34,11 +30,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import {
   FOUNDER_CATEGORY_LABELS,
@@ -69,14 +60,9 @@ export function ThreadView() {
     markDone,
     unmarkDone,
     doneThreads,
-    snoozeThread,
-    unsnoozeThread,
-    snoozedThreads,
     archiveThread,
     commitments,
-    triageMap,
     categoryMap,
-    getRelationshipContext,
   } = useAppState();
 
   if (!selectedThreadId) {
@@ -98,15 +84,8 @@ export function ThreadView() {
   const isDiscord = thread.platform === "DISCORD";
   const inContext = isInAiContext(thread.id);
   const isDone = doneThreads.has(thread.id);
-  const snoozeState = snoozedThreads.find((s) => s.threadId === thread.id);
-  const isSnoozed = !!snoozeState;
   const threadCommitments = commitments.filter((c) => c.threadId === thread.id);
-  const triage = triageMap[thread.id];
   const category = categoryMap[thread.id];
-  const primaryContact = thread.participants[0];
-  const relationshipCtx = primaryContact
-    ? getRelationshipContext(primaryContact.email)
-    : null;
 
   const handleToggleContext = () => {
     if (inContext) {
@@ -129,46 +108,19 @@ export function ThreadView() {
             <h2 className="truncate text-sm font-semibold text-foreground">
               {thread.subject}
             </h2>
-            {triage === "needs_reply" && !isDone && (
-              <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">
-                Needs reply
-              </span>
-            )}
-            {triage === "waiting_on" && !isDone && (
-              <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600">
-                Waiting on
-              </span>
-            )}
             {category && (
               <span
                 className={cn(
-                  "rounded px-1.5 py-0.5 text-[10px] font-medium",
+                  "rounded px-1.5 py-0.5 text-[10px] font-medium shrink-0",
                   FOUNDER_CATEGORY_COLORS[category],
                 )}
               >
                 {FOUNDER_CATEGORY_LABELS[category]}
               </span>
             )}
-            {isDone && (
-              <span className="rounded bg-green-500/10 px-1.5 py-0.5 text-[10px] font-medium text-green-600">
-                Done
-              </span>
-            )}
-            {isSnoozed && (
-              <span className="rounded bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-medium text-purple-600">
-                Snoozed
-                {snoozeState?.mode === "time" && snoozeState.until
-                  ? ` until ${format(new Date(snoozeState.until), "MMM d, h:mm a")}`
-                  : snoozeState?.mode === "reply"
-                    ? " until reply"
-                    : ""}
-              </span>
-            )}
           </div>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {thread.participants.map((p) => p.name).join(", ")} &middot;{" "}
-            {thread.messageCount} message
-            {thread.messageCount !== 1 ? "s" : ""}
+            {thread.participants.map((p) => p.name).join(", ")}
           </p>
         </div>
 
@@ -213,8 +165,6 @@ export function ThreadView() {
             </TooltipContent>
           </Tooltip>
 
-          <Separator orientation="vertical" className="mx-1 h-5" />
-
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -230,102 +180,6 @@ export function ThreadView() {
             </TooltipTrigger>
             <TooltipContent>{isDone ? "Move to inbox" : "Mark done"}</TooltipContent>
           </Tooltip>
-
-          <Popover>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                  >
-                    <Clock
-                      className={cn("h-4 w-4", isSnoozed && "text-purple-500")}
-                    />
-                  </Button>
-                </PopoverTrigger>
-              </TooltipTrigger>
-              <TooltipContent>{isSnoozed ? "Snoozed" : "Snooze"}</TooltipContent>
-            </Tooltip>
-            <PopoverContent className="w-48 p-1" align="end">
-              {isSnoozed ? (
-                <button
-                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
-                  onClick={() => unsnoozeThread(thread.id)}
-                >
-                  <Inbox className="h-4 w-4" /> Unsnooze
-                </button>
-              ) : (
-                <>
-                  <button
-                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
-                    onClick={() =>
-                      snoozeThread(thread.id, {
-                        mode: "time",
-                        until: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
-                      })
-                    }
-                  >
-                    <Clock className="h-4 w-4" /> 3 hours
-                  </button>
-                  <button
-                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
-                    onClick={() => {
-                      const tomorrow = new Date();
-                      tomorrow.setDate(tomorrow.getDate() + 1);
-                      tomorrow.setHours(9, 0, 0, 0);
-                      snoozeThread(thread.id, {
-                        mode: "time",
-                        until: tomorrow.toISOString(),
-                      });
-                    }}
-                  >
-                    <Clock className="h-4 w-4" /> Tomorrow morning
-                  </button>
-                  <button
-                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
-                    onClick={() => {
-                      const nextWeek = new Date();
-                      nextWeek.setDate(nextWeek.getDate() + 7);
-                      nextWeek.setHours(9, 0, 0, 0);
-                      snoozeThread(thread.id, {
-                        mode: "time",
-                        until: nextWeek.toISOString(),
-                      });
-                    }}
-                  >
-                    <Clock className="h-4 w-4" /> Next week
-                  </button>
-                  <Separator className="my-1" />
-                  <button
-                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
-                    onClick={() =>
-                      snoozeThread(thread.id, { mode: "reply" })
-                    }
-                  >
-                    <Mail className="h-4 w-4" /> Until they reply
-                  </button>
-                  <button
-                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
-                    onClick={() => {
-                      const friday = new Date();
-                      const daysUntilFri = (5 - friday.getDay() + 7) % 7 || 7;
-                      friday.setDate(friday.getDate() + daysUntilFri);
-                      friday.setHours(9, 0, 0, 0);
-                      snoozeThread(thread.id, {
-                        mode: "condition",
-                        until: friday.toISOString(),
-                        condition: "Resurface if no reply by Friday",
-                      });
-                    }}
-                  >
-                    <AlertTriangle className="h-4 w-4" /> If no reply by Friday
-                  </button>
-                </>
-              )}
-            </PopoverContent>
-          </Popover>
 
           <Tooltip>
             <TooltipTrigger asChild>
@@ -372,36 +226,6 @@ export function ThreadView() {
               </div>
             ))}
           </div>
-        </div>
-      )}
-
-      {/* Relationship context panel (Direction B.4) */}
-      {relationshipCtx && relationshipCtx.totalThreads > 1 && (
-        <div className="border-b border-border px-6 py-2">
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <User className="h-3.5 w-3.5 shrink-0" />
-            <span className="font-medium text-foreground">
-              {relationshipCtx.name}
-            </span>
-            <span>{relationshipCtx.totalThreads} threads total</span>
-            {relationshipCtx.lastContacted && (
-              <span>
-                Last: {formatDistanceToNow(new Date(relationshipCtx.lastContacted), { addSuffix: true })}
-              </span>
-            )}
-          </div>
-          {relationshipCtx.recentSubjects.length > 0 && (
-            <div className="mt-1 flex flex-wrap gap-1">
-              {relationshipCtx.recentSubjects.map((s, i) => (
-                <span
-                  key={i}
-                  className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
-                >
-                  {s}
-                </span>
-              ))}
-            </div>
-          )}
         </div>
       )}
 
