@@ -249,7 +249,7 @@ export function SpotlightSearch() {
           label: "Select all threads",
           icon: CheckSquare,
           shortcut: "X",
-          action: () => selectAll(),
+          action: () => selectAll(threads.map((t) => t.id)),
           keywords: "select all bulk threads",
         },
         {

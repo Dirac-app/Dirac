@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { getApiKeyForUser } from "@/lib/user-db";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -28,9 +30,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = await getApiKeyForUser(session.userId ?? "").catch(() => null) ?? process.env.OPENROUTER_API_KEY ?? null;
   if (!apiKey) {
-    return NextResponse.json({ error: "AI not configured" }, { status: 503 });
+    return NextResponse.json({ error: "No API key configured. Please contact support." }, { status: 503 });
   }
 
   const body = await request.json();
@@ -53,7 +55,7 @@ Current time: ${new Date().toISOString()}
   `.trim();
 
   try {
-    const response = await fetch(OPENROUTER_URL, {
+    const response = await fetchWithTimeout(OPENROUTER_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -87,7 +89,13 @@ Current time: ${new Date().toISOString()}
       .replace(/```json\s*/g, "")
       .replace(/```\s*/g, "")
       .trim();
-    const briefing = JSON.parse(cleaned);
+    let briefing: unknown;
+    try {
+      briefing = JSON.parse(cleaned);
+    } catch {
+      console.error("Briefing: failed to parse AI JSON:", cleaned.slice(0, 200));
+      return NextResponse.json({ error: "AI returned invalid JSON" }, { status: 502 });
+    }
 
     return NextResponse.json(briefing);
   } catch (err) {

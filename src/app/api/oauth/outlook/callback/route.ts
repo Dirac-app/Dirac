@@ -41,8 +41,9 @@ export async function GET(request: NextRequest) {
       accessTokenExpiresAt: new Date(Date.now() + tokenData.expires_in * 1000),
     });
 
-    const redirect = returnTo.startsWith("/") ? `${base()}${returnTo}` : `${base()}/settings`;
-    return NextResponse.redirect(`${redirect}?outlook=connected`);
+    // Only allow relative paths — strip protocol-relative or absolute URLs
+    const safePath = /^\/[^/]/.test(returnTo) ? returnTo : "/settings";
+    return NextResponse.redirect(`${base()}${safePath}?outlook=connected`);
   } catch (err) {
     console.error("Outlook OAuth callback error:", err);
     return NextResponse.redirect(`${base()}/settings?outlook_error=token_exchange`);

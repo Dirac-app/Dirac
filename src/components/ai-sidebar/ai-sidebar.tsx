@@ -44,42 +44,14 @@ import {
   TOPIC_TAG_COLORS,
 } from "@/lib/types";
 import type { TopicTag } from "@/lib/types";
-
-// ─── Types ──────────────────────────────────────────────
-
-interface McqQuestion {
-  id: string;
-  question: string;
-  options: string[];
-}
-
-interface ComposeData {
-  to: string;
-  subject: string;
-  body: string;
-}
-
-interface ActionItem {
-  threadId: string;
-  action: "star" | "unstar" | "mark_read" | "mark_unread" | "mark_urgent" | "remove_urgent" | "archive" | "trash";
-  subject: string;
-}
-
-interface ResultItem {
-  threadId: string;
-  subject: string;
-  from: string;
-  reason: string;
-}
-
-interface ParsedSegment {
-  type: "text" | "mcq" | "draft" | "compose" | "actions" | "results";
-  content: string;
-  mcq?: McqQuestion[];
-  compose?: ComposeData;
-  actions?: ActionItem[];
-  results?: ResultItem[];
-}
+import {
+  parseAiContent,
+  type McqQuestion,
+  type ComposeData,
+  type ActionItem,
+  type ResultItem,
+  type ParsedSegment,
+} from "@/lib/ai-parser";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -145,70 +117,7 @@ function saveActiveChatId(id: string | null) {
   } catch {}
 }
 
-// ─── Parsing helpers ────────────────────────────────────
-
-function parseAiContent(raw: string): ParsedSegment[] {
-  const segments: ParsedSegment[] = [];
-  const fenceRegex = /```(mcq|draft|compose|actions|results)\n([\s\S]*?)```/g;
-
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = fenceRegex.exec(raw)) !== null) {
-    if (match.index > lastIndex) {
-      const text = raw.slice(lastIndex, match.index).trim();
-      if (text) segments.push({ type: "text", content: text });
-    }
-
-    const fenceType = match[1] as "mcq" | "draft" | "compose" | "actions" | "results";
-    const fenceBody = match[2].trim();
-
-    if (fenceType === "mcq") {
-      try {
-        const parsed = JSON.parse(fenceBody);
-        segments.push({ type: "mcq", content: fenceBody, mcq: parsed });
-      } catch {
-        segments.push({ type: "text", content: fenceBody });
-      }
-    } else if (fenceType === "compose") {
-      try {
-        const parsed = JSON.parse(fenceBody);
-        segments.push({ type: "compose", content: fenceBody, compose: parsed });
-      } catch {
-        segments.push({ type: "text", content: fenceBody });
-      }
-    } else if (fenceType === "actions") {
-      try {
-        const parsed = JSON.parse(fenceBody);
-        segments.push({ type: "actions", content: fenceBody, actions: parsed });
-      } catch {
-        segments.push({ type: "text", content: fenceBody });
-      }
-    } else if (fenceType === "results") {
-      try {
-        const parsed = JSON.parse(fenceBody);
-        segments.push({ type: "results", content: fenceBody, results: parsed });
-      } catch {
-        segments.push({ type: "text", content: fenceBody });
-      }
-    } else {
-      segments.push({ type: "draft", content: fenceBody });
-    }
-
-    lastIndex = match.index + match[0].length;
-  }
-
-  if (lastIndex < raw.length) {
-    const text = raw.slice(lastIndex).trim();
-    if (text) segments.push({ type: "text", content: text });
-  }
-
-  if (segments.length === 0 && raw.trim()) {
-    segments.push({ type: "text", content: raw.trim() });
-  }
-
-  return segments;
-}
+// parseAiContent is imported from @/lib/ai-parser
 
 // ─── Component ──────────────────────────────────────────
 

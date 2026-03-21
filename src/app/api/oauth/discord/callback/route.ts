@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { exchangeDiscordCode, getDiscordUser } from "@/lib/discord";
 
 const COOKIE_NAME = "dirac_discord";
+const STATE_COOKIE = "dirac_discord_state";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 
 /**
@@ -13,34 +14,40 @@ const COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
+  const state = searchParams.get("state");
   const error = searchParams.get("error");
+  const base = process.env.AUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
   if (error || !code) {
     console.error("Discord OAuth error:", error);
-    const base = process.env.AUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     return NextResponse.redirect(`${base}/settings?discord_error=auth_failed`);
   }
 
-  try {
-    // Exchange code for tokens
-    const tokenData = await exchangeDiscordCode(code);
+  // CSRF check — verify state matches the cookie we set at flow start
+  const cookieStore = await cookies();
+  const expectedState = cookieStore.get(STATE_COOKIE)?.value;
+  cookieStore.delete(STATE_COOKIE);
+  if (!state || !expectedState || state !== expectedState) {
+    console.error("Discord OAuth: state mismatch (possible CSRF)");
+    return NextResponse.redirect(`${base}/settings?discord_error=state_mismatch`);
+  }
 
-    // Get the user's Discord profile
+  try {
+    const tokenData = await exchangeDiscordCode(code);
     const user = await getDiscordUser(tokenData.access_token);
 
-    // Build the cookie payload
+    // Store identity + user access token (needed for guild membership checks).
+    // Refresh token is intentionally excluded — it is not used server-side
+    // and reducing cookie surface area limits exposure if cookies are leaked.
     const payload = {
       userId: user.id,
       username: user.username,
       globalName: user.global_name,
       avatar: user.avatar,
       accessToken: tokenData.access_token,
-      refreshToken: tokenData.refresh_token,
       expiresAt: Date.now() + tokenData.expires_in * 1000,
     };
 
-    // Set cookie
-    const cookieStore = await cookies();
     cookieStore.set(COOKIE_NAME, JSON.stringify(payload), {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -49,11 +56,9 @@ export async function GET(request: NextRequest) {
       path: "/",
     });
 
-    const base = process.env.AUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     return NextResponse.redirect(`${base}/settings?discord=connected`);
   } catch (err) {
     console.error("Discord OAuth callback error:", err);
-    const base = process.env.AUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     return NextResponse.redirect(`${base}/settings?discord_error=token_exchange`);
   }
 }

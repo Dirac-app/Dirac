@@ -1,11 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { format } from "date-fns";
+import { format, addHours, nextMonday, setHours, setMinutes, setSeconds } from "date-fns";
 import {
   Archive,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Clock,
   Inbox,
   Loader2,
   MessageSquare,
@@ -30,11 +33,22 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import {
   FOUNDER_CATEGORY_LABELS,
   FOUNDER_CATEGORY_COLORS,
+  type SnoozeState,
+  type DiracThread,
+  type RelationshipContext,
+  type FounderCategory,
 } from "@/lib/types";
+import { useToast } from "@/components/ui/toast";
+import type { ToneProfile } from "@/lib/store";
 
 function getInitials(name: string) {
   return name
@@ -61,8 +75,12 @@ export function ThreadView() {
     unmarkDone,
     doneThreads,
     archiveThread,
+    snoozeThread,
+    snoozedThreads,
     commitments,
     categoryMap,
+    toneProfile,
+    getRelationshipContext,
   } = useAppState();
 
   if (!selectedThreadId) {
@@ -86,6 +104,7 @@ export function ThreadView() {
   const isDone = doneThreads.has(thread.id);
   const threadCommitments = commitments.filter((c) => c.threadId === thread.id);
   const category = categoryMap[thread.id];
+  const snoozeState = snoozedThreads.find((s) => s.threadId === thread.id);
 
   const handleToggleContext = () => {
     if (inContext) {
@@ -194,8 +213,18 @@ export function ThreadView() {
             </TooltipTrigger>
             <TooltipContent>Archive</TooltipContent>
           </Tooltip>
+
+          <SnoozeButton threadId={thread.id} onSnooze={snoozeThread} />
         </div>
       </div>
+
+      {/* Snooze banner */}
+      {snoozeState && snoozeState.until && (
+        <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-6 py-1.5 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-400">
+          <Clock className="h-3.5 w-3.5 shrink-0" />
+          Snoozed until {format(new Date(snoozeState.until), "EEE, MMM d 'at' h:mm a")}
+        </div>
+      )}
 
       {/* Commitments banner */}
       {threadCommitments.length > 0 && (
@@ -228,6 +257,14 @@ export function ThreadView() {
           </div>
         </div>
       )}
+
+      {/* Sender profile (collapsible) */}
+      <SenderProfile
+        thread={thread}
+        threads={threads}
+        toneProfile={toneProfile}
+        getRelationshipContext={getRelationshipContext}
+      />
 
       {/* Messages */}
       <ScrollArea className="flex-1">
@@ -308,6 +345,162 @@ export function ThreadView() {
   );
 }
 
+// ─── Sender Profile ──────────────────────────────────────
+
+function SenderProfile({
+  thread,
+  threads,
+  toneProfile,
+  getRelationshipContext,
+}: {
+  thread: DiracThread;
+  threads: DiracThread[];
+  toneProfile: ToneProfile | null;
+  getRelationshipContext: (email: string) => RelationshipContext | null;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const sender = thread.participants[0];
+  if (!sender || thread.platform === "DISCORD") return null;
+
+  const relationshipCtx = getRelationshipContext(sender.email);
+  const threadCount = threads.filter((t) =>
+    t.participants.some((p) => p.email === sender.email),
+  ).length;
+
+  // Find matching conditional tone for this sender
+  const matchingTone = toneProfile?.conditional_tones?.find((ct) => {
+    const email = sender.email.toLowerCase();
+    if (ct.context === "client_customer" && (email.includes("customer") || email.includes("client"))) return true;
+    if (ct.context === "internal_team" && email.includes("team")) return true;
+    return false;
+  });
+
+  const lastContacted = relationshipCtx?.lastContacted
+    ? format(new Date(relationshipCtx.lastContacted), "MMM d, yyyy")
+    : null;
+
+  return (
+    <div className="border-b border-border">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-2 px-6 py-2 text-left text-xs text-muted-foreground hover:text-foreground transition-colors hover:bg-accent/30"
+      >
+        {open ? (
+          <ChevronDown className="h-3 w-3 shrink-0" />
+        ) : (
+          <ChevronRight className="h-3 w-3 shrink-0" />
+        )}
+        <span className="font-medium text-foreground">{sender.name || sender.email}</span>
+        <span className="text-muted-foreground">&lt;{sender.email}&gt;</span>
+        {!open && threadCount > 0 && (
+          <span className="ml-auto shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+            {threadCount} thread{threadCount !== 1 ? "s" : ""}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 px-6 pb-3 pt-1 text-xs">
+          <div>
+            <span className="text-muted-foreground">Threads: </span>
+            <span className="font-medium text-foreground">{threadCount}</span>
+          </div>
+          {lastContacted && (
+            <div>
+              <span className="text-muted-foreground">Last contacted: </span>
+              <span className="font-medium text-foreground">{lastContacted}</span>
+            </div>
+          )}
+          {matchingTone && (
+            <div className="col-span-2">
+              <span className="text-muted-foreground">Tone used: </span>
+              <span className="font-medium text-foreground capitalize">{matchingTone.formality} · {matchingTone.tone}</span>
+            </div>
+          )}
+          {toneProfile && !matchingTone && (
+            <div className="col-span-2">
+              <span className="text-muted-foreground">Tone used: </span>
+              <span className="font-medium text-foreground capitalize">{toneProfile.formality}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Snooze Button ───────────────────────────────────────
+
+function SnoozeButton({
+  threadId,
+  onSnooze,
+}: {
+  threadId: string;
+  onSnooze: (threadId: string, snooze: Omit<SnoozeState, "threadId" | "snoozedAt">) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  function snoozeUntil(date: Date, label: string) {
+    onSnooze(threadId, { mode: "time", until: date.toISOString(), condition: label });
+    setOpen(false);
+  }
+
+  const options = [
+    {
+      label: "Later today",
+      description: "+3 hours",
+      getDate: () => addHours(new Date(), 3),
+    },
+    {
+      label: "Tomorrow morning",
+      description: "9 am tomorrow",
+      getDate: () => {
+        const d = addHours(new Date(), 24);
+        return setSeconds(setMinutes(setHours(d, 9), 0), 0);
+      },
+    },
+    {
+      label: "Next week",
+      description: "Monday 9 am",
+      getDate: () => {
+        const monday = nextMonday(new Date());
+        return setSeconds(setMinutes(setHours(monday, 9), 0), 0);
+      },
+    },
+  ];
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              <Clock className="h-4 w-4" />
+            </Button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent>Snooze</TooltipContent>
+      </Tooltip>
+      <PopoverContent className="w-52 p-1" align="end">
+        <p className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+          Snooze until…
+        </p>
+        {options.map((opt) => (
+          <button
+            key={opt.label}
+            onClick={() => snoozeUntil(opt.getDate(), opt.label)}
+            className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm hover:bg-accent transition-colors"
+          >
+            <span>{opt.label}</span>
+            <span className="text-xs text-muted-foreground">{opt.description}</span>
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ─── Quick AI Actions ────────────────────────────────────
 
 interface QuickAction {
@@ -337,8 +530,6 @@ const DEFAULT_ACTIONS: QuickAction[] = [
     prompt: "Reply asking for more information or clarification about what they're discussing. Keep it concise, in my tone.",
   },
 ];
-
-import type { FounderCategory } from "@/lib/types";
 
 const CATEGORY_ACTIONS: Record<FounderCategory, QuickAction[]> = {
   customer: [
@@ -383,6 +574,7 @@ function QuickActions({
   category?: FounderCategory;
 }) {
   const { toneProfile } = useAppState();
+  const { toast } = useToast();
   const [sending, setSending] = useState<string | null>(null);
   const [sent, setSent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -464,9 +656,12 @@ function QuickActions({
       if (!sendRes.ok) throw new Error("Send failed");
 
       setSent(action.id);
+      toast({ title: `"${action.label}" reply sent`, variant: "success" });
       setTimeout(() => setSent(null), 3000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed");
+      const msg = err instanceof Error ? err.message : "Failed";
+      setError(msg);
+      toast({ title: "Reply failed", description: msg, variant: "error" });
       setTimeout(() => setError(null), 3000);
     } finally {
       setSending(null);

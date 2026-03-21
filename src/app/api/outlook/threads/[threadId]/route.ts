@@ -29,7 +29,8 @@ export async function GET(
 
     const unreadIds = graphMessages.filter(m => !m.isRead).map(m => m.id);
     if (unreadIds.length > 0) {
-      Promise.allSettled(unreadIds.map(id => markOutlookMessageRead(accessToken, id))).catch(() => {});
+      // Await so state is consistent before responding; non-fatal on failure.
+      await Promise.allSettled(unreadIds.map(id => markOutlookMessageRead(accessToken, id)));
     }
 
     return NextResponse.json({ messages });
@@ -51,23 +52,29 @@ export async function POST(
   if (!accessToken) return NextResponse.json({ error: "Not connected to Outlook" }, { status: 401 });
 
   const conversationId = threadId.replace(/^outlook-/, "");
-  const { action } = await request.json() as { action: "mark-read" | "mark-unread" | "archive" | "trash" };
+  const body = await request.json();
+  const VALID_ACTIONS = ["mark-read", "mark-unread", "archive", "trash"] as const;
+  type Action = typeof VALID_ACTIONS[number];
+  const action = body?.action as string | undefined;
+  if (!action || !(VALID_ACTIONS as readonly string[]).includes(action)) {
+    return NextResponse.json({ error: "Invalid or missing action" }, { status: 400 });
+  }
+  const validatedAction = action as Action;
 
   try {
     const graphMessages = await getOutlookThreadMessages(accessToken, conversationId);
     const messageIds = graphMessages.map(m => m.id);
 
-    switch (action) {
+    switch (validatedAction) {
       case "mark-read":   await Promise.allSettled(messageIds.map(id => markOutlookMessageRead(accessToken, id)));   break;
       case "mark-unread": await Promise.allSettled(messageIds.map(id => markOutlookMessageUnread(accessToken, id))); break;
       case "archive":     await Promise.allSettled(messageIds.map(id => archiveOutlookMessage(accessToken, id)));    break;
       case "trash":       await Promise.allSettled(messageIds.map(id => trashOutlookMessage(accessToken, id)));      break;
-      default:            return NextResponse.json({ error: "Unknown action" }, { status: 400 });
     }
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error(`Outlook thread modify error (${action}):`, err);
-    return NextResponse.json({ error: `Failed to ${action} thread` }, { status: 500 });
+    console.error(`Outlook thread modify error (${validatedAction}):`, err);
+    return NextResponse.json({ error: `Failed to ${validatedAction} thread` }, { status: 500 });
   }
 }

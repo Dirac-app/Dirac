@@ -87,13 +87,40 @@ interface ModelOption {
 
 const PRESET_MODELS: ModelOption[] = [
   {
+    id: "anthropic/claude-haiku-4-4",
+    label: "Claude Haiku 4.4",
+    provider: "Anthropic",
+    speed: "fast",
+    cost: "cheap",
+    context: "200K tokens",
+    note: "Default — fast, affordable, great for email tasks",
+  },
+  {
+    id: "anthropic/claude-sonnet-4-5",
+    label: "Claude Sonnet 4.5",
+    provider: "Anthropic",
+    speed: "medium",
+    cost: "mid",
+    context: "200K tokens",
+    note: "Stronger reasoning and writing quality",
+  },
+  {
+    id: "anthropic/claude-3.5-sonnet",
+    label: "Claude 3.5 Sonnet",
+    provider: "Anthropic",
+    speed: "medium",
+    cost: "mid",
+    context: "200K tokens",
+    note: "Excellent at long-form writing and nuance",
+  },
+  {
     id: "google/gemini-2.0-flash-001",
     label: "Gemini 2.0 Flash",
     provider: "Google",
     speed: "fast",
     cost: "cheap",
     context: "1M tokens",
-    note: "Best default — fast, cheap, huge context",
+    note: "Fast, cheap, huge context window",
   },
   {
     id: "google/gemini-2.5-pro-preview-03-25",
@@ -123,24 +150,6 @@ const PRESET_MODELS: ModelOption[] = [
     note: "Fast and cheap OpenAI model",
   },
   {
-    id: "anthropic/claude-3.5-sonnet",
-    label: "Claude 3.5 Sonnet",
-    provider: "Anthropic",
-    speed: "medium",
-    cost: "mid",
-    context: "200K tokens",
-    note: "Excellent at long-form writing and nuance",
-  },
-  {
-    id: "anthropic/claude-3-haiku",
-    label: "Claude 3 Haiku",
-    provider: "Anthropic",
-    speed: "fast",
-    cost: "cheap",
-    context: "200K tokens",
-    note: "Fastest Anthropic model",
-  },
-  {
     id: "meta-llama/llama-3.3-70b-instruct",
     label: "Llama 3.3 70B",
     provider: "Meta",
@@ -148,24 +157,6 @@ const PRESET_MODELS: ModelOption[] = [
     cost: "cheap",
     context: "128K tokens",
     note: "Open source, no data retention",
-  },
-  {
-    id: "deepseek/deepseek-r1",
-    label: "DeepSeek R1",
-    provider: "DeepSeek",
-    speed: "slow",
-    cost: "cheap",
-    context: "64K tokens",
-    note: "Strong reasoning model",
-  },
-  {
-    id: "mistralai/mistral-large",
-    label: "Mistral Large",
-    provider: "Mistral",
-    speed: "medium",
-    cost: "mid",
-    context: "128K tokens",
-    note: "Strong European model",
   },
 ];
 
@@ -193,14 +184,10 @@ function ModelPill({ label, color }: { label: string; color: string }) {
 }
 
 function AiSettingsSection() {
-  const [selectedModel,    setSelectedModel]    = useState<string>("google/gemini-2.0-flash-001");
+  const [selectedModel,    setSelectedModel]    = useState<string>("anthropic/claude-haiku-4-4");
   const [customModel,      setCustomModel]      = useState<string>("");
   const [aboutMe,          setAboutMe]          = useState<string>("");
   const [modelSearch,      setModelSearch]      = useState<string>("");
-  const [apiKey,           setApiKey]           = useState<string>("");
-  const [hasOwnApiKey,     setHasOwnApiKey]     = useState<boolean>(false);
-  const [hasServerKey,     setHasServerKey]     = useState<boolean>(false);
-  const [showApiKey,       setShowApiKey]       = useState<boolean>(false);
   const [saving,           setSaving]           = useState(false);
   const [saved,            setSaved]            = useState(false);
   const [saveError,        setSaveError]        = useState<string | null>(null);
@@ -221,8 +208,6 @@ function AiSettingsSection() {
           }
         }
         if (data.aboutMe) setAboutMe(data.aboutMe);
-        setHasOwnApiKey(!!data.hasOwnApiKey);
-        setHasServerKey(!!(data.hasApiKey && !data.hasOwnApiKey));
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -243,27 +228,6 @@ function AiSettingsSection() {
       setTimeout(() => setSaved(false), 2000);
     } catch {
       setSaveError("Failed to save. Try again.");
-    } finally {
-      setSaving(false);
-    }
-  }, []);
-
-  const saveApiKey = useCallback(async (key: string) => {
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const res = await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ openrouterApiKey: key }),
-      });
-      if (!res.ok) throw new Error("Save failed");
-      setHasOwnApiKey(!!key.trim());
-      setApiKey(""); // clear input after save for security
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-    } catch {
-      setSaveError("Failed to save API key.");
     } finally {
       setSaving(false);
     }
@@ -311,83 +275,6 @@ function AiSettingsSection() {
       </div>
 
       <div className="space-y-6">
-
-        {/* OpenRouter API key — user-owned */}
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <label className="text-xs font-medium text-muted-foreground">OpenRouter API key</label>
-            <a
-              href="https://openrouter.ai/keys"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[11px] text-primary underline underline-offset-2 hover:no-underline"
-            >
-              Get free key →
-            </a>
-          </div>
-
-          {hasOwnApiKey ? (
-            <div className="flex items-center gap-2">
-              <div className="flex-1 flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
-                <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-500" />
-                <span className="text-xs text-muted-foreground">API key saved</span>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-xs shrink-0"
-                onClick={() => { setHasOwnApiKey(false); setApiKey(""); }}
-              >
-                Replace
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs shrink-0 text-red-500 hover:text-red-500"
-                onClick={() => saveApiKey("")}
-                disabled={saving}
-              >
-                Remove
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              <div className="relative">
-                <Input
-                  type={showApiKey ? "text" : "password"}
-                  value={apiKey}
-                  onChange={e => setApiKey(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter" && apiKey.trim()) saveApiKey(apiKey); }}
-                  placeholder="sk-or-v1-..."
-                  className="text-xs font-mono pr-16"
-                  autoComplete="off"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowApiKey(v => !v)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground hover:text-foreground"
-                >
-                  {showApiKey ? "hide" : "show"}
-                </button>
-              </div>
-              <div className="flex items-center justify-between">
-                <p className="text-[11px] text-muted-foreground/60">
-                  {hasServerKey
-                    ? "Server key active — your key takes priority"
-                    : "Required to use AI features"}
-                </p>
-                <Button
-                  size="sm"
-                  className="text-xs h-7"
-                  onClick={() => saveApiKey(apiKey)}
-                  disabled={!apiKey.trim() || saving}
-                >
-                  {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save key"}
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
 
         {/* Model selector */}
         <div>

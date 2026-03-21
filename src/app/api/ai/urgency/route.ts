@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getApiKeyForUser } from "@/lib/user-db";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -38,12 +39,12 @@ If none are urgent, respond with: []`;
 export async function POST(request: NextRequest) {
   const session = await auth();
   if (!session?.user) {
-    return NextResponse.json({ urgentIds: [] });
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const apiKey = session.userId ? await getApiKeyForUser(session.userId) : (process.env.OPENROUTER_API_KEY ?? null);
+  const apiKey = await getApiKeyForUser(session.userId ?? "").catch(() => null) ?? process.env.OPENROUTER_API_KEY ?? null;
   if (!apiKey) {
-    return NextResponse.json({ urgentIds: [] });
+    return NextResponse.json({ error: "No API key configured. Please contact support." }, { status: 503 });
   }
 
   const { threads }: { threads: ThreadInput[] } = await request.json();
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest) {
     .join("\n\n");
 
   try {
-    const response = await fetch(OPENROUTER_URL, {
+    const response = await fetchWithTimeout(OPENROUTER_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,

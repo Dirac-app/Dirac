@@ -27,21 +27,62 @@ Dirac is an open-source, keyboard-driven unified inbox that brings Gmail, Outloo
 - **Inbox filters** — All · Unread · Urgent · Waiting on · Starred
 - **Bulk actions** — Select multiple threads, batch archive or delete
 - **Draft auto-save** — Compose drafts persist to localStorage with one-click recovery
+- **Snooze** — Defer threads until later today, tomorrow morning, or next Monday
+- **Commitments tracker** — AI extracts promises and deadlines from threads
+- **Founder categories** — Classifies senders as investor / customer / vendor / outreach / personal
+- **Topic tags** — AI-generated labels (billing, legal, hiring, etc.) on every thread
+- **Sender profile** — Inline context card showing thread history and tone for each contact
+- **Thread metadata persistence** — Starred and urgent state stored in PostgreSQL, merged with localStorage on load
 - **Dark / light mode** — System-aware, toggleable anytime
 - **Bring your own API key** — Use your own OpenRouter key and model, or use the shared default
+
+## Architecture
+
+```
+src/
+├── app/
+│   ├── (app)/              # Authenticated route group (inbox, activity, settings)
+│   └── api/                # Next.js API routes
+│       ├── ai/             # OpenRouter-backed AI endpoints (chat, triage, urgency, …)
+│       ├── gmail/          # Gmail REST proxy (threads, send, modify)
+│       ├── outlook/        # Microsoft Graph proxy
+│       ├── discord/        # Discord bot proxy
+│       ├── auth/           # next-auth handlers
+│       ├── oauth/          # Custom OAuth flows (Outlook)
+│       └── threads/        # Thread metadata persistence (starred, urgent)
+├── components/
+│   ├── layout/             # AppShell, AppProvider (global state context), nav
+│   ├── inbox/              # ThreadList, ThreadView (with snooze + sender profile)
+│   ├── ai-sidebar/         # AI chat sidebar with session history
+│   ├── compose/            # ComposePanel (floating, minimisable)
+│   └── command-palette/    # SpotlightSearch (⌘K)
+└── lib/
+    ├── auth.ts             # next-auth config + Google token refresh
+    ├── gmail.ts            # Gmail REST helpers (429 retry + exponential backoff)
+    ├── outlook.ts          # Microsoft Graph helpers
+    ├── token-refresh.ts    # Shared OAuth token refresh (Google + Microsoft)
+    ├── ai-parser.ts        # Shared AI response parser (fenced blocks)
+    ├── store.ts            # Global AppState React context + types
+    ├── types.ts            # Shared TypeScript types (DiracThread, SnoozeState, …)
+    └── db.ts               # Prisma client singleton
+```
+
+**Data flow:** The browser fetches threads from `/api/gmail/threads` (etc.) on load. All UI state lives in `AppProvider` (React context). Starred/urgent metadata is written to PostgreSQL via `/api/threads/metadata` on every toggle; on fresh load the DB state is merged with localStorage so the UI is always fast.
 
 ## Tech stack
 
 | Layer | Technology |
 |---|---|
-| Framework | Next.js 16 (App Router, Turbopack) |
-| Language | TypeScript |
+| Framework | Next.js 15 (App Router) |
+| Language | TypeScript 5 (strict) |
 | Auth | NextAuth.js v5 (Google + Microsoft OAuth) |
-| Database | PostgreSQL via Prisma + Supabase |
+| Database | PostgreSQL via Prisma 7 |
 | AI | OpenRouter (any model: Gemini, Claude, GPT-4o, …) |
-| Styling | Tailwind CSS + shadcn/ui |
+| Styling | Tailwind CSS v4 + Radix UI primitives |
 | Email APIs | Gmail REST API, Microsoft Graph API |
 | Messaging | Discord REST API v10 |
+| Icons | Lucide React |
+| Animations | Framer Motion |
 
 ## Self-Hosting
 
@@ -92,7 +133,21 @@ npm run start
 
 ### Environment variables
 
-See [`.env.example`](.env.example) for the full list of required and optional variables.
+| Variable | Required | Description |
+|---|---|---|
+| `NEXTAUTH_SECRET` | Yes | Session signing key (`openssl rand -base64 32`) |
+| `NEXTAUTH_URL` | Yes | Deployment URL (e.g. `http://localhost:3000`) |
+| `GOOGLE_CLIENT_ID` | Gmail | Google OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | Gmail | Google OAuth client secret |
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `AZURE_CLIENT_ID` | Outlook | Azure App Registration ID |
+| `AZURE_CLIENT_SECRET` | Outlook | Azure client secret |
+| `AZURE_TENANT_ID` | Outlook | Tenant (`common` for multi-tenant) |
+| `OPENROUTER_API_KEY` | No | Server-side AI key (users can supply their own) |
+| `OPENROUTER_MODEL` | No | Default model slug |
+| `DISCORD_BOT_TOKEN` | Discord | Discord bot token |
+
+See [`.env.example`](.env.example) for the full documented list with setup instructions.
 
 ## Project structure
 
@@ -119,9 +174,26 @@ src/
     └── schema.prisma    # Database schema
 ```
 
+## Deployment (Vercel)
+
+1. Push your fork to GitHub.
+2. Import at [vercel.com/new](https://vercel.com/new) and select your repository.
+3. Add all environment variables from `.env.example` under **Settings → Environment Variables**.
+4. Set `NEXTAUTH_URL` to your Vercel domain.
+5. Update Google / Azure OAuth redirect URIs to match your Vercel domain.
+6. Add a custom build command in `vercel.json` to run migrations before building:
+   ```json
+   { "buildCommand": "prisma migrate deploy && next build" }
+   ```
+7. Deploy.
+
+Use [Neon](https://neon.tech) or [Supabase](https://supabase.com) for a serverless-compatible PostgreSQL database.
+
 ## Contributing
 
-Pull requests are welcome. For larger changes, open an issue first to discuss the approach.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide, including branch naming, commit format, and how to add a new email provider.
+
+Quick version — pull requests are welcome. For larger changes, open an issue first to discuss the approach.
 
 ```bash
 # Fork the repo, then:

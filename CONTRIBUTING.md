@@ -1,5 +1,54 @@
 # Contributing to Dirac
 
+## Development Setup
+
+```bash
+git clone https://github.com/your-username/dirac.git
+cd dirac
+npm install
+cp .env.example .env.local   # fill in at minimum: NEXTAUTH_SECRET, NEXTAUTH_URL,
+                              # GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, DATABASE_URL
+npx prisma migrate dev
+npm run dev
+```
+
+## Branch Naming
+
+| Prefix | Use for |
+|---|---|
+| `feat/` | New features |
+| `fix/` | Bug fixes |
+| `chore/` | Dependencies, tooling, CI |
+| `refactor/` | Code restructuring (no behaviour change) |
+| `docs/` | Documentation only |
+
+Examples: `feat/slack-integration`, `fix/gmail-429-retry`, `docs/readme-update`
+
+## Commit Message Format
+
+Follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+<type>(<scope>): <short description under 72 chars>
+```
+
+Types: `feat`, `fix`, `chore`, `refactor`, `docs`, `perf`, `test`, `ci`
+
+Examples:
+```
+feat(inbox): add snooze picker to thread view
+fix(gmail): retry on 429 with exponential backoff
+chore(deps): bump prisma to 7.5
+```
+
+## PR Process
+
+1. Open a draft PR early for feedback on larger changes.
+2. Fill in the PR template fully.
+3. Ensure `npm run build` passes before marking ready.
+4. One approval required to merge. Squash-merge preferred.
+5. For large features or breaking changes, open an issue first.
+
 ## Development workflow
 
 1. Create a branch off `main` for your work.
@@ -21,12 +70,28 @@
 - `src/components/` — React components, grouped by feature area.
 - `src/lib/` — Shared utilities, types, state management. No React here except `store.ts`.
 
+## How to Add a New Email Provider
+
+1. Create `src/lib/<provider>.ts` with fetch helpers (see `gmail.ts` for reference).
+2. Add the `Platform` enum value in `prisma/schema.prisma` and run `prisma migrate dev`.
+3. Create API routes under `src/app/api/<provider>/` (threads list, thread detail, send, status).
+4. Map the new platform in `src/components/inbox/thread-list.tsx` (icon, rendering).
+5. In `app-provider.tsx`, add a state slice and fetch in `fetchThreads`.
+6. Document new OAuth credentials in `.env.example`.
+
+## How to Add a New AI Route
+
+1. Create `src/app/api/ai/<name>/route.ts` — gate it with `auth()` from `@/lib/auth`.
+2. Call the OpenRouter API with the user's model preference (`UserSettings.aiModel`).
+3. For streaming, use `ReadableStream` and `Content-Type: text/event-stream`.
+4. Any new fenced block types the AI returns must be added to `parseAiContent` in `src/lib/ai-parser.ts` and rendered in the `ChatBubble` component.
+
 ## AI integration notes
 
 - All AI calls go through `/api/ai/chat` which proxies to OpenRouter.
 - The system prompt lives in `src/app/api/ai/chat/route.ts`. Changes here affect all AI behavior.
-- AI output uses fenced blocks: `mcq`, `draft`, `compose`, `actions`, `results`. The parser is in `ai-sidebar.tsx` (`parseAiContent`).
-- When adding a new AI output type, update: (1) the system prompt, (2) the parser, (3) the renderer in `ChatBubble`.
+- AI output uses fenced blocks: `mcq`, `draft`, `compose`, `actions`, `results`. The shared parser is in `src/lib/ai-parser.ts` (`parseAiContent`).
+- When adding a new AI output type, update: (1) the system prompt, (2) the parser in `ai-parser.ts`, (3) the renderer in `ChatBubble`.
 
 ## Testing changes
 

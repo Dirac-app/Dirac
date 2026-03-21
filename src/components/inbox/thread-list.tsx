@@ -8,6 +8,7 @@ import {
   MessageSquare,
   Star,
   AlertTriangle,
+  Clock,
   Inbox,
   RefreshCw,
   PenSquare,
@@ -74,9 +75,11 @@ function ThreadRow({
     addToAiContext,
     setPendingAiQuery,
     topicMap,
+    snoozedThreads,
   } = useAppState();
 
   const sender = thread.participants[0]?.name ?? thread.participants[0]?.email ?? "Unknown";
+  const isSnoozed = snoozedThreads.some((s) => s.threadId === thread.id);
   const timeAgo = formatDistanceToNow(new Date(thread.lastMessageAt), { addSuffix: false });
   const topics = (topicMap[thread.id] ?? []) as TopicTag[];
 
@@ -140,6 +143,7 @@ function ThreadRow({
 
             <div className="flex items-center gap-1.5 shrink-0">
               {thread.isUrgent && <AlertTriangle className="h-3 w-3 text-red-500" />}
+              {isSnoozed && <Clock className="h-3 w-3 text-amber-500" />}
 
               {/* Star */}
               <div

@@ -4,6 +4,7 @@ import { getApiKeyForUser } from "@/lib/user-db";
 import { getSentMessageBodies } from "@/lib/gmail";
 import { getOutlookSentMessageBodies } from "@/lib/outlook";
 import { getOutlookAccessToken } from "@/lib/outlook-token";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -70,10 +71,10 @@ export async function POST() {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const apiKey = session.userId ? await getApiKeyForUser(session.userId) : (process.env.OPENROUTER_API_KEY ?? null);
+  const apiKey = await getApiKeyForUser(session.userId ?? "").catch(() => null) ?? process.env.OPENROUTER_API_KEY ?? null;
   if (!apiKey) {
     return NextResponse.json(
-      { error: "No OpenRouter API key configured. Add your key in Settings → AI settings." },
+      { error: "No API key configured. Please contact support." },
       { status: 503 },
     );
   }
@@ -115,7 +116,7 @@ export async function POST() {
     .join("\n\n");
 
   try {
-    const response = await fetch(OPENROUTER_URL, {
+    const response = await fetchWithTimeout(OPENROUTER_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -146,7 +147,13 @@ export async function POST() {
     const raw = data.choices?.[0]?.message?.content ?? "";
 
     const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-    const profile = JSON.parse(cleaned);
+    let profile: unknown;
+    try {
+      profile = JSON.parse(cleaned);
+    } catch {
+      console.error("Tone: failed to parse AI JSON:", cleaned.slice(0, 200));
+      return NextResponse.json({ error: "AI returned invalid JSON" }, { status: 502 });
+    }
 
     return NextResponse.json({ profile, emailCount: sample.length });
   } catch (err) {
