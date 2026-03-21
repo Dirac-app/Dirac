@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/toast";
 
 export function ComposePanel() {
   const {
@@ -26,6 +27,7 @@ export function ComposePanel() {
     setComposeMinimized,
   } = useAppState();
   const { data: session } = useSession();
+  const { toast } = useToast();
 
   const [to, setTo] = useState("");
   const [subject, setSubject] = useState("");
@@ -153,6 +155,7 @@ export function ComposePanel() {
 
       setSent(true);
       clearDraft();
+      toast({ title: "Message sent", variant: "success" });
       setTimeout(() => {
         setTo("");
         setCc("");
@@ -163,7 +166,9 @@ export function ComposePanel() {
         handleClose();
       }, 1500);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to send");
+      const msg = err instanceof Error ? err.message : "Failed to send";
+      setError(msg);
+      toast({ title: "Failed to send", description: msg, variant: "error" });
     } finally {
       setSending(false);
     }

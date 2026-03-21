@@ -4,6 +4,8 @@
  * Uses raw fetch — no googleapis dependency needed.
  */
 
+import { fetchWithTimeout } from "./fetch-timeout";
+
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
 
 // ─── Types (Gmail API response shapes) ──────────────────
@@ -49,10 +51,10 @@ function getHeader(headers: GmailHeader[], name: string): string {
 
 /**
  * Decode base64url-encoded body data from Gmail API.
+ * Uses Node's native base64url encoding (available since Node 15.13).
  */
 function decodeBase64Url(data: string): string {
-  const base64 = data.replace(/-/g, "+").replace(/_/g, "/");
-  return Buffer.from(base64, "base64").toString("utf-8");
+  return Buffer.from(data, "base64url").toString("utf-8");
 }
 
 /**
@@ -126,23 +128,49 @@ async function batchConcurrent<T, R>(
 
 // ─── Public API ─────────────────────────────────────────
 
+/**
+ * Low-level Gmail fetch with:
+ *  - fetchWithTimeout (30 s default)
+ *  - Exponential backoff on 429 (up to 3 retries: 1 s, 2 s, 4 s)
+ *    Honours Retry-After header when present.
+ */
 async function gmailFetch(
   accessToken: string,
   path: string,
   options?: RequestInit,
 ) {
-  const res = await fetch(`${GMAIL_BASE}${path}`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    ...options,
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Gmail API ${res.status}: ${body}`);
+  const MAX_RETRIES = 3;
+  let delay = 1000;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const res = await fetchWithTimeout(`${GMAIL_BASE}${path}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      ...options,
+    });
+
+    if (res.status === 429 && attempt < MAX_RETRIES) {
+      // Honour the Retry-After header if provided (value is in seconds)
+      const retryAfterHeader = res.headers.get("Retry-After");
+      const waitMs = retryAfterHeader
+        ? parseInt(retryAfterHeader, 10) * 1000
+        : delay;
+      await new Promise((r) => setTimeout(r, waitMs));
+      delay *= 2; // exponential: 1 s → 2 s → 4 s
+      continue;
+    }
+
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Gmail API ${res.status}: ${body}`);
+    }
+    return res.json();
   }
-  return res.json();
+
+  // Exhausted retries — surface the rate-limit error
+  throw new Error("Gmail API 429: rate limit exceeded after retries");
 }
 
 /**
@@ -471,6 +499,8 @@ export async function getSentMessageBodies(
       return {
         to: parseAddresses(getHeader(headers, "To")),
         subject: getHeader(headers, "Subject") || "(no subject)",
+        // 1500 chars keeps tone-analysis prompts within token budget while
+        // still capturing the full substance of a typical email.
         body: cleanBody.slice(0, 1500),
         sentAt: new Date(Number(msg.internalDate)).toISOString(),
       };

@@ -1,6 +1,7 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { upsertUser, upsertGmailAccount } from "@/lib/user-db";
+import { refreshGoogleToken } from "@/lib/token-refresh";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -49,8 +50,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           }
 
           token.dbUserId = userId;
+          token.dbError = undefined;
         } catch (err) {
           console.error("[auth] DB upsert failed:", err);
+          token.dbError = "db_unavailable";
         }
 
         return {
@@ -85,20 +88,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (!token.refreshToken) return { ...token, error: "NoRefreshToken" };
 
       try {
-        const res = await fetch("https://oauth2.googleapis.com/token", {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            client_id:     process.env.GOOGLE_CLIENT_ID!,
-            client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-            grant_type:    "refresh_token",
-            refresh_token: token.refreshToken as string,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error_description ?? "Refresh failed");
-
-        const newExpiry = Math.floor(Date.now() / 1000) + (data.expires_in as number);
+        const data = await refreshGoogleToken(token.refreshToken as string);
+        const newExpiry = Math.floor(Date.now() / 1000) + data.expires_in;
 
         if (token.dbUserId && token.email) {
           try {
@@ -129,10 +120,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async session({ session, token }) {
       session.accessToken    = token.accessToken as string | undefined;
       session.provider       = token.provider    as string | undefined;
-      session.userId         = token.dbUserId    as string | undefined;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (session as any).userId = token.dbUserId as string | undefined;
       session.gmailConnected =
         token.provider === "google" && !!token.accessToken && !token.error;
-      session.error          = token.error as string | undefined;
+      // Merge both OAuth and DB errors into the session error field
+      session.error = (token.error as string | undefined)
+        ?? (token.dbError as string | undefined);
       return session;
     },
   },

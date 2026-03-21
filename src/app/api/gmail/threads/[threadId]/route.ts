@@ -26,7 +26,9 @@ export async function GET(
   try {
     const thread = await getThreadMessages(session.accessToken, threadId);
 
-    markThreadAsRead(session.accessToken, threadId).catch((err) =>
+    // Await mark-as-read so the state is consistent before we return.
+    // Non-fatal: log and continue if it fails — don't 500 the thread fetch.
+    await markThreadAsRead(session.accessToken, threadId).catch((err) =>
       console.error(`Failed to mark thread ${threadId} as read:`, err),
     );
 

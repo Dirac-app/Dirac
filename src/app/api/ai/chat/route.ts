@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth-guard";
 import { validateBody, AiChatSchema } from "@/lib/validation";
 import { getModelForUser, getApiKeyForUser } from "@/lib/user-db";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const APP_URL = () => process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
@@ -200,15 +201,11 @@ export async function POST(request: NextRequest) {
   const guard = await requireSession();
   if (guard.error) return guard.response;
 
-  let apiKey: string | null = null;
-  if (guard.userId) {
-    try { apiKey = await getApiKeyForUser(guard.userId); } catch {}
-  }
-  if (!apiKey) apiKey = process.env.OPENROUTER_API_KEY ?? null;
+  const apiKey = await getApiKeyForUser(guard.userId!).catch(() => null) ?? process.env.OPENROUTER_API_KEY ?? null;
 
   if (!apiKey) {
     return NextResponse.json(
-      { error: "No OpenRouter API key configured. Add your key in Settings → AI settings." },
+      { error: "No API key configured. Please contact support." },
       { status: 503 },
     );
   }
@@ -261,6 +258,11 @@ export async function POST(request: NextRequest) {
 
   // Inject context threads if provided
   if (body.context && body.context.length > 0) {
+    // Sanitise user-controlled strings to prevent prompt injection.
+    // Remove null bytes and strip the XML-like delimiters we use as fences.
+    const sanitize = (s: string) =>
+      s.replace(/\0/g, "").replace(/<\/?thread_content>/gi, "");
+
     const contextText = body.context
       .map((ctx) => {
         const meta: string[] = [];
@@ -270,9 +272,9 @@ export async function POST(request: NextRequest) {
         const metaStr = meta.length > 0 ? ` (${meta.join(", ")})` : "";
 
         const msgText = ctx.messages
-          .map((m) => `[${m.sentAt}] ${m.from}: ${m.body}`)
+          .map((m) => `[${m.sentAt}] ${sanitize(m.from)}: <thread_content>${sanitize(m.body)}</thread_content>`)
           .join("\n\n");
-        return `--- Thread [${ctx.threadId}]: ${ctx.subject}${metaStr} ---\n${msgText}`;
+        return `--- Thread [${ctx.threadId}]: ${sanitize(ctx.subject)}${metaStr} ---\n${msgText}`;
       })
       .join("\n\n");
 
@@ -285,7 +287,7 @@ export async function POST(request: NextRequest) {
   llmMessages.push({ role: "user", content: body.message });
 
   try {
-    const response = await fetch(OPENROUTER_URL, {
+    const response = await fetchWithTimeout(OPENROUTER_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -294,7 +296,7 @@ export async function POST(request: NextRequest) {
         "X-Title": "Dirac",
       },
       body: JSON.stringify({
-        model: (await getModelForUser(guard.userId!)) ?? (process.env.OPENROUTER_MODEL ?? "google/gemini-2.0-flash-001"),
+        model: (await getModelForUser(guard.userId!)) ?? (process.env.OPENROUTER_MODEL ?? "anthropic/claude-haiku-4-4"),
         messages: llmMessages,
         stream: true,
       }),

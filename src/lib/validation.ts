@@ -31,7 +31,6 @@ export const DiscordSendSchema = z.object({
 export const SettingsPatchSchema = z.object({
   aiModel: z.string().max(200).optional(),
   aboutMe: z.string().max(5000).optional(),
-  openrouterApiKey: z.string().max(500).nullable().optional(),
 });
 
 // ── AI Chat ──────────────────────────────────────────────────────────────────

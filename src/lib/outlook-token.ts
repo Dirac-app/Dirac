@@ -4,7 +4,7 @@
  */
 
 import { getOutlookAccount, updateOutlookTokens } from "@/lib/user-db";
-import { refreshOutlookToken } from "@/lib/outlook";
+import { refreshOutlookToken } from "@/lib/token-refresh";
 
 export async function getOutlookAccessToken(userId: string): Promise<string | null> {
   const account = await getOutlookAccount(userId);

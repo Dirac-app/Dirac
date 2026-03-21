@@ -164,14 +164,11 @@ model UserSettings {
   id     String @id @default(cuid())
   userId String @unique
 
-  // AI model preference — any OpenRouter model slug
-  aiModel String @default("google/gemini-2.0-flash-001")
+  // AI model preference — must be a slug from the ALLOWED_MODELS set in user-db.ts
+  aiModel String @default("anthropic/claude-haiku-4-4")
 
   // About-me context string for AI personalisation
   aboutMe String?
-
-  // User's own OpenRouter API key (optional — falls back to server env var)
-  openrouterApiKey String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

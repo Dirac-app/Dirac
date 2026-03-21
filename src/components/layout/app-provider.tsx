@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useSession } from "next-auth/react";
 import { AppContext, type AppState, type AiContextItem, type ToneProfile } from "@/lib/store";
+import { useToast } from "@/components/ui/toast";
 import type {
   DiracThread,
   DiracMessage,
@@ -62,6 +63,7 @@ function saveStarred(ids: Set<string>) {
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const { data: session } = useSession();
+  const { toast } = useToast();
 
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [aiSidebarOpen, setAiSidebarOpen] = useState(true);
@@ -100,6 +102,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [urgentIds, setUrgentIds] = useState<Set<string>>(new Set());
   const [manualUrgentIds, setManualUrgentIds] = useState<Set<string>>(new Set());
   const [dismissedUrgentIds, setDismissedUrgentIds] = useState<Set<string>>(new Set());
+
+  // Fetch thread metadata from DB on mount and merge with localStorage state
+  useEffect(() => {
+    async function fetchMetadataFromDb() {
+      try {
+        const res = await fetch("/api/threads/metadata");
+        if (!res.ok) return;
+        const data = await res.json();
+        const rows: { threadId: string; status: string; tags: string[]; urgencyScore: number | null; isPinned: boolean }[] =
+          data.metadata ?? [];
+
+        // Merge: DB is source of truth for starred (isPinned) and urgency
+        if (rows.length > 0) {
+          const dbStarredIds = new Set(
+            rows.filter((r) => r.isPinned).map((r) => r.threadId),
+          );
+          if (dbStarredIds.size > 0) {
+            setStarredIds((prev) => {
+              const next = new Set([...prev, ...dbStarredIds]);
+              saveStarred(next);
+              return next;
+            });
+          }
+        }
+      } catch {
+        // Non-critical — localStorage is the fallback
+      }
+    }
+    fetchMetadataFromDb();
+  }, []);
 
   // Load persisted state from localStorage on mount
   useEffect(() => {
@@ -225,12 +257,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const toggleStarred = useCallback((threadId: string) => {
     setStarredIds((prev) => {
       const next = new Set(prev);
-      if (next.has(threadId)) {
-        next.delete(threadId);
-      } else {
+      const nowStarred = !next.has(threadId);
+      if (nowStarred) {
         next.add(threadId);
+      } else {
+        next.delete(threadId);
       }
       saveStarred(next);
+      // Persist to DB (fire-and-forget)
+      fetch("/api/threads/metadata", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          records: [{ threadId, isPinned: nowStarred }],
+        }),
+      }).catch(() => {});
       return next;
     });
   }, []);
@@ -263,6 +304,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         next.delete(threadId);
         return next;
       });
+      // Persist to DB (fire-and-forget)
+      fetch("/api/threads/metadata", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ records: [{ threadId, urgencyScore: 0 }] }),
+      }).catch(() => {});
     } else {
       // Adding urgency: remove from dismissed, add to manual
       setDismissedUrgentIds((prev) => {
@@ -278,12 +325,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         saveSet(URGENT_KEY, next);
         return next;
       });
+      // Persist to DB (fire-and-forget)
+      fetch("/api/threads/metadata", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ records: [{ threadId, urgencyScore: 100 }] }),
+      }).catch(() => {});
     }
   }, [urgentIds, manualUrgentIds]);
 
   // ─── Mark thread as unread (optimistic + API) ──────
   const markThreadUnread = useCallback(
     (threadId: string) => {
+      // Only the ID is available here; use prefix as platform hint
       const isOutlook = threadId.startsWith("outlook-");
       const isDiscord = threadId.startsWith("discord-");
 
@@ -320,6 +374,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ─── Mark thread as read (optimistic + API) ────────
   const markThreadRead = useCallback((threadId: string) => {
+    // Only the ID is available here; use prefix as platform hint
     const isOutlook = threadId.startsWith("outlook-");
     const isDiscord = threadId.startsWith("discord-");
 
@@ -348,6 +403,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ─── Archive thread (optimistic remove + API) ──────
   const archiveThread = useCallback(
     (threadId: string) => {
+      // Only the ID is available here; use prefix as platform hint
       const isOutlook = threadId.startsWith("outlook-");
       const isDiscord = threadId.startsWith("discord-");
 
@@ -372,13 +428,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({ action: "archive" }),
         }).catch(() => {});
       }
+      toast({ title: "Thread archived", variant: "success" });
     },
-    [selectedThreadId],
+    [selectedThreadId, toast],
   );
 
   // ─── Trash thread (optimistic remove + API) ────────
   const trashThread = useCallback(
     (threadId: string) => {
+      // Only the ID is available here; use prefix as platform hint
       const isOutlook = threadId.startsWith("outlook-");
       const isDiscord = threadId.startsWith("discord-");
 
@@ -402,8 +460,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({ action: "trash" }),
         }).catch(() => {});
       }
+      toast({ title: "Thread moved to trash", variant: "default" });
     },
-    [selectedThreadId],
+    [selectedThreadId, toast],
   );
 
   // ─── AI context helpers ───────────────────────────────
@@ -825,14 +884,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // Guard: only fetch if the thread actually exists locally
     const allLocalThreads = [...gmailThreads, ...outlookThreads, ...discordThreads];
-    if (!allLocalThreads.some((t) => t.id === selectedThreadId)) {
+    const localThread = allLocalThreads.find((t) => t.id === selectedThreadId);
+    if (!localThread) {
       setMessages([]);
       return;
     }
 
-    const isDiscordThread = selectedThreadId.startsWith("discord-");
-    const isOutlookThread = selectedThreadId.startsWith("outlook-");
-    const isGmail = !isDiscordThread && !isOutlookThread;
+    // Prefer thread.platform over ID-prefix checks when the thread object is available
+    const isDiscordThread = localThread.platform === "DISCORD";
+    const isOutlookThread = localThread.platform === "OUTLOOK";
+    const isGmail = localThread.platform === "GMAIL";
 
     if (isGmail && !session?.gmailConnected) {
       setMessages([]);

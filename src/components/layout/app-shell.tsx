@@ -10,10 +10,12 @@ import { ComposePanel } from "@/components/compose/compose-panel";
 import { SpotlightSearch } from "@/components/command-palette/spotlight-search";
 import { KeyboardShortcutsProvider } from "./keyboard-shortcuts-provider";
 import { KeyboardShortcutsHelp } from "@/components/keyboard-shortcuts/keyboard-shortcuts-help";
+import { ToastProvider } from "@/components/ui/toast";
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (
     <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+      <ToastProvider>
       <SessionProvider>
         <AppProvider>
           <KeyboardShortcutsProvider />
@@ -30,6 +32,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <KeyboardShortcutsHelp />
         </AppProvider>
       </SessionProvider>
+      </ToastProvider>
     </ThemeProvider>
   );
 }

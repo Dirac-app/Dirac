@@ -3,6 +3,8 @@
  * Uses OAuth2 user tokens for all operations.
  */
 
+import { fetchWithTimeout } from "./fetch-timeout";
+
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0/me";
 const MS_AUTH_BASE = "https://login.microsoftonline.com/common/oauth2/v2.0";
 
@@ -103,7 +105,7 @@ export async function refreshOutlookToken(refreshToken: string): Promise<{
 // ─── Graph API helpers ──────────────────────────────────
 
 async function graphFetch(accessToken: string, path: string, options?: RequestInit) {
-  const res = await fetch(`${GRAPH_BASE}${path}`, {
+  const res = await fetchWithTimeout(`${GRAPH_BASE}${path}`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
@@ -122,7 +124,7 @@ async function graphFetch(accessToken: string, path: string, options?: RequestIn
  */
 export async function getOutlookUser(
   accessToken: string,
-): Promise<{ displayName: string; mail: string }> {
+): Promise<{ displayName: string; mail: string; userPrincipalName?: string }> {
   return graphFetch(accessToken, "");
 }
 
@@ -143,11 +145,6 @@ export async function listOutlookThreads(
     from: { name: string; email: string };
   }[]
 > {
-  const data: GraphMessageListResponse = await graphFetch(
-    accessToken,
-    `/mailFolders/inbox/messages?$top=${top}&$orderby=receivedDateTime desc&$select=id,conversationId,subject,bodyPreview,from,isRead,receivedDateTime`,
-  );
-
   // Group by conversationId, keep the most recent message per thread
   const threadMap = new Map<
     string,
@@ -162,28 +159,50 @@ export async function listOutlookThreads(
     }
   >();
 
-  for (const msg of data.value) {
-    const existing = threadMap.get(msg.conversationId);
-    if (!existing) {
-      threadMap.set(msg.conversationId, {
-        conversationId: msg.conversationId,
-        subject: msg.subject || "(no subject)",
-        snippet: msg.bodyPreview || "",
-        isUnread: !msg.isRead,
-        lastMessageAt: msg.receivedDateTime,
-        from: {
-          name: msg.from?.emailAddress?.name ?? "Unknown",
-          email: msg.from?.emailAddress?.address ?? "",
-        },
-        messageCount: 1,
-      });
-    } else {
-      existing.messageCount++;
-      if (!msg.isRead) existing.isUnread = true;
+  // Follow nextLink to fetch enough messages to fill `top` unique threads.
+  // We stop when we have enough distinct conversations or run out of pages.
+  let url: string | undefined =
+    `${GRAPH_BASE}/mailFolders/inbox/messages?$top=50&$orderby=receivedDateTime desc&$select=id,conversationId,subject,bodyPreview,from,isRead,receivedDateTime`;
+  let pages = 0;
+  const MAX_PAGES = 4; // cap at 200 raw messages to avoid runaway fetches
+
+  while (url && threadMap.size < top && pages < MAX_PAGES) {
+    const data: GraphMessageListResponse = await fetchWithTimeout(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+    }).then(async (res) => {
+      if (!res.ok) throw new Error(`Graph API ${res.status}: ${await res.text()}`);
+      return res.json() as Promise<GraphMessageListResponse>;
+    });
+
+    for (const msg of data.value) {
+      const existing = threadMap.get(msg.conversationId);
+      if (!existing) {
+        threadMap.set(msg.conversationId, {
+          conversationId: msg.conversationId,
+          subject: msg.subject || "(no subject)",
+          snippet: msg.bodyPreview || "",
+          isUnread: !msg.isRead,
+          lastMessageAt: msg.receivedDateTime,
+          from: {
+            name: msg.from?.emailAddress?.name ?? "Unknown",
+            email: msg.from?.emailAddress?.address ?? "",
+          },
+          messageCount: 1,
+        });
+      } else {
+        existing.messageCount++;
+        if (!msg.isRead) existing.isUnread = true;
+      }
     }
+
+    url = data["@odata.nextLink"];
+    pages++;
   }
 
-  return Array.from(threadMap.values());
+  return Array.from(threadMap.values()).slice(0, top);
 }
 
 /**
@@ -193,9 +212,11 @@ export async function getOutlookThreadMessages(
   accessToken: string,
   conversationId: string,
 ): Promise<GraphMessage[]> {
+  // Escape single quotes in the OData filter value to prevent filter injection.
+  const safeId = conversationId.replace(/'/g, "''");
   const data: GraphMessageListResponse = await graphFetch(
     accessToken,
-    `/messages?$filter=conversationId eq '${conversationId}'&$orderby=receivedDateTime asc&$top=50&$select=id,conversationId,subject,body,bodyPreview,from,toRecipients,isRead,receivedDateTime,hasAttachments`,
+    `/messages?$filter=conversationId eq '${safeId}'&$orderby=receivedDateTime asc&$top=50&$select=id,conversationId,subject,body,bodyPreview,from,toRecipients,isRead,receivedDateTime,hasAttachments`,
   );
   return data.value;
 }

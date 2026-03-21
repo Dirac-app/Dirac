@@ -6,7 +6,25 @@
 
 import { db } from "./db";
 
-const DEFAULT_MODEL = "google/gemini-2.0-flash-001";
+const DEFAULT_MODEL = "anthropic/claude-haiku-4-4";
+
+// Allowlist of OpenRouter model slugs users may select.
+// Any value outside this list is rejected and replaced with the default.
+export const ALLOWED_MODELS = new Set([
+  "anthropic/claude-haiku-4-4",
+  "anthropic/claude-sonnet-4-5",
+  "anthropic/claude-3.5-sonnet",
+  "google/gemini-2.0-flash-001",
+  "google/gemini-2.5-pro-preview-03-25",
+  "openai/gpt-4o",
+  "openai/gpt-4o-mini",
+  "meta-llama/llama-3.3-70b-instruct",
+]);
+
+function sanitizeModel(model: string | undefined | null): string {
+  if (!model) return DEFAULT_MODEL;
+  return ALLOWED_MODELS.has(model) ? model : DEFAULT_MODEL;
+}
 
 // ─── User ────────────────────────────────────────────────
 
@@ -190,7 +208,7 @@ export async function getUserSettings(userId: string): Promise<{
     where: { userId },
     create: { userId, aiModel: DEFAULT_MODEL },
     update: {},
-    select: { aiModel: true, aboutMe: true, openrouterApiKey: true },
+    select: { aiModel: true, aboutMe: true },
   });
   return settings;
 }
@@ -200,12 +218,16 @@ export async function getUserSettings(userId: string): Promise<{
  */
 export async function updateUserSettings(
   userId: string,
-  patch: { aiModel?: string; aboutMe?: string; openrouterApiKey?: string | null },
+  patch: { aiModel?: string; aboutMe?: string },
 ): Promise<void> {
+  const safePatch = {
+    ...patch,
+    ...(patch.aiModel !== undefined ? { aiModel: sanitizeModel(patch.aiModel) } : {}),
+  };
   await db.userSettings.upsert({
     where: { userId },
-    create: { userId, aiModel: patch.aiModel ?? DEFAULT_MODEL, aboutMe: patch.aboutMe ?? null, openrouterApiKey: patch.openrouterApiKey ?? null },
-    update: patch,
+    create: { userId, aiModel: safePatch.aiModel ?? DEFAULT_MODEL, aboutMe: safePatch.aboutMe ?? null },
+    update: safePatch,
   });
 }
 
@@ -215,20 +237,15 @@ export async function updateUserSettings(
 export async function getModelForUser(userId: string): Promise<string> {
   try {
     const settings = await getUserSettings(userId);
-    return settings.aiModel || process.env.OPENROUTER_MODEL || DEFAULT_MODEL;
+    return sanitizeModel(settings.aiModel || process.env.OPENROUTER_MODEL);
   } catch {
-    return process.env.OPENROUTER_MODEL || DEFAULT_MODEL;
+    return sanitizeModel(process.env.OPENROUTER_MODEL) || DEFAULT_MODEL;
   }
 }
 
 /**
- * Get the OpenRouter API key for a user.
- * Returns user's own key if set, otherwise falls back to server env var.
+ * Get the OpenRouter API key from server env var.
  */
-export async function getApiKeyForUser(userId: string): Promise<string | null> {
-  try {
-    const settings = await getUserSettings(userId);
-    if (settings.openrouterApiKey?.trim()) return settings.openrouterApiKey.trim();
-  } catch {}
+export async function getApiKeyForUser(_userId: string): Promise<string | null> {
   return process.env.OPENROUTER_API_KEY ?? null;
 }

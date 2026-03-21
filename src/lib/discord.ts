@@ -4,6 +4,8 @@
  * Uses OAuth2 user token for identity only.
  */
 
+import { fetchWithTimeout } from "./fetch-timeout";
+
 const DISCORD_API = "https://discord.com/api/v10";
 
 // ─── Types ──────────────────────────────────────────────
@@ -53,7 +55,7 @@ async function discordFetch(
   path: string,
   isBot = true,
 ) {
-  const res = await fetch(`${DISCORD_API}${path}`, {
+  const res = await fetchWithTimeout(`${DISCORD_API}${path}`, {
     headers: {
       Authorization: isBot ? `Bot ${token}` : `Bearer ${token}`,
     },
@@ -69,15 +71,19 @@ async function discordFetch(
 
 /**
  * Build the Discord OAuth2 authorization URL.
+ * Returns the URL and the state token — the caller must store the state
+ * in a short-lived cookie and verify it in the callback.
  */
-export function getDiscordAuthUrl(): string {
+export function getDiscordAuthUrl(): { url: string; state: string } {
+  const state = crypto.randomUUID();
   const params = new URLSearchParams({
     client_id: process.env.DISCORD_CLIENT_ID!,
     redirect_uri: getDiscordRedirectUri(),
     response_type: "code",
     scope: "identify guilds",
+    state,
   });
-  return `https://discord.com/oauth2/authorize?${params.toString()}`;
+  return { url: `https://discord.com/oauth2/authorize?${params.toString()}`, state };
 }
 
 /**
@@ -203,7 +209,7 @@ export async function sendChannelMessage(
   channelId: string,
   content: string,
 ): Promise<DiscordMessage> {
-  const res = await fetch(`${DISCORD_API}/channels/${channelId}/messages`, {
+  const res = await fetchWithTimeout(`${DISCORD_API}/channels/${channelId}/messages`, {
     method: "POST",
     headers: {
       Authorization: `Bot ${getBotToken()}`,
