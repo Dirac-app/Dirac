@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { verifyTesterToken } from "@/lib/tester-auth";
 
 // ── In-memory rate limiter ────────────────────────────────────────────────────
 // Uses a sliding window per IP. Suitable for single-instance deployments.
@@ -72,6 +73,22 @@ function maybePrune() {
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  const protectedPaths = ["/inbox", "/compose", "/settings", "/activity"];
+  const isProtectedPath = protectedPaths.some(
+    (p) => pathname === p || pathname.startsWith(p + "/"),
+  );
+
+  if (isProtectedPath) {
+    const token = request.cookies.get("dirac-tester-session")?.value;
+    const testerSession = token ? verifyTesterToken(token) : null;
+
+    if (!testerSession) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/";
+      return NextResponse.redirect(url);
+    }
+  }
+
   // Rate limiting for API routes
   if (pathname.startsWith("/api/")) {
     const limit = getLimit(pathname);
@@ -100,5 +117,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/api/:path*"],
+  matcher: ["/api/:path*", "/inbox/:path*", "/compose/:path*", "/settings/:path*", "/activity/:path*"],
 };

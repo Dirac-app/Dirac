@@ -203,6 +203,7 @@ export async function disconnectAccount(opts: {
 export async function getUserSettings(userId: string): Promise<{
   aiModel: string;
   aboutMe: string | null;
+  openrouterApiKey: string | null;
 }> {
   const settings = await db.userSettings.upsert({
     where: { userId },

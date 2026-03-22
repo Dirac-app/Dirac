@@ -124,7 +124,7 @@ async function graphFetch(accessToken: string, path: string, options?: RequestIn
  */
 export async function getOutlookUser(
   accessToken: string,
-): Promise<{ displayName: string; mail: string; userPrincipalName?: string }> {
+): Promise<{ displayName?: string; mail?: string; userPrincipalName?: string }> {
   return graphFetch(accessToken, "");
 }
 

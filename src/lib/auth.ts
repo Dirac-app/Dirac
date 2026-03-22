@@ -118,15 +118,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
 
     async session({ session, token }) {
-      session.accessToken    = token.accessToken as string | undefined;
-      session.provider       = token.provider    as string | undefined;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (session as any).userId = token.dbUserId as string | undefined;
+      session.accessToken = token.accessToken as string | undefined;
+      session.provider = token.provider as string | undefined;
+      if (typeof token.dbUserId === "string") {
+        session.userId = token.dbUserId;
+      }
       session.gmailConnected =
         token.provider === "google" && !!token.accessToken && !token.error;
-      // Merge both OAuth and DB errors into the session error field
-      session.error = (token.error as string | undefined)
-        ?? (token.dbError as string | undefined);
+      session.error =
+        (token.error as string | undefined) ??
+        (token.dbError as string | undefined);
       return session;
     },
   },
