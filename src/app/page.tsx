@@ -24,8 +24,7 @@ export default function HomePage() {
       });
       const data = await res.json();
       if (data.success) {
-        // Cookie is set server-side — redirect to login (next-auth) or inbox
-        router.push('/login');
+        router.push('/inbox');
       } else {
         setError(data.error || 'Invalid access code');
         setShaking(true);
