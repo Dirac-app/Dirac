@@ -193,41 +193,34 @@ function AiSettingsSection() {
   const [saveError,        setSaveError]        = useState<string | null>(null);
   const [loading,          setLoading]          = useState(true);
 
-  // Load saved settings on mount
   useEffect(() => {
-    fetch("/api/settings")
-      .then(r => r.json())
-      .then(data => {
-        if (data.aiModel) {
-          const isPreset = PRESET_MODELS.some(m => m.id === data.aiModel);
-          if (isPreset) {
-            setSelectedModel(data.aiModel);
-          } else {
-            setSelectedModel("custom");
-            setCustomModel(data.aiModel);
-          }
+    try {
+      const savedModel = localStorage.getItem("dirac-ai-model");
+      const savedAbout = localStorage.getItem("dirac-about-me");
+      if (savedModel) {
+        const isPreset = PRESET_MODELS.some(m => m.id === savedModel);
+        if (isPreset) {
+          setSelectedModel(savedModel);
+        } else {
+          setSelectedModel("custom");
+          setCustomModel(savedModel);
         }
-        if (data.aboutMe) setAboutMe(data.aboutMe);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      }
+      if (savedAbout) setAboutMe(savedAbout);
+    } catch {}
+    setLoading(false);
   }, []);
 
-  // Auto-save when model changes (debounced)
-  const saveSettings = useCallback(async (aiModel: string, aboutMeVal: string) => {
+  const saveSettings = useCallback((aiModel: string, aboutMeVal: string) => {
     setSaving(true);
     setSaveError(null);
     try {
-      const res = await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ aiModel, aboutMe: aboutMeVal }),
-      });
-      if (!res.ok) throw new Error("Save failed");
+      localStorage.setItem("dirac-ai-model", aiModel);
+      localStorage.setItem("dirac-about-me", aboutMeVal);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch {
-      setSaveError("Failed to save. Try again.");
+      setSaveError("Failed to save.");
     } finally {
       setSaving(false);
     }

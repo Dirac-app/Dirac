@@ -618,6 +618,7 @@ function QuickActions({
           message: action.prompt,
           context,
           toneProfile: toneProfile ?? undefined,
+          model: localStorage.getItem("dirac-ai-model") || undefined,
         }),
       });
 

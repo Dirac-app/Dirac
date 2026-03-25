@@ -296,7 +296,7 @@ export async function POST(request: NextRequest) {
         "X-Title": "Dirac",
       },
       body: JSON.stringify({
-        model: (await getModelForUser(guard.userId!)) ?? (process.env.OPENROUTER_MODEL ?? "anthropic/claude-haiku-4-4"),
+        model: await getModelForUser(guard.userId!, body.model),
         messages: llmMessages,
         stream: true,
       }),

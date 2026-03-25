@@ -322,6 +322,7 @@ export function AiSidebar() {
               message: query,
               context: threadSummaries.length > 0 ? threadSummaries : undefined,
               toneProfile: toneProfile ?? undefined,
+              model: localStorage.getItem("dirac-ai-model") || undefined,
             }),
           });
 
@@ -458,6 +459,7 @@ export function AiSidebar() {
           message: prompt,
           context: fullContext.length > 0 ? fullContext : undefined,
           toneProfile: toneProfile ?? undefined,
+          model: localStorage.getItem("dirac-ai-model") || undefined,
         }),
       });
 

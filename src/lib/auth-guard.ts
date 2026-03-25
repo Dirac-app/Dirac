@@ -6,13 +6,7 @@ type AuthGuardResult =
   | { userId?: never; error: string; response: NextResponse };
 
 /**
- * Validates the current session and returns the authenticated userId.
- * Returns an error response if the user is not authenticated.
- *
- * Usage in API routes:
- *   const guard = await requireAuth();
- *   if (guard.error) return guard.response;
- *   const { userId } = guard;
+ * Validates the current session and returns the authenticated userId (email).
  */
 export async function requireAuth(): Promise<AuthGuardResult> {
   const session = await auth();
@@ -24,20 +18,19 @@ export async function requireAuth(): Promise<AuthGuardResult> {
     };
   }
 
-  if (!session.userId) {
+  const userId = session.userId ?? session.user.email;
+  if (!userId) {
     return {
       error: "User ID missing from session",
       response: NextResponse.json({ error: "Session invalid" }, { status: 401 }),
     };
   }
 
-  return { userId: session.userId };
+  return { userId };
 }
 
 /**
- * Lighter auth check — only requires a signed-in user, not a database userId.
- * Use for endpoints that can function without per-user DB state (e.g. AI chat
- * using a global API key).
+ * Lighter auth check — only requires a signed-in user.
  */
 export async function requireSession(): Promise<
   { userId: string | null; error?: never; response?: never }
@@ -52,7 +45,7 @@ export async function requireSession(): Promise<
     };
   }
 
-  return { userId: session.userId ?? null };
+  return { userId: session.userId ?? session.user.email ?? null };
 }
 
 /**
@@ -77,5 +70,5 @@ export async function requireGmail(): Promise<
     };
   }
 
-  return { userId: session.userId ?? "", accessToken: session.accessToken };
+  return { userId: session.userId ?? session.user.email ?? "", accessToken: session.accessToken };
 }

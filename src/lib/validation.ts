@@ -79,6 +79,7 @@ export const AiChatSchema = z.object({
   message: z.string().min(1).max(10_000),
   context: z.array(ContextThreadSchema).max(50).optional(),
   toneProfile: ToneProfileSchema.nullable().optional(),
+  model: z.string().max(200).optional(),
 });
 
 // ── Helper ───────────────────────────────────────────────────────────────────
