@@ -1666,6 +1666,9 @@ function SidebarIdleState({
   onInboxSuggestionClick: (prompt: string) => void;
 }) {
   const [bulkCardIndex, setBulkCardIndex] = useState(0);
+  const [aiSnapshot, setAiSnapshot] = useState<string | null>(null);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
+  const snapshotThreadIdRef = useRef<string | null>(null);
 
   const bulkThreads = threads.filter((t) => selectedThreadIds.has(t.id));
   const hasBulk = bulkThreads.length > 1;
@@ -1685,28 +1688,56 @@ function SidebarIdleState({
     : [];
   const sender = activeThread?.participants[0];
 
+  // Fetch AI snapshot when thread changes
+  useEffect(() => {
+    if (!activeThread) { setAiSnapshot(null); return; }
+    if (snapshotThreadIdRef.current === activeThread.id) return;
+    snapshotThreadIdRef.current = activeThread.id;
+    setAiSnapshot(null);
+    setSnapshotLoading(true);
+
+    const senderName = activeThread.participants[0]?.name ?? activeThread.participants[0]?.email ?? "";
+    const prompt = `In 1-3 short, dense fragments (no full sentences needed), summarize what this email thread is actually about. Pack in: who it's from, the core topic, and any action required. Be extremely concise — think telegraph style.\n\nThread: "${activeThread.subject}"\nFrom: ${senderName}\nPreview: ${activeThread.snippet ?? ""}`;
+
+    fetch("/api/ai/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: prompt, model: localStorage.getItem("dirac-ai-model") || undefined }),
+    })
+      .then(async (res) => {
+        if (!res.ok || !res.body) return;
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let text = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          text += decoder.decode(value, { stream: true });
+        }
+        setAiSnapshot(text.trim().slice(0, 200));
+      })
+      .catch(() => {})
+      .finally(() => setSnapshotLoading(false));
+  }, [activeThread?.id]);
+
+
   const threadSuggestions = activeThread
     ? hasBulk
       ? [
-          { label: `Summarize all ${bulkThreads.length} threads`, prompt: `Summarize these ${bulkThreads.length} threads: ${bulkThreads.map((t) => `"${t.subject}"`).join(", ")}. For each, give key points and action items.` },
-          { label: "Compare these threads", prompt: `Compare these ${bulkThreads.length} threads: ${bulkThreads.map((t) => `"${t.subject}"`).join(", ")}. What do they have in common? Any patterns?` },
-          { label: "Draft batch reply", prompt: `Draft brief replies for each of these ${bulkThreads.length} threads: ${bulkThreads.map((t) => `"${t.subject}"`).join(", ")}. Keep each concise and in my tone.` },
+          { label: `Summarize all ${bulkThreads.length}`, prompt: `Summarize these ${bulkThreads.length} threads: ${bulkThreads.map((t) => `"${t.subject}"`).join(", ")}. For each, give key points and action items.` },
           { label: "Prioritize these", prompt: `Rank these ${bulkThreads.length} threads by urgency: ${bulkThreads.map((t) => `"${t.subject}"`).join(", ")}. Which should I handle first and why?` },
+          { label: "Draft batch replies", prompt: `Draft brief replies for each of these ${bulkThreads.length} threads: ${bulkThreads.map((t) => `"${t.subject}"`).join(", ")}. Keep each concise and in my tone.` },
         ]
       : [
-          { label: "Summarize", prompt: `Summarize the thread "${activeThread.subject}" — key points, action items, and what needs a response.` },
+          { label: "Summarize this thread", prompt: `Summarize the thread "${activeThread.subject}" — key points, action items, and what needs a response.` },
           { label: "Draft a reply", prompt: `Draft a reply to "${activeThread.subject}" in my tone. Keep it concise.` },
-          { label: "Extract action items", prompt: `What action items or commitments are in the thread "${activeThread.subject}"? List who owes what.` },
-          { label: "What's the tone?", prompt: `Analyze the tone and sentiment of the thread "${activeThread.subject}". Is the sender happy, frustrated, neutral?` },
-          { label: "Follow-up needed?", prompt: `For the thread "${activeThread.subject}" — do I need to follow up? If yes, suggest what to say.` },
+          { label: "What should I do next?", prompt: `For the thread "${activeThread.subject}", what is the best next move? Keep the answer short and practical.` },
         ]
     : [];
 
   const inboxSuggestions = [
     { label: "What needs my attention?", prompt: "What emails need my attention most urgently? Consider unread threads, anything awaiting my reply, and upcoming deadlines." },
     { label: "Summarize my inbox", prompt: "Give me a brief summary of my inbox — how many unread, what's urgent, and any patterns you notice." },
-    { label: "Find unanswered threads", prompt: "Find threads where someone is waiting for my reply. List them with the sender and how long they've been waiting." },
-    { label: "Draft a new email", prompt: "I want to compose a new email. Ask me who it's to, what it's about, and the tone I want." },
   ];
 
   const handleFlick = (direction: 1 | -1) => {
@@ -1822,6 +1853,27 @@ function SidebarIdleState({
         ) : null}
       </AnimatePresence>
 
+      {activeThread && (
+        <div className="relative z-10 mx-1 rounded-lg border border-border/50 bg-background/70 px-3 py-2.5">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-1.5">
+            Thread snapshot
+          </p>
+          {snapshotLoading && !aiSnapshot && (
+            <div className="flex items-center gap-1.5">
+              <span className="inline-flex gap-0.5">
+                <span className="h-1 w-1 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:0ms]" />
+                <span className="h-1 w-1 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:150ms]" />
+                <span className="h-1 w-1 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:300ms]" />
+              </span>
+              <span className="text-[11px] text-muted-foreground/50">Reading thread…</span>
+            </div>
+          )}
+          {aiSnapshot && (
+            <p className="text-[12px] leading-5 text-foreground whitespace-pre-wrap">{aiSnapshot}</p>
+          )}
+        </div>
+      )}
+
       {/* Suggestion chips — thread-specific */}
       {activeThread && (
         <div className="relative z-10 flex flex-col gap-1 mt-1">
@@ -1831,7 +1883,7 @@ function SidebarIdleState({
             transition={{ delay: 0.15 }}
             className="px-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-0.5"
           >
-            {hasBulk ? `${bulkThreads.length} threads` : "This thread"}
+            Quick help
           </motion.p>
           {threadSuggestions.map((chip, i) => (
             <motion.button
@@ -1840,7 +1892,7 @@ function SidebarIdleState({
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.25, ease: "easeOut", delay: 0.1 + i * 0.04 }}
               onClick={() => onSuggestionClick(chip.prompt)}
-              className="ai-chip-shimmer flex items-center gap-2 rounded-md px-3 py-2 text-left text-[13px] text-foreground transition-colors hover:bg-accent/60"
+              className="ai-chip-shimmer flex items-center gap-2 rounded-md px-3 py-2 text-left text-[12px] text-foreground transition-colors hover:bg-accent/60"
             >
               <ArrowRight className="h-3 w-3 shrink-0 text-primary/40" />
               {chip.label}
@@ -1857,7 +1909,7 @@ function SidebarIdleState({
           transition={{ delay: activeThread ? 0.35 : 0.15 }}
           className="px-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-0.5"
         >
-          General
+          Inbox-wide
         </motion.p>
         {inboxSuggestions.map((chip, i) => (
           <motion.button
@@ -1866,7 +1918,7 @@ function SidebarIdleState({
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.25, ease: "easeOut", delay: (activeThread ? 0.35 : 0.1) + i * 0.04 }}
             onClick={() => onInboxSuggestionClick(chip.prompt)}
-            className="ai-chip-shimmer flex items-center gap-2 rounded-md px-3 py-2 text-left text-[13px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+            className="ai-chip-shimmer flex items-center gap-2 rounded-md px-3 py-2 text-left text-[12px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
           >
             <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground/30" />
             {chip.label}

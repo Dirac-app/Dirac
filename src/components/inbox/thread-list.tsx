@@ -10,7 +10,6 @@ import {
   AlertTriangle,
   Clock,
   Inbox,
-  RefreshCw,
   PenSquare,
   Archive,
   Trash2,
@@ -19,8 +18,6 @@ import {
   BrainCircuit,
   FileText,
   X,
-  CheckSquare,
-  Square,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAppState } from "@/lib/store";
@@ -33,15 +30,19 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import type { DiracThread, InboxFilter, TopicTag } from "@/lib/types";
-import { TOPIC_TAG_LABELS, TOPIC_TAG_COLORS } from "@/lib/types";
+import type { DiracThread, InboxFilter, FounderCategory, TriageCategory } from "@/lib/types";
+import {
+  FOUNDER_CATEGORY_LABELS,
+  FOUNDER_CATEGORY_COLORS,
+  TRIAGE_LABELS,
+} from "@/lib/types";
 
 const FILTER_TABS: { value: InboxFilter; label: string }[] = [
-  { value: "all",        label: "All"       },
-  { value: "unread",     label: "Unread"    },
-  { value: "urgent",     label: "Urgent"    },
-  { value: "waiting_on", label: "Waiting"   },
-  { value: "starred",    label: "Starred"   },
+  { value: "needs_reply", label: "Needs me" },
+  { value: "waiting_on", label: "Waiting" },
+  { value: "urgent", label: "Urgent" },
+  { value: "unread", label: "Unread" },
+  { value: "all", label: "All" },
 ];
 
 // ─── Individual thread row ───────────────────────────────
@@ -51,17 +52,23 @@ function ThreadRow({
   isSelected,
   isBulkSelected,
   onSelect,
-  onBulkToggle,
   compact,
   bulkThreads,
+  triage,
+  category,
+  commitmentCount,
+  isDone,
 }: {
   thread: DiracThread;
   isSelected: boolean;
   isBulkSelected: boolean;
-  onSelect: () => void;
-  onBulkToggle: (e: React.MouseEvent) => void;
+  onSelect: (e: React.MouseEvent) => void;
   compact: boolean;
   bulkThreads: DiracThread[];
+  triage?: TriageCategory;
+  category?: FounderCategory;
+  commitmentCount: number;
+  isDone: boolean;
 }) {
   const {
     toggleStarred,
@@ -81,12 +88,51 @@ function ThreadRow({
   const sender = thread.participants[0]?.name ?? thread.participants[0]?.email ?? "Unknown";
   const isSnoozed = snoozedThreads.some((s) => s.threadId === thread.id);
   const timeAgo = formatDistanceToNow(new Date(thread.lastMessageAt), { addSuffix: false });
-  const topics = (topicMap[thread.id] ?? []) as TopicTag[];
-
   const hasBulk = isBulkSelected && bulkThreads.length > 1;
   const targets = hasBulk ? bulkThreads : [thread];
 
-  const py = compact ? "py-2" : "py-3";
+  const triageLabel = triage ? TRIAGE_LABELS[triage] : thread.isUnread ? "Needs review" : "No action";
+  const statusTone = isDone
+    ? "text-emerald-700 dark:text-emerald-400 bg-emerald-500/10"
+    : isSnoozed
+      ? "text-amber-700 dark:text-amber-400 bg-amber-500/10"
+      : triage === "needs_reply"
+        ? "text-blue-700 dark:text-blue-400 bg-blue-500/10"
+        : triage === "waiting_on"
+          ? "text-violet-700 dark:text-violet-400 bg-violet-500/10"
+          : triage === "automated"
+            ? "text-slate-600 dark:text-slate-400 bg-slate-500/10"
+            : "text-muted-foreground bg-muted";
+
+  const statusLabel = isDone
+    ? "Done"
+    : isSnoozed
+      ? "Snoozed"
+      : triageLabel;
+
+  const secondaryBadge = thread.isUrgent
+    ? "Urgent"
+    : commitmentCount > 0
+      ? `${commitmentCount} commit${commitmentCount !== 1 ? "s" : ""}`
+      : null;
+
+  const summaryLine = thread.snippet ?? "";
+
+  const allBadges: { label: string; color: string }[] = [];
+  if (category) {
+    allBadges.push({ label: FOUNDER_CATEGORY_LABELS[category], color: FOUNDER_CATEGORY_COLORS[category] });
+  }
+  allBadges.push({ label: statusLabel, color: statusTone });
+  if (secondaryBadge) {
+    allBadges.push({
+      label: secondaryBadge,
+      color: thread.isUrgent
+        ? "bg-red-500/10 text-red-600 dark:text-red-400"
+        : "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+    });
+  }
+
+  const cardPy = compact ? "py-2.5" : "py-3";
 
   return (
     <ContextMenu>
@@ -94,58 +140,49 @@ function ThreadRow({
         <button
           onClick={onSelect}
           className={cn(
-            "group relative flex flex-col gap-1 border-b border-border px-4 text-left transition-colors w-full",
-            py,
-            isSelected     ? "bg-accent/60" : "hover:bg-accent/30",
-            isBulkSelected ? "bg-primary/5"  : "",
+            "group relative flex border-b border-border px-4 text-left transition-colors w-full",
+            cardPy,
+            isSelected ? "bg-accent/60" : "hover:bg-accent/30",
+            isBulkSelected ? "bg-primary/5" : "",
           )}
         >
-          {/* Selected indicator */}
           {isSelected && <div className="absolute left-0 top-0 h-full w-0.5 bg-primary" />}
 
-          {/* Top row: platform icon + sender + star + time */}
-          <div className="flex items-center justify-between gap-2">
+          {/* Left: sender, subject, snippet */}
+          <div className="min-w-0 flex-1 space-y-0.5">
             <div className="flex items-center gap-2 min-w-0">
-
-              {/* Bulk checkbox — shows on hover or when bulk-selected */}
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={onBulkToggle}
-                onKeyDown={e => { if (e.key === "Enter" || e.key === " ") onBulkToggle(e as unknown as React.MouseEvent); }}
-                className={cn(
-                  "shrink-0 transition-opacity",
-                  isBulkSelected ? "opacity-100" : "opacity-0 group-hover:opacity-60"
-                )}
-              >
-                {isBulkSelected
-                  ? <CheckSquare className="h-3.5 w-3.5 text-primary" />
-                  : <Square className="h-3.5 w-3.5 text-muted-foreground" />
-                }
-              </div>
-
-              {/* Platform icon */}
               {thread.platform === "DISCORD" ? (
-                <MessageSquare className="h-3.5 w-3.5 shrink-0 text-indigo-500" />
+                <MessageSquare className="h-4 w-4 shrink-0 text-indigo-500" />
               ) : thread.platform === "OUTLOOK" ? (
-                <Mail className="h-3.5 w-3.5 shrink-0 text-blue-500" />
+                <Mail className="h-4 w-4 shrink-0 text-blue-500" />
               ) : (
-                <Mail className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
               )}
 
               <span className={cn(
-                "truncate text-sm",
+                "min-w-0 truncate text-sm leading-5",
                 thread.isUnread ? "font-semibold text-foreground" : "text-foreground",
               )}>
                 {sender}
               </span>
             </div>
 
-            <div className="flex items-center gap-1.5 shrink-0">
-              {thread.isUrgent && <AlertTriangle className="h-3 w-3 text-red-500" />}
-              {isSnoozed && <Clock className="h-3 w-3 text-amber-500" />}
+            <p className={cn(
+              "truncate text-[13px] leading-5",
+              thread.isUnread ? "font-medium text-foreground" : "text-muted-foreground",
+            )}>
+              {thread.subject}
+            </p>
 
-              {/* Star */}
+            <p className="truncate text-xs leading-5 text-muted-foreground/70">
+              {summaryLine}
+            </p>
+          </div>
+
+          {/* Right: star+time row, then stacked badges */}
+          <div className="flex flex-col items-end gap-1 shrink-0 pl-3 pt-px">
+            <div className="flex items-center gap-1.5">
+              {isSnoozed && <Clock className="h-3 w-3 text-amber-500" />}
               <div
                 role="button"
                 tabIndex={0}
@@ -161,44 +198,21 @@ function ThreadRow({
                   thread.isStarred ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground hover:text-yellow-400",
                 )} />
               </div>
-
-              <span className="text-xs text-muted-foreground">{timeAgo}</span>
+              <span className="text-xs leading-none text-muted-foreground whitespace-nowrap">{timeAgo}</span>
             </div>
+
+            {allBadges.slice(0, 3).map((b, i) => (
+              <span
+                key={i}
+                className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium leading-tight whitespace-nowrap", b.color)}
+              >
+                {b.label}
+              </span>
+            ))}
           </div>
 
-          {/* Subject + topic pills */}
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className={cn(
-              "truncate text-sm",
-              thread.isUnread ? "font-medium text-foreground" : "text-muted-foreground",
-            )}>
-              {thread.subject}
-            </span>
-            {topics.length > 0 && (
-              <div className="flex items-center gap-1 shrink-0">
-                {topics.map(tag => (
-                  <span
-                    key={tag}
-                    className={cn(
-                      "rounded px-1.5 py-0.5 text-[10px] font-medium leading-none",
-                      TOPIC_TAG_COLORS[tag] ?? "text-muted-foreground bg-muted",
-                    )}
-                  >
-                    {TOPIC_TAG_LABELS[tag] ?? tag}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Snippet (hidden in compact mode) */}
-          {!compact && (
-            <div className="truncate text-xs text-muted-foreground">{thread.snippet}</div>
-          )}
-
-          {/* Unread dot */}
           {thread.isUnread && (
-            <div className="absolute right-3 top-3.5 h-2 w-2 rounded-full bg-primary" />
+            <div className="absolute left-1.5 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-primary" />
           )}
         </button>
       </ContextMenuTrigger>
@@ -314,30 +328,39 @@ export function ThreadList() {
     setSelectedThreadId,
     inboxFilter,
     setInboxFilter,
-    refreshThreads,
     setComposeOpen,
     setComposeMinimized,
     triageMap,
     searchQuery,
     density,
     selectedThreadIds,
-    toggleBulkSelect,
     selectAll,
     clearSelection,
     markThreadRead,
     archiveThread,
     trashThread,
+    commitments,
+    categoryMap,
+    doneThreads,
+    snoozedThreads,
   } = useAppState();
 
   const lastClickedIdxRef = useRef<number | null>(null);
 
   // Apply filter + search
   const filtered = threads.filter(t => {
+    const triage = triageMap[t.id];
+    const isDone = doneThreads.has(t.id);
+    const isSnoozed = snoozedThreads.some((s) => s.threadId === t.id);
+
     const matchesFilter =
-      inboxFilter === "unread"     ? t.isUnread :
-      inboxFilter === "starred"    ? t.isStarred :
-      inboxFilter === "urgent"     ? t.isUrgent :
-      inboxFilter === "waiting_on" ? triageMap[t.id] === "waiting_on" :
+      inboxFilter === "needs_reply" ? triage === "needs_reply" && !isDone && !isSnoozed :
+      inboxFilter === "unread" ? t.isUnread :
+      inboxFilter === "starred" ? t.isStarred :
+      inboxFilter === "urgent" ? t.isUrgent :
+      inboxFilter === "waiting_on" ? triage === "waiting_on" && !isDone :
+      inboxFilter === "snoozed" ? isSnoozed :
+      inboxFilter === "done" ? isDone :
       true;
 
     if (!matchesFilter) return false;
@@ -356,9 +379,10 @@ export function ThreadList() {
     return true;
   });
 
+  const needsReplyCount = threads.filter(t => triageMap[t.id] === "needs_reply" && !doneThreads.has(t.id)).length;
   const urgentCount    = threads.filter(t => t.isUrgent).length;
   const unreadCount    = threads.filter(t => t.isUnread).length;
-  const waitingCount   = threads.filter(t => triageMap[t.id] === "waiting_on").length;
+  const waitingCount   = threads.filter(t => triageMap[t.id] === "waiting_on" && !doneThreads.has(t.id)).length;
   const bulkCount      = selectedThreadIds.size;
   const compact        = density === "compact";
   const bulkThreads    = threads.filter(t => selectedThreadIds.has(t.id));
@@ -393,27 +417,22 @@ export function ThreadList() {
   return (
     <div className="flex h-full w-80 flex-col border-r border-border">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <h1 className="text-sm font-semibold text-foreground">Inbox</h1>
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-muted-foreground mr-1">
-            {filtered.length} thread{filtered.length !== 1 ? "s" : ""}
-          </span>
-          <Button
-            variant="ghost" size="icon" className="h-6 w-6"
-            onClick={() => { setComposeOpen(true); setComposeMinimized(false); }}
-            title="Compose"
-          >
-            <PenSquare className="h-3 w-3" />
-          </Button>
-          <Button
-            variant="ghost" size="icon" className="h-6 w-6"
-            onClick={refreshThreads}
-            disabled={threadsLoading}
-            title="Refresh"
-          >
-            <RefreshCw className={cn("h-3 w-3", threadsLoading && "animate-spin")} />
-          </Button>
+      <div className="border-b border-border px-4 py-3">
+        <div className="flex items-center justify-between">
+          <h1 className="text-sm font-semibold text-foreground">Inbox</h1>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              {filtered.length} thread{filtered.length !== 1 ? "s" : ""}
+            </span>
+            <button
+              onClick={() => { setComposeOpen(true); setComposeMinimized(false); }}
+              title="Compose"
+              className="flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-accent/60 transition-colors"
+            >
+              <PenSquare className="h-3.5 w-3.5" />
+              Compose
+            </button>
+          </div>
         </div>
       </div>
 
@@ -431,6 +450,11 @@ export function ThreadList() {
             )}
           >
             {f.label}
+            {f.value === "needs_reply" && needsReplyCount > 0 && (
+              <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-500 px-1 text-[10px] font-semibold text-white">
+                {needsReplyCount}
+              </span>
+            )}
             {f.value === "unread" && unreadCount > 0 && (
               <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary/80 px-1 text-[10px] font-semibold text-primary-foreground">
                 {unreadCount}
@@ -508,23 +532,15 @@ export function ThreadList() {
               <ThreadRow
                 key={thread.id}
                 thread={thread}
+                triage={triageMap[thread.id]}
+                category={categoryMap[thread.id]}
+                commitmentCount={commitments.filter((c) => c.threadId === thread.id).length}
+                isDone={doneThreads.has(thread.id)}
                 isSelected={thread.id === selectedThreadId}
                 isBulkSelected={selectedThreadIds.has(thread.id)}
                 compact={compact}
                 bulkThreads={bulkThreads}
-                onSelect={() => setSelectedThreadId(thread.id)}
-                onBulkToggle={e => {
-                  e.stopPropagation();
-                  if (e.shiftKey && lastClickedIdxRef.current !== null) {
-                    const from = Math.min(lastClickedIdxRef.current, idx);
-                    const to   = Math.max(lastClickedIdxRef.current, idx);
-                    const idsInRange = filtered.slice(from, to + 1).map(t => t.id);
-                    selectAll(idsInRange);
-                  } else {
-                    toggleBulkSelect(thread.id);
-                  }
-                  lastClickedIdxRef.current = idx;
-                }}
+                onSelect={(e) => handleSelect(idx, thread.id, e)}
               />
             ))}
           </div>

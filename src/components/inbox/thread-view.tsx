@@ -40,12 +40,11 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import {
-  FOUNDER_CATEGORY_LABELS,
-  FOUNDER_CATEGORY_COLORS,
   type SnoozeState,
   type DiracThread,
   type RelationshipContext,
   type FounderCategory,
+  type TriageCategory,
 } from "@/lib/types";
 import { useToast } from "@/components/ui/toast";
 import type { ToneProfile } from "@/lib/store";
@@ -79,6 +78,7 @@ export function ThreadView() {
     snoozedThreads,
     commitments,
     categoryMap,
+    triageMap,
     toneProfile,
     getRelationshipContext,
   } = useAppState();
@@ -104,6 +104,7 @@ export function ThreadView() {
   const isDone = doneThreads.has(thread.id);
   const threadCommitments = commitments.filter((c) => c.threadId === thread.id);
   const category = categoryMap[thread.id];
+  const triage = triageMap[thread.id] as TriageCategory | undefined;
   const snoozeState = snoozedThreads.find((s) => s.threadId === thread.id);
 
   const handleToggleContext = () => {
@@ -118,33 +119,24 @@ export function ThreadView() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Thread header */}
-      <div className="flex items-center justify-between border-b border-border px-6 py-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            {isDiscord && (
-              <MessageSquare className="h-3.5 w-3.5 shrink-0 text-indigo-500" />
-            )}
-            <h2 className="truncate text-sm font-semibold text-foreground">
-              {thread.subject}
-            </h2>
-            {category && (
-              <span
-                className={cn(
-                  "rounded px-1.5 py-0.5 text-[10px] font-medium shrink-0",
-                  FOUNDER_CATEGORY_COLORS[category],
-                )}
-              >
-                {FOUNDER_CATEGORY_LABELS[category]}
-              </span>
-            )}
+      <div className="border-b border-border px-6 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              {isDiscord && (
+                <MessageSquare className="h-4 w-4 shrink-0 text-indigo-500" />
+              )}
+              <h2 className="truncate text-lg font-semibold text-foreground">
+                {thread.subject}
+              </h2>
+            </div>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {thread.participants.map((p) => p.name).join(", ")}
+            </p>
           </div>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {thread.participants.map((p) => p.name).join(", ")}
-          </p>
-        </div>
 
-        {/* Thread actions */}
-        <div className="flex items-center gap-1">
+          {/* Thread actions */}
+          <div className="flex items-center gap-1 shrink-0">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -215,6 +207,28 @@ export function ThreadView() {
           </Tooltip>
 
           <SnoozeButton threadId={thread.id} onSnooze={snoozeThread} />
+        </div>
+      </div>
+
+        <div className="mt-3">
+          <div className="rounded-lg border border-border bg-accent/20 px-3 py-2">
+            <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Recommended next move
+            </div>
+            <p className="mt-1 text-sm text-foreground">
+              {isDone
+                ? "This thread is resolved. Keep it archived mentally unless something changes."
+                : snoozeState
+                  ? "Deferred for later — no need to think about it right now."
+                  : triage === "needs_reply"
+                    ? "Reply or explicitly defer. This likely needs your decision."
+                    : triage === "waiting_on"
+                      ? "Don't reply yet — track it as blocked on them."
+                      : triage === "automated"
+                        ? "Likely low-touch. Skim, archive, or ignore unless it changes state."
+                        : "Read once, decide fast: reply, snooze, or mark done."}
+            </p>
+          </div>
         </div>
       </div>
 
