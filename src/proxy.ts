@@ -73,16 +73,6 @@ function maybePrune() {
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Already authenticated users landing on the gate page → skip to inbox
-  if (pathname === "/") {
-    const token = request.cookies.get("dirac-tester-session")?.value;
-    if (token && verifyTesterToken(token)) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/inbox";
-      return NextResponse.redirect(url);
-    }
-  }
-
   const protectedPaths = ["/inbox", "/compose", "/settings", "/activity"];
   const isProtectedPath = protectedPaths.some(
     (p) => pathname === p || pathname.startsWith(p + "/"),
@@ -127,5 +117,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/api/:path*", "/inbox/:path*", "/compose/:path*", "/settings/:path*", "/activity/:path*"],
+  matcher: ["/api/:path*", "/inbox/:path*", "/compose/:path*", "/settings/:path*", "/activity/:path*"],
 };
