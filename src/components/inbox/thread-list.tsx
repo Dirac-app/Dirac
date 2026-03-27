@@ -93,16 +93,16 @@ function ThreadRow({
 
   const triageLabel = triage ? TRIAGE_LABELS[triage] : thread.isUnread ? "Needs review" : "No action";
   const statusTone = isDone
-    ? "text-emerald-700 dark:text-emerald-400 bg-emerald-500/10"
+    ? "text-teal-600/80    dark:text-teal-300/70    bg-teal-500/8    dark:bg-teal-400/10"
     : isSnoozed
-      ? "text-amber-700 dark:text-amber-400 bg-amber-500/10"
+      ? "text-amber-600/80  dark:text-amber-300/70  bg-amber-500/8   dark:bg-amber-400/10"
       : triage === "needs_reply"
-        ? "text-blue-700 dark:text-blue-400 bg-blue-500/10"
+        ? "text-sky-600/80    dark:text-sky-300/70    bg-sky-500/8     dark:bg-sky-400/10"
         : triage === "waiting_on"
-          ? "text-violet-700 dark:text-violet-400 bg-violet-500/10"
+          ? "text-indigo-500/80 dark:text-indigo-300/70 bg-indigo-500/8  dark:bg-indigo-400/10"
           : triage === "automated"
-            ? "text-slate-600 dark:text-slate-400 bg-slate-500/10"
-            : "text-muted-foreground bg-muted";
+            ? "text-zinc-500/70   dark:text-zinc-400/60   bg-zinc-500/6    dark:bg-zinc-400/8"
+            : "text-muted-foreground/70 bg-muted/60";
 
   const statusLabel = isDone
     ? "Done"
@@ -127,8 +127,8 @@ function ThreadRow({
     allBadges.push({
       label: secondaryBadge,
       color: thread.isUrgent
-        ? "bg-red-500/10 text-red-600 dark:text-red-400"
-        : "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+        ? "bg-rose-500/8 dark:bg-rose-400/10 text-rose-600/80 dark:text-rose-300/70"
+        : "bg-amber-500/8 dark:bg-amber-400/10 text-amber-600/80 dark:text-amber-300/70",
     });
   }
 
@@ -451,22 +451,22 @@ export function ThreadList() {
           >
             {f.label}
             {f.value === "needs_reply" && needsReplyCount > 0 && (
-              <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-500 px-1 text-[10px] font-semibold text-white">
+              <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-500/15 dark:bg-sky-400/15 px-1 text-[10px] font-medium text-sky-600/90 dark:text-sky-300/80">
                 {needsReplyCount}
               </span>
             )}
             {f.value === "unread" && unreadCount > 0 && (
-              <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary/80 px-1 text-[10px] font-semibold text-primary-foreground">
+              <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-zinc-500/12 dark:bg-zinc-400/12 px-1 text-[10px] font-medium text-zinc-600/80 dark:text-zinc-300/70">
                 {unreadCount}
               </span>
             )}
             {f.value === "urgent" && urgentCount > 0 && (
-              <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
+              <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500/15 dark:bg-rose-400/15 px-1 text-[10px] font-medium text-rose-600/90 dark:text-rose-300/80">
                 {urgentCount}
               </span>
             )}
             {f.value === "waiting_on" && waitingCount > 0 && (
-              <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold text-white">
+              <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-indigo-500/15 dark:bg-indigo-400/15 px-1 text-[10px] font-medium text-indigo-600/90 dark:text-indigo-300/80">
                 {waitingCount}
               </span>
             )}

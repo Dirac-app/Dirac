@@ -23,12 +23,12 @@ export const FOUNDER_CATEGORY_LABELS: Record<FounderCategory, string> = {
 };
 
 export const FOUNDER_CATEGORY_COLORS: Record<FounderCategory, string> = {
-  investor: "text-purple-600 bg-purple-500/10",
-  customer: "text-emerald-600 bg-emerald-500/10",
-  vendor: "text-blue-600 bg-blue-500/10",
-  outreach: "text-amber-600 bg-amber-500/10",
-  automated: "text-gray-500 bg-gray-500/10",
-  personal: "text-pink-600 bg-pink-500/10",
+  investor:  "text-indigo-500/90  dark:text-indigo-300/80  bg-indigo-500/8  dark:bg-indigo-400/10",
+  customer:  "text-teal-600/90    dark:text-teal-300/80    bg-teal-500/8    dark:bg-teal-400/10",
+  vendor:    "text-sky-600/90     dark:text-sky-300/80     bg-sky-500/8     dark:bg-sky-400/10",
+  outreach:  "text-orange-500/90  dark:text-orange-300/80  bg-orange-500/8  dark:bg-orange-400/10",
+  automated: "text-zinc-500/80    dark:text-zinc-400/70    bg-zinc-500/8    dark:bg-zinc-400/10",
+  personal:  "text-rose-500/90    dark:text-rose-300/80    bg-rose-500/8    dark:bg-rose-400/10",
 };
 
 // ─── Commitments (Direction A.3) ────────────────────────
