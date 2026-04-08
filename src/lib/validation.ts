@@ -75,11 +75,26 @@ const ContextThreadSchema = z.object({
   lastMessageAt: z.string().max(100).optional(),
 });
 
+const InboxThreadSchema = z.object({
+  threadId:      z.string().max(255),
+  subject:       z.string().max(998),
+  from:          z.string().max(500),
+  snippet:       z.string().max(500).optional(),
+  lastMessageAt: z.string().max(100).optional(),
+  triage:        z.string().max(50).optional(),
+  category:      z.string().max(50).optional(),
+  topics:        z.array(z.string().max(50)).max(10).optional(),
+  isUrgent:      z.boolean().optional(),
+  isUnread:      z.boolean().optional(),
+  isStarred:     z.boolean().optional(),
+});
+
 export const AiChatSchema = z.object({
-  message: z.string().min(1).max(10_000),
-  context: z.array(ContextThreadSchema).max(50).optional(),
-  toneProfile: ToneProfileSchema.nullable().optional(),
-  model: z.string().max(200).optional(),
+  message:      z.string().min(1).max(10_000),
+  context:      z.array(ContextThreadSchema).max(50).optional(),
+  inboxContext: z.array(InboxThreadSchema).max(100).optional(),
+  toneProfile:  ToneProfileSchema.nullable().optional(),
+  preset:       z.string().max(20).optional(),
 });
 
 // ── Helper ───────────────────────────────────────────────────────────────────

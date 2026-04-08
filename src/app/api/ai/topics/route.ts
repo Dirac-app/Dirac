@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { FAST_MODEL } from "@/lib/model-config";
+import { rateLimiters, rateLimitResponse } from "@/lib/rate-limit";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -12,29 +14,31 @@ const VALID_TAGS = [
 
 const SYSTEM_PROMPT = `You assign topic tags to email threads. For each thread, pick 1-2 tags from this EXACT list (use underscore versions):
 
-billing — Invoices, payments, subscriptions, pricing
-security — Security alerts, password resets, 2FA, breaches
-onboarding — Welcome emails, setup guides, getting started
-support — Help requests, bug reports, troubleshooting
-feedback — User feedback, reviews, NPS, surveys
-meeting — Calendar invites, scheduling, availability
-legal — Contracts, terms, NDAs, compliance
-hiring — Job applications, recruiting, interviews
-fundraising — Pitch decks, term sheets, investor updates
-shipping — Order confirmations, tracking, delivery
-marketing — Newsletters, promotions, product updates
-ci_cd — Build notifications, deploy alerts, test results
-monitoring — Uptime alerts, error reports, performance
-access — Account access, permissions, API keys, invites
-announcement — Product launches, company news, policy changes
-intro — Introductions, referrals, networking
-follow_up — Follow-ups, reminders, check-ins
-personal — Non-business, casual, social
+billing — Invoices, payments, subscriptions, pricing, receipts, charges
+security — Security alerts, password resets, 2FA, breaches, unauthorized access
+onboarding — Welcome emails, setup guides, getting started flows
+support — Help requests, bug reports, troubleshooting, customer issues
+feedback — User feedback, reviews, NPS surveys, feature requests
+meeting — Calendar invites, scheduling, availability, video calls
+legal — Contracts, terms, NDAs, compliance, GDPR, policies
+hiring — Job applications, recruiting, interviews, team growth
+fundraising — Pitch decks, term sheets, investor updates, cap table
+shipping — Order confirmations, tracking numbers, delivery notifications
+marketing — Newsletters, promotional emails, product update digests, "unsubscribe" emails
+ci_cd — Build notifications, deploy alerts, test results, pipeline failures
+monitoring — Uptime alerts, error reports, performance warnings, crash reports
+access — Account access, permissions, API keys, invite links, login alerts
+announcement — Product launches, company news, policy changes, platform updates
+intro — Introductions, referrals, networking, first contact
+follow_up — Follow-ups, reminders, check-ins, nudges
+personal — Non-business, casual conversation, social, friends/family
 
 Rules:
 - Pick ONLY from the list above. Do NOT invent new tags.
-- Use the exact strings shown (e.g. "ci_cd" not "CI/CD", "follow_up" not "follow-up").
+- Use the exact strings shown (e.g. "ci_cd" not "CI/CD").
 - Assign 1-2 tags per thread. Most threads need only 1.
+- If the subject or snippet mentions "Unsubscribe", "newsletter", "digest", "weekly round-up" → use "marketing".
+- If forwarded: tag based on the ORIGINAL email's topic, not the forwarding message.
 - Return ONLY a JSON array (no markdown fences):
 [{"threadId": "...", "topics": ["billing"]}]`;
 
@@ -48,6 +52,9 @@ export async function POST(request: NextRequest) {
   if (!apiKey) {
     return NextResponse.json({ error: "AI not configured" }, { status: 503 });
   }
+
+  const rl = rateLimiters.background.check(session.userId ?? session.user?.email ?? "anonymous");
+  if (!rl.ok) return rateLimitResponse(rl);
 
   const body = await request.json();
   if (!body.threads?.length) {
@@ -73,7 +80,7 @@ export async function POST(request: NextRequest) {
         "X-Title": "Dirac",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.0-flash-001",
+        model: FAST_MODEL,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: `Assign topic tags to these threads:\n\n${threadsText}` },

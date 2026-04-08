@@ -11,15 +11,21 @@ export type FounderCategory =
   | "vendor"
   | "outreach"
   | "automated"
-  | "personal";
+  | "personal"
+  | "team"
+  | "recruiter"
+  | "pr_media";
 
 export const FOUNDER_CATEGORY_LABELS: Record<FounderCategory, string> = {
-  investor: "Investor",
-  customer: "Customer",
-  vendor: "Vendor",
-  outreach: "Outreach",
+  investor:  "Investor",
+  customer:  "Customer",
+  vendor:    "Vendor",
+  outreach:  "Outreach",
   automated: "Automated",
-  personal: "Personal",
+  personal:  "Personal",
+  team:      "Team",
+  recruiter: "Recruiter",
+  pr_media:  "PR / Media",
 };
 
 export const FOUNDER_CATEGORY_COLORS: Record<FounderCategory, string> = {
@@ -29,7 +35,43 @@ export const FOUNDER_CATEGORY_COLORS: Record<FounderCategory, string> = {
   outreach:  "text-orange-500/90  dark:text-orange-300/80  bg-orange-500/8  dark:bg-orange-400/10",
   automated: "text-zinc-500/80    dark:text-zinc-400/70    bg-zinc-500/8    dark:bg-zinc-400/10",
   personal:  "text-rose-500/90    dark:text-rose-300/80    bg-rose-500/8    dark:bg-rose-400/10",
+  team:      "text-violet-500/90  dark:text-violet-300/80  bg-violet-500/8  dark:bg-violet-400/10",
+  recruiter: "text-amber-600/90   dark:text-amber-300/80   bg-amber-500/8   dark:bg-amber-400/10",
+  pr_media:  "text-fuchsia-500/90 dark:text-fuchsia-300/80 bg-fuchsia-500/8 dark:bg-fuchsia-400/10",
 };
+
+// ─── Dynamic category tabs ──────────────────────────────
+
+/** A user-facing inbox tab. Tabs are auto-discovered by AI and customizable. */
+export interface CategoryTab {
+  id: string;          // slug, e.g. "vc", "team", "social"
+  label: string;       // display name, e.g. "VC", "Team", "Social"
+  color: string;       // tailwind color class for accent
+  visible: boolean;    // whether to show in the tab bar
+  order: number;       // sort position
+  rules: TabRule[];    // sender-based auto-assignment rules
+}
+
+export interface TabRule {
+  type: "domain" | "address" | "name_contains";
+  value: string;       // e.g. "sequoia.com", "noreply@", "Instagram"
+}
+
+// 12 distinct tab accent colors — cycled for auto-discovered tabs
+export const TAB_COLORS = [
+  "bg-violet-500/12 text-violet-600 dark:text-violet-400",
+  "bg-sky-500/12 text-sky-600 dark:text-sky-400",
+  "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400",
+  "bg-rose-500/12 text-rose-600 dark:text-rose-400",
+  "bg-amber-500/12 text-amber-600 dark:text-amber-400",
+  "bg-indigo-500/12 text-indigo-600 dark:text-indigo-400",
+  "bg-teal-500/12 text-teal-600 dark:text-teal-400",
+  "bg-pink-500/12 text-pink-600 dark:text-pink-400",
+  "bg-cyan-500/12 text-cyan-600 dark:text-cyan-400",
+  "bg-orange-500/12 text-orange-600 dark:text-orange-400",
+  "bg-fuchsia-500/12 text-fuchsia-600 dark:text-fuchsia-400",
+  "bg-lime-500/12 text-lime-700 dark:text-lime-400",
+];
 
 // ─── Commitments (Direction A.3) ────────────────────────
 export interface Commitment {

@@ -7,6 +7,7 @@ import type {
   InboxFilter,
   TriageCategory,
   FounderCategory,
+  CategoryTab,
   Commitment,
   SnoozeState,
   RelationshipContext,
@@ -119,8 +120,15 @@ export interface AppState {
   dismissCommitment: (id: string) => void;
   // Founder categories (Direction B)
   categoryMap: Record<string, FounderCategory>;
+  setCategoryMap: (updater: (prev: Record<string, FounderCategory>) => Record<string, FounderCategory>) => void;
   categoryLoading: boolean;
   runCategorization: () => void;
+  // Dynamic category tabs
+  categoryTabMap: Record<string, string>; // threadId → tab id
+  categoryTabs: CategoryTab[];
+  setCategoryTabs: (tabs: CategoryTab[]) => void;
+  activeTab: string; // "all" or a tab id
+  setActiveTab: (id: string) => void;
   // Pattern suggestions (Direction B.3)
   patternSuggestions: PatternSuggestion[];
   dismissPattern: (id: string) => void;
@@ -131,6 +139,29 @@ export interface AppState {
   topicMap: Record<string, TopicTag[]>;
   topicLoading: boolean;
   runTopicTagging: () => void;
+  // Set aside
+  setAsideThreadIds: string[];
+  addToSetAside: (ids: string[]) => void;
+  removeFromSetAside: (id: string) => void;
+  clearSetAside: () => void;
+  // View all overlay
+  viewAllThreadIds: string[];
+  viewAllOpen: boolean;
+  openViewAll: (ids: string[]) => void;
+  closeViewAll: () => void;
+  // Clip library
+  clips: Clip[];
+  addClip: (clip: Omit<Clip, "id" | "createdAt">) => void;
+  removeClip: (id: string) => void;
+}
+
+export interface Clip {
+  id: string;
+  threadId: string;
+  threadSubject: string;
+  content: string;
+  type: "text" | "link" | "quote";
+  createdAt: string;
 }
 
 export const AppContext = createContext<AppState | null>(null);

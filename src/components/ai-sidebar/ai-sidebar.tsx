@@ -79,7 +79,7 @@ function generateChatId() {
 }
 
 function deriveChatTitle(messages: ChatMessage[]): string {
-  const firstUser = messages.find((m) => m.role === "user");
+  const firstUser = messages.find((m) => m?.role === "user");
   if (!firstUser) return "New chat";
   const text = firstUser.content.slice(0, 50);
   return text.length < firstUser.content.length ? text + "..." : text;
@@ -89,7 +89,11 @@ function loadChatSessions(): ChatSession[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(CHAT_SESSIONS_KEY);
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as ChatSession[];
+    return parsed
+      .filter(Boolean)
+      .map((s) => ({ ...s, messages: (s.messages ?? []).filter(Boolean) }));
   } catch {
     return [];
   }
@@ -156,11 +160,24 @@ export function AiSidebar() {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
 
+  // Ref so setChatMessages always reads the latest ID without stale closures
+  const activeChatIdRef = useRef<string | null>(null);
+
+  const setActiveChatIdSynced = useCallback((id: string | null) => {
+    activeChatIdRef.current = id;
+    setActiveChatId(id);
+    saveActiveChatId(id);
+  }, []);
+
   useEffect(() => {
     const loaded = loadChatSessions();
-    setSessions(loaded);
+    // Prune ghost sessions (empty or no messages) that were created by the stale-closure bug
+    const valid = loaded.filter((s) => s.messages.length > 0);
+    if (valid.length !== loaded.length) saveChatSessions(valid);
+    setSessions(valid);
     const savedId = loadActiveChatId();
-    if (savedId && loaded.some((s) => s.id === savedId)) {
+    if (savedId && valid.some((s) => s.id === savedId)) {
+      activeChatIdRef.current = savedId;
       setActiveChatId(savedId);
     }
   }, []);
@@ -171,11 +188,13 @@ export function AiSidebar() {
   const setChatMessages = useCallback(
     (updater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
       setSessions((prevSessions) => {
-        let currentId = activeChatId;
+        // Always read from the ref — never from the stale closure
+        let currentId = activeChatIdRef.current;
 
         if (!currentId) {
           currentId = generateChatId();
-          setActiveChatId(currentId);
+          activeChatIdRef.current = currentId;   // update ref immediately
+          setActiveChatId(currentId);            // schedule state update
           saveActiveChatId(currentId);
         }
 
@@ -185,7 +204,7 @@ export function AiSidebar() {
         const nextMessages =
           typeof updater === "function" ? updater(prevMessages) : updater;
 
-        const title = deriveChatTitle(nextMessages);
+        const title = deriveChatTitle(nextMessages.filter(Boolean));
 
         const updatedSession: ChatSession = existing
           ? { ...existing, messages: nextMessages, title, updatedAt: now }
@@ -199,21 +218,19 @@ export function AiSidebar() {
         return next;
       });
     },
-    [activeChatId],
+    [], // no dependency on activeChatId — reads from ref instead
   );
 
   const handleNewChat = useCallback(() => {
     const id = generateChatId();
-    setActiveChatId(id);
-    saveActiveChatId(id);
+    setActiveChatIdSynced(id);
     setHistoryOpen(false);
-  }, []);
+  }, [setActiveChatIdSynced]);
 
   const handleSwitchChat = useCallback((id: string) => {
-    setActiveChatId(id);
-    saveActiveChatId(id);
+    setActiveChatIdSynced(id);
     setHistoryOpen(false);
-  }, []);
+  }, [setActiveChatIdSynced]);
 
   const handleDeleteChat = useCallback(
     (id: string) => {
@@ -223,11 +240,10 @@ export function AiSidebar() {
         return next;
       });
       if (activeChatId === id) {
-        setActiveChatId(null);
-        saveActiveChatId(null);
+        setActiveChatIdSynced(null);
       }
     },
-    [activeChatId],
+    [activeChatId, setActiveChatIdSynced],
   );
 
   const [input, setInput] = useState("");
@@ -321,8 +337,9 @@ export function AiSidebar() {
             body: JSON.stringify({
               message: query,
               context: threadSummaries.length > 0 ? threadSummaries : undefined,
+              inboxContext: buildInboxOverview(),
               toneProfile: toneProfile ?? undefined,
-              model: localStorage.getItem("dirac-ai-model") || undefined,
+              preset: localStorage.getItem("dirac-ai-preset") || undefined,
             }),
           });
 
@@ -387,6 +404,32 @@ export function AiSidebar() {
       return next;
     });
   }, [pendingAiQuery, aiSidebarOpen, threads, toneProfile, setPendingAiQuery, categoryMap, triageMap]);
+
+  // ─── Build inbox overview (always included in every message) ─────────────
+  const buildInboxOverview = useCallback(() => {
+    return threads
+      .slice()
+      .sort((a, b) => {
+        // Sort: urgent first, then unread, then most recent
+        if (a.isUrgent !== b.isUrgent) return a.isUrgent ? -1 : 1;
+        if (a.isUnread !== b.isUnread) return a.isUnread ? -1 : 1;
+        return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime();
+      })
+      .slice(0, 80)
+      .map((t) => ({
+        threadId:      t.id,
+        subject:       t.subject,
+        from:          t.participants[0]?.name ?? t.participants[0]?.email ?? "Unknown",
+        snippet:       t.snippet?.slice(0, 120),
+        lastMessageAt: t.lastMessageAt,
+        triage:        triageMap[t.id],
+        category:      categoryMap[t.id],
+        topics:        topicMap[t.id] ?? [],
+        isUrgent:      t.isUrgent,
+        isUnread:      t.isUnread,
+        isStarred:     t.isStarred,
+      }));
+  }, [threads, triageMap, categoryMap, topicMap]);
 
   // ─── Build context payload ────────────────────────────
   const buildContextPayload = async () => {
@@ -458,8 +501,9 @@ export function AiSidebar() {
         body: JSON.stringify({
           message: prompt,
           context: fullContext.length > 0 ? fullContext : undefined,
+          inboxContext: buildInboxOverview(),
           toneProfile: toneProfile ?? undefined,
-          model: localStorage.getItem("dirac-ai-model") || undefined,
+          preset: localStorage.getItem("dirac-ai-preset") || undefined,
         }),
       });
 
@@ -792,8 +836,10 @@ export function AiSidebar() {
 
   const nonEmptySessions = sessions.filter((s) => s.messages.length > 0);
 
+  const isThreadOpen = !!selectedThreadId;
+
   return (
-    <div className="dirac-panel ai-panel-glow flex w-80 flex-col overflow-hidden">
+    <div className={cn("dirac-panel ai-panel-glow flex flex-col overflow-hidden transition-[width] duration-200", isThreadOpen ? "w-96" : "w-80")}>
       {/* ─── Header ─────────────────────────────────────── */}
       <div className="ai-glow-header flex h-[49px] items-center justify-between border-b border-border px-3">
         <div className="relative flex items-center gap-2 min-w-0" ref={historyRef}>
@@ -1596,6 +1642,20 @@ function ActionsBlock({
 
 // ─── Results Block (search results) ─────────────────────
 
+const TRIAGE_LABELS: Record<string, string> = {
+  needs_reply: "Needs reply",
+  waiting_on: "Waiting on",
+  fyi: "FYI",
+  automated: "Automated",
+};
+
+const TRIAGE_COLORS: Record<string, string> = {
+  needs_reply: "text-sky-600 dark:text-sky-400 bg-sky-500/10",
+  waiting_on:  "text-amber-600 dark:text-amber-400 bg-amber-500/10",
+  fyi:         "text-zinc-500 bg-zinc-500/10",
+  automated:   "text-zinc-400 bg-zinc-500/8",
+};
+
 function ResultsBlock({
   items,
   onViewThread,
@@ -1604,30 +1664,55 @@ function ResultsBlock({
   onViewThread: (threadId: string, subject?: string, from?: string) => void;
 }) {
   return (
-    <div className="mr-2 overflow-hidden rounded-lg border border-blue-500/20">
-      <div className="border-b border-blue-500/10 bg-blue-500/5 px-3 py-1.5">
-        <span className="text-[10px] font-medium uppercase tracking-wider text-blue-600/70">
-          {items.length} result{items.length !== 1 ? "s" : ""}
+    <div className="mr-2 overflow-hidden rounded-xl border border-border/60">
+      <div className="border-b border-border/50 bg-muted/40 px-3 py-1.5 flex items-center gap-1.5">
+        <Mail className="h-3 w-3 text-muted-foreground/60" />
+        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">
+          {items.length} thread{items.length !== 1 ? "s" : ""}
         </span>
       </div>
 
-      <div className="bg-muted/30 divide-y divide-border/50">
+      <div className="divide-y divide-border/40">
         {items.map((item, i) => (
           <button
             key={i}
             onClick={() => onViewThread(item.threadId, item.subject, item.from)}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-accent/50"
+            className="group flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-accent/40"
           >
-            <Mail className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            {/* Urgency / avatar dot */}
+            <div className={cn(
+              "mt-0.5 h-2 w-2 shrink-0 rounded-full",
+              item.isUrgent ? "bg-rose-500" : "bg-muted-foreground/20",
+            )} />
+
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[12px] font-medium text-foreground">
-                {item.subject}
-              </p>
-              <p className="truncate text-[11px] text-muted-foreground">
-                {item.from} &middot; {item.reason}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <p className="truncate text-[12px] font-medium text-foreground leading-snug">
+                  {item.subject}
+                </p>
+                {item.isUrgent && (
+                  <span className="shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-rose-600 bg-rose-500/10">
+                    Urgent
+                  </span>
+                )}
+                {item.triage && TRIAGE_LABELS[item.triage] && !item.isUrgent && (
+                  <span className={cn(
+                    "shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide",
+                    TRIAGE_COLORS[item.triage] ?? "text-muted-foreground bg-muted",
+                  )}>
+                    {TRIAGE_LABELS[item.triage]}
+                  </span>
+                )}
+              </div>
+              <p className="truncate text-[11px] text-muted-foreground mt-0.5">
+                {item.from}
+                {item.reason && (
+                  <span className="text-muted-foreground/60"> · {item.reason}</span>
+                )}
               </p>
             </div>
-            <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground/30" />
+
+            <ArrowRight className="h-3.5 w-3.5 mt-0.5 shrink-0 text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors" />
           </button>
         ))}
       </div>
@@ -1702,7 +1787,7 @@ function SidebarIdleState({
     fetch("/api/ai/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: prompt, model: localStorage.getItem("dirac-ai-model") || undefined }),
+      body: JSON.stringify({ message: prompt, preset: localStorage.getItem("dirac-ai-preset") || undefined }),
     })
       .then(async (res) => {
         if (!res.ok || !res.body) return;
@@ -1859,17 +1944,14 @@ function SidebarIdleState({
             Thread snapshot
           </p>
           {snapshotLoading && !aiSnapshot && (
-            <div className="flex items-center gap-1.5">
-              <span className="inline-flex gap-0.5">
-                <span className="h-1 w-1 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:0ms]" />
-                <span className="h-1 w-1 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:150ms]" />
-                <span className="h-1 w-1 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:300ms]" />
-              </span>
-              <span className="text-[11px] text-muted-foreground/50">Reading thread…</span>
+            <div className="space-y-1.5 animate-pulse mt-0.5">
+              <div className="h-2.5 w-full rounded-md bg-muted/70" />
+              <div className="h-2.5 w-4/5 rounded-md bg-muted/55" />
+              <div className="h-2.5 w-3/5 rounded-md bg-muted/40" />
             </div>
           )}
           {aiSnapshot && (
-            <p className="text-[12px] leading-5 text-foreground whitespace-pre-wrap">{aiSnapshot}</p>
+            <p className="text-[12px] leading-[1.55] text-foreground/90 whitespace-pre-wrap">{aiSnapshot}</p>
           )}
         </div>
       )}

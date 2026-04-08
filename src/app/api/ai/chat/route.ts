@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth-guard";
 import { validateBody, AiChatSchema } from "@/lib/validation";
 import { getModelForUser, getApiKeyForUser } from "@/lib/user-db";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
+import { rateLimiters, rateLimitResponse } from "@/lib/rate-limit";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const APP_URL = () => process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
@@ -47,7 +48,9 @@ interface RequestBody {
   toneProfile?: ToneProfile | null;
 }
 
-const SYSTEM_PROMPT = `You are Dirac, an AI communication assistant. You help users draft replies, compose new emails, sort/organize their inbox, summarize threads, and extract action items — all from one sidebar.
+const SYSTEM_PROMPT = `You are Dirac, an AI communication assistant embedded in an email client for developers and founders.
+
+You always have automatic access to the user's full inbox overview (provided as structured data before each message). Use it proactively — NEVER tell the user to "add threads as context" for inbox-level questions. You can answer questions like "what's urgent today?", "any failed builds?", "what payments are overdue?" directly from the inbox overview.
 
 ## Core rules
 - Be concise and direct. Default output ≤ ~120 words unless the user asks for detail.
@@ -132,16 +135,17 @@ For search queries, wrap matching threads in a JSON block labeled "results":
 
 \`\`\`results
 [
-  { "threadId": "abc123", "subject": "Project proposal", "from": "Sarah", "reason": "Matches sender filter" },
-  { "threadId": "def456", "subject": "Invoice #42", "from": "Netlify", "reason": "From Netlify" }
+  { "threadId": "abc123", "subject": "Project proposal", "from": "Sarah", "reason": "Needs reply — unanswered for 3 days", "triage": "needs_reply" },
+  { "threadId": "def456", "subject": "Invoice #42", "from": "Netlify", "reason": "Billing issue, urgent", "triage": "needs_reply", "isUrgent": true }
 ]
 \`\`\`
 
 Rules for results:
-- Use "results" when the user's intent is to VIEW or FIND threads — NOT to modify them.
-- Include threadId, subject, from (sender name), and a brief reason why it matched.
-- CRITICAL: The threadId MUST be copied EXACTLY from the context threads provided. NEVER invent, guess, or fabricate a threadId. If a thread isn't in the provided context, do NOT include it.
-- After the results block, you may ask "What would you like to do with these?" — but do NOT auto-generate actions.
+- Use "results" WHENEVER you reference, list, or mention specific threads — even in informational or summarizing responses. If you're about to name or describe a thread, put it in a results block instead.
+- Include threadId, subject, from (sender name), and a brief reason why it matched. Optionally include "triage" and "isUrgent": true if you know them from the inbox overview.
+- CRITICAL: The threadId MUST be copied EXACTLY from the inbox overview or pinned context threads. NEVER invent, guess, or fabricate a threadId.
+- After the results block, you may add a brief plain-text note (e.g. "These all need a reply today.").
+- NEVER list threads as plain prose (like "1. Subject — from Sender"). Always use a results block so the user can click through.
 - NEVER produce an "actions" block when the user only asked to find/show/list. The user must explicitly request an action.
 
 ## Actions (sorting, organizing, bulk operations)
@@ -160,9 +164,9 @@ Available actions: "star", "unstar", "mark_read", "mark_unread", "mark_urgent", 
 
 Rules for actions:
 - Always include the "subject" field so the user can see which thread each action applies to.
-- CRITICAL: The threadId MUST be copied EXACTLY from the context threads provided. NEVER invent or fabricate a threadId.
+- CRITICAL: The threadId MUST be copied EXACTLY from the inbox overview or pinned context threads. NEVER invent or fabricate a threadId.
 - You may include a brief summary before the actions block explaining what you're doing.
-- For broad requests like "archive all newsletters", act on matching threads from the context. If no threads are in context, tell the user to add the relevant threads as context first.
+- For broad requests like "archive all newsletters", act on matching threads from the inbox overview or pinned context.
 - If the user asks to sort/organize but it's unclear what action to take, ask MCQs first.
 - CRITICAL: If the user says "find" or "show" — use "results", NOT "actions". Only use "actions" when the user states an action verb.
 
@@ -179,12 +183,16 @@ For batch queries:
 4. If the query asks for DRAFTS for multiple threads, produce multiple "draft" blocks, each preceded by the thread subject.
 5. Always show a confirmation step — list what will be affected before acting.
 
-Thread metadata available in context:
+Inbox overview metadata fields:
 - "category": investor, customer, vendor, outreach, automated, personal
 - "triage": needs_reply, waiting_on, fyi, automated
+- "topics": billing, security, onboarding, support, feedback, meeting, legal, hiring, fundraising, shipping, marketing, ci_cd, monitoring, access, announcement, intro, follow_up, personal
+- "isUrgent": true/false — flagged as urgent
+- "isUnread": true/false — not yet read
+- "isStarred": true/false — starred by user
 - "lastMessageAt": ISO date of the last message
 
-Use this metadata to filter threads for batch operations. When the user says "customer emails", filter by category="customer". When they say "unanswered", filter by triage="needs_reply".
+Use this metadata to filter threads for batch operations. When the user says "customer emails", filter by category="customer". When they say "unanswered", filter by triage="needs_reply". When they say "failed builds" or "CI/CD issues", filter by topics containing "ci_cd". When they say "payments" or "billing", filter by topics containing "billing".
 
 ## Other response shapes
 - **Summary**: tight bullets — what changed, what needs reply.
@@ -200,6 +208,9 @@ For these, use plain text (no special fences needed).`;
 export async function POST(request: NextRequest) {
   const guard = await requireSession();
   if (guard.error) return guard.response;
+
+  const rl = rateLimiters.chat.check(guard.userId ?? "anonymous");
+  if (!rl.ok) return rateLimitResponse(rl);
 
   const apiKey = await getApiKeyForUser(guard.userId!).catch(() => null) ?? process.env.OPENROUTER_API_KEY ?? null;
 
@@ -280,7 +291,34 @@ export async function POST(request: NextRequest) {
 
     llmMessages.push({
       role: "system",
-      content: `Here are the conversation threads the user is referencing:\n\n${contextText}`,
+      content: `Here are the conversation threads the user is referencing (full message bodies):\n\n${contextText}`,
+    });
+  }
+
+  // Inject full inbox overview (lightweight summaries of all threads)
+  if (body.inboxContext && body.inboxContext.length > 0) {
+    const sanitize = (s: string) =>
+      s.replace(/\0/g, "").replace(/<\/?thread_content>/gi, "");
+
+    const rows = body.inboxContext
+      .map((t) => {
+        const flags: string[] = [];
+        if (t.isUrgent)  flags.push("URGENT");
+        if (t.isUnread)  flags.push("unread");
+        if (t.isStarred) flags.push("starred");
+        const flagStr  = flags.length > 0 ? ` [${flags.join(", ")}]` : "";
+        const topics   = t.topics?.length ? ` topics=${t.topics.join(",")}` : "";
+        const cat      = t.category ? ` cat=${t.category}` : "";
+        const triage   = t.triage   ? ` triage=${t.triage}` : "";
+        const date     = t.lastMessageAt ? ` date=${t.lastMessageAt.slice(0, 10)}` : "";
+        const snippet  = t.snippet ? `  "${sanitize(t.snippet).slice(0, 120)}"` : "";
+        return `[${t.threadId}]${flagStr} From: ${sanitize(t.from)} | ${sanitize(t.subject)}${cat}${triage}${topics}${date}${snippet}`;
+      })
+      .join("\n");
+
+    llmMessages.push({
+      role: "system",
+      content: `## Full inbox overview (${body.inboxContext.length} threads)\nUse this to answer any inbox-level questions. ThreadIds below are real and safe to use in results/actions blocks.\n\n${rows}`,
     });
   }
 
@@ -296,7 +334,7 @@ export async function POST(request: NextRequest) {
         "X-Title": "Dirac",
       },
       body: JSON.stringify({
-        model: await getModelForUser(guard.userId!, body.model),
+        model: await getModelForUser(guard.userId!, body.preset, "standard"),
         messages: llmMessages,
         stream: true,
       }),

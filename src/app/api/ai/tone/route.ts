@@ -5,6 +5,10 @@ import { getSentMessageBodies } from "@/lib/gmail";
 import { getOutlookSentMessageBodies } from "@/lib/outlook";
 import { getOutlookAccessToken } from "@/lib/outlook-token";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
+import { FAST_MODEL } from "@/lib/model-config";
+import { rateLimiters, rateLimitResponse } from "@/lib/rate-limit";
+import { FAST_MODEL } from "@/lib/model-config";
+import { rateLimiters, rateLimitResponse } from "@/lib/rate-limit";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -79,6 +83,9 @@ export async function POST() {
     );
   }
 
+  const rl = rateLimiters.background.check(session.userId ?? session.user?.email ?? "anonymous");
+  if (!rl.ok) return rateLimitResponse(rl);
+
   const emails: SentEmail[] = [];
 
   if (session.accessToken && session.gmailConnected) {
@@ -125,7 +132,7 @@ export async function POST() {
         "X-Title": "Dirac",
       },
       body: JSON.stringify({
-        model: process.env.OPENROUTER_MODEL ?? "google/gemini-2.0-flash-001",
+        model: FAST_MODEL,
         messages: [
           { role: "system", content: ANALYSIS_PROMPT },
           {

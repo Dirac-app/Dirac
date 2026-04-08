@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useSession } from "next-auth/react";
-import { AppContext, type AppState, type AiContextItem, type ToneProfile } from "@/lib/store";
+import { AppContext, type AppState, type AiContextItem, type ToneProfile, type Clip } from "@/lib/store";
 import { useToast } from "@/components/ui/toast";
 import type {
   DiracThread,
@@ -16,12 +16,14 @@ import type {
   InboxFilter,
   TriageCategory,
   FounderCategory,
+  CategoryTab,
   Commitment,
   SnoozeState,
   RelationshipContext,
   PatternSuggestion,
   TopicTag,
 } from "@/lib/types";
+import { TAB_COLORS } from "@/lib/types";
 
 // ─── Local storage helpers for starred / urgent state ────
 
@@ -159,6 +161,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (cat) setCategoryMap(JSON.parse(cat));
     } catch {}
     try {
+      const tabs = localStorage.getItem("dirac-category-tabs");
+      if (tabs) setCategoryTabsState(JSON.parse(tabs));
+    } catch {}
+    try {
+      const tabMap = localStorage.getItem("dirac-category-tab-map");
+      if (tabMap) setCategoryTabMap(JSON.parse(tabMap));
+    } catch {}
+    try {
       const p = localStorage.getItem(PATTERNS_KEY);
       if (p) setPatternSuggestions(JSON.parse(p));
     } catch {}
@@ -212,12 +222,59 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [categoryMap, setCategoryMap] = useState<Record<string, FounderCategory>>({});
   const [categoryLoading, setCategoryLoading] = useState(false);
 
+  // ─── Dynamic category tabs ────────────────────────────
+  const [categoryTabMap, setCategoryTabMap] = useState<Record<string, string>>({});
+  const [categoryTabs, setCategoryTabsState] = useState<CategoryTab[]>([]);
+  const [activeTab, setActiveTab] = useState<string>("all");
+  const TABS_KEY = "dirac-category-tabs";
+  const TAB_MAP_KEY = "dirac-category-tab-map";
+
   // ─── Pattern suggestions (Direction B.3) ────────────────
   const [patternSuggestions, setPatternSuggestions] = useState<PatternSuggestion[]>([]);
 
   // ─── Topic tags (AI-generated) ──────────────────────────
   const [topicMap, setTopicMap] = useState<Record<string, TopicTag[]>>({});
   const [topicLoading, setTopicLoading] = useState(false);
+
+  // ─── Set aside ────────────────────────────────────────
+  const [setAsideThreadIds, setSetAsideThreadIds] = useState<string[]>([]);
+  const addToSetAside = useCallback((ids: string[]) => {
+    setSetAsideThreadIds(prev => Array.from(new Set([...prev, ...ids])));
+  }, []);
+  const removeFromSetAside = useCallback((id: string) => {
+    setSetAsideThreadIds(prev => prev.filter(t => t !== id));
+  }, []);
+  const clearSetAside = useCallback(() => setSetAsideThreadIds([]), []);
+
+  // ─── View all overlay ─────────────────────────────────
+  const [viewAllThreadIds, setViewAllThreadIds] = useState<string[]>([]);
+  const [viewAllOpen, setViewAllOpen] = useState(false);
+  const openViewAll = useCallback((ids: string[]) => {
+    setViewAllThreadIds(ids);
+    setViewAllOpen(true);
+  }, []);
+  const closeViewAll = useCallback(() => setViewAllOpen(false), []);
+
+  // ─── Clip library ────────────────────────────────────
+  const CLIPS_KEY = "dirac-clips";
+  const [clips, setClips] = useState<Clip[]>(() => {
+    try { return JSON.parse(localStorage.getItem(CLIPS_KEY) ?? "[]"); } catch { return []; }
+  });
+  const addClip = useCallback((clip: Omit<Clip, "id" | "createdAt">) => {
+    const next: Clip = { ...clip, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
+    setClips(prev => {
+      const updated = [next, ...prev];
+      try { localStorage.setItem(CLIPS_KEY, JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  }, []);
+  const removeClip = useCallback((id: string) => {
+    setClips(prev => {
+      const updated = prev.filter(c => c.id !== id);
+      try { localStorage.setItem(CLIPS_KEY, JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  }, []);
 
   // ─── QoL state ────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -569,36 +626,201 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // ─── Founder categories (Direction B.1) ─────────────────
+
+  const setCategoryTabs = useCallback((tabs: CategoryTab[]) => {
+    setCategoryTabsState(tabs);
+    try { localStorage.setItem("dirac-category-tabs", JSON.stringify(tabs)); } catch {}
+  }, []);
+
+  // Deterministic pre-rules run client-side before the AI call.
+  // These patterns are so reliable that they don't need AI.
+  const preclassify = useCallback((email: string, subject: string): FounderCategory | null => {
+    const addr = email.toLowerCase();
+    const subj = subject.toLowerCase();
+
+    // No-reply / machine senders
+    const automatedAddressPatterns = [
+      "noreply", "no-reply", "no_reply", "donotreply", "do-not-reply", "do_not_reply",
+      "notifications@", "notification@", "alerts@", "alert@",
+      "newsletter@", "newsletters@", "digest@", "mailer@", "mailer-daemon",
+      "bounce@", "-bounces@", "bounces@", "postmaster@",
+      "support@github", "noreply@github", "noreply@gitlab",
+      "noreply@vercel", "noreply@netlify", "noreply@heroku",
+      "noreply@stripe", "noreply@paypal", "noreply@shopify",
+      "sendgrid", "mailchimp", "mailgun", "mandrillapp", "postmarkapp",
+      "amazonses", "amazonaws.com", "sparkpostmail",
+      "updates@", "update@", "info@", "automated@",
+    ];
+    if (automatedAddressPatterns.some((p) => addr.includes(p))) return "automated";
+
+    // Subject-line signals for newsletters / automated
+    const automatedSubjectPatterns = [
+      "unsubscribe", "weekly digest", "daily digest", "monthly digest",
+      "issue #", "issue no.", "newsletter", "you have a new message",
+      "build failed", "build succeeded", "deployment failed", "deployment succeeded",
+      "ci failed", "ci passed", "pipeline failed", "pipeline passed",
+      "your order", "order confirmation", "tracking number", "your receipt",
+      "invoice from", "payment receipt", "payment confirmation",
+      "your account", "verify your", "confirm your email",
+      "security alert", "sign-in attempt", "new login",
+    ];
+    if (automatedSubjectPatterns.some((p) => subj.includes(p))) return "automated";
+
+    return null; // defer to AI
+  }, []);
+
   const runCategorization = useCallback(async () => {
     const allThreads = [...gmailThreads, ...outlookThreads];
     if (allThreads.length === 0) return;
     setCategoryLoading(true);
+    // Derive team domain from logged-in user's email (e.g. "acme.com")
+    // Public email providers — never treat these as a "team domain"
+    const PUBLIC_DOMAINS = new Set([
+      "gmail.com", "googlemail.com",
+      "outlook.com", "hotmail.com", "live.com", "msn.com",
+      "yahoo.com", "yahoo.co.uk", "ymail.com",
+      "icloud.com", "me.com", "mac.com",
+      "proton.me", "protonmail.com",
+      "aol.com", "zoho.com",
+    ]);
+    const rawDomain = session?.user?.email?.split("@")[1]?.toLowerCase() ?? "";
+    const teamDomain = PUBLIC_DOMAINS.has(rawDomain) ? "" : rawDomain;
     try {
-      const summaries = allThreads.slice(0, 25).map((t) => ({
+      const preMap: Record<string, FounderCategory> = {};
+      const needsAi: typeof allThreads = [];
+
+      for (const t of allThreads.slice(0, 40)) {
+        const senderEmail = t.participants[0]?.email ?? "";
+        const pre = preclassify(senderEmail, t.subject);
+        if (pre) {
+          preMap[t.id] = pre;
+        } else {
+          needsAi.push(t);
+        }
+      }
+
+      const summaries = needsAi.slice(0, 30).map((t) => ({
         threadId: t.id,
         subject: t.subject,
-        snippet: t.snippet,
+        snippet: t.snippet ?? "",
         from: t.participants[0]?.email ?? "",
         fromName: t.participants[0]?.name ?? "",
+        messageCount: t.messageCount,
+        participantCount: t.participants.length,
+        isForward: /^(fwd?|fw)\s*:/i.test(t.subject),
       }));
-      const res = await fetch("/api/ai/categorize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ threads: summaries }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const map: Record<string, FounderCategory> = {};
-        for (const r of data.results ?? []) {
-          if (r.threadId && r.category) map[r.threadId] = r.category;
+
+      const map: Record<string, FounderCategory> = { ...preMap };
+      const tabMap: Record<string, string> = { ...categoryTabMap };
+
+      // Pre-classify tabs by PURPOSE, not sender brand
+      for (const t of allThreads.slice(0, 40)) {
+        if (teamDomain && t.participants[0]?.email?.endsWith(`@${teamDomain}`)) {
+          tabMap[t.id] = "team";
+          continue;
         }
-        setCategoryMap(map);
-        try { localStorage.setItem(CATEGORIES_KEY, JSON.stringify(map)); } catch {}
+        if (preMap[t.id] === "automated") {
+          const addr = (t.participants[0]?.email ?? "").toLowerCase();
+          const subj = t.subject.toLowerCase();
+
+          // CI/CD & build notifications
+          if (["github", "gitlab", "bitbucket", "vercel", "netlify", "heroku", "railway", "render", "circleci", "jenkins"].some(s => addr.includes(s))
+            || ["build", "deploy", "pipeline", "ci ", "ci/cd", "preview"].some(s => subj.includes(s))) {
+            tabMap[t.id] = "builds & deploys";
+          }
+          // Billing & receipts
+          else if (["stripe", "paypal", "mercury", "brex", "invoice", "receipt", "billing", "payment"].some(s => addr.includes(s) || subj.includes(s))) {
+            tabMap[t.id] = "receipts";
+          }
+          // Security & access
+          else if (["security", "login", "verify", "password", "2fa", "authentication", "sign-in"].some(s => subj.includes(s))) {
+            tabMap[t.id] = "security";
+          }
+          // Social media notifications
+          else if (["instagram", "twitter", "facebook", "linkedin", "tiktok", "youtube", "threads", "mastodon"].some(s => addr.includes(s))) {
+            tabMap[t.id] = "social";
+          }
+          // Newsletters & marketing
+          else if (["newsletter", "digest", "weekly", "unsubscribe", "indiehackers", "morningbrew", "substack", "mailchimp", "beehiiv"].some(s => addr.includes(s) || subj.includes(s))) {
+            tabMap[t.id] = "newsletters";
+          }
+          // Monitoring & alerts
+          else if (["sentry", "datadog", "pagerduty", "alert", "monitoring", "uptime", "incident"].some(s => addr.includes(s) || subj.includes(s))) {
+            tabMap[t.id] = "alerts";
+          }
+          // Fallback for other automated
+          else {
+            tabMap[t.id] = "notifications";
+          }
+        }
       }
+
+      if (summaries.length > 0) {
+        const existingTabNames = categoryTabs.map(tab => tab.label.toLowerCase());
+        const res = await fetch("/api/ai/categorize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ threads: summaries, teamDomain, existingTabs: existingTabNames }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          for (const r of data.results ?? []) {
+            if (r.threadId && r.category) map[r.threadId] = r.category;
+            if (r.threadId && r.tab) {
+              tabMap[r.threadId] = r.tab.toLowerCase().trim();
+            }
+          }
+        }
+      }
+
+      setCategoryMap(map);
+      setCategoryTabMap(tabMap);
+      try { localStorage.setItem(CATEGORIES_KEY, JSON.stringify(map)); } catch {}
+      try { localStorage.setItem("dirac-category-tab-map", JSON.stringify(tabMap)); } catch {}
+
+      // Auto-discover tabs from tabMap: count threads per tab, create CategoryTab for each
+      const tabCounts: Record<string, number> = {};
+      for (const tabId of Object.values(tabMap)) {
+        tabCounts[tabId] = (tabCounts[tabId] ?? 0) + 1;
+      }
+
+      // Merge with existing user-customized tabs
+      const existingById = new Map(categoryTabs.map(t => [t.id, t]));
+      const newTabs: CategoryTab[] = [];
+      const sortedTabIds = Object.entries(tabCounts)
+        .sort((a, b) => b[1] - a[1]); // most threads first
+
+      for (const [tabId, _count] of sortedTabIds) {
+        const existing = existingById.get(tabId);
+        if (existing) {
+          newTabs.push(existing);
+          existingById.delete(tabId);
+        } else {
+          newTabs.push({
+            id: tabId,
+            label: tabId.charAt(0).toUpperCase() + tabId.slice(1),
+            color: TAB_COLORS[newTabs.length % TAB_COLORS.length],
+            visible: true,
+            order: newTabs.length,
+            rules: [],
+          });
+        }
+      }
+
+      // Keep user-created tabs that have no threads yet
+      for (const leftover of existingById.values()) {
+        newTabs.push(leftover);
+      }
+
+      // Re-number order
+      newTabs.forEach((t, i) => { t.order = i; });
+
+      setCategoryTabsState(newTabs);
+      try { localStorage.setItem("dirac-category-tabs", JSON.stringify(newTabs)); } catch {}
     } catch {} finally {
       setCategoryLoading(false);
     }
-  }, [gmailThreads, outlookThreads]);
+  }, [gmailThreads, outlookThreads, session?.user?.email, preclassify, categoryTabs, categoryTabMap]);
 
   // ─── Topic tagging (AI-generated) ──────────────────────
   const runTopicTagging = useCallback(async () => {
@@ -1000,8 +1222,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setCommitments,
       dismissCommitment,
       categoryMap,
+      setCategoryMap,
       categoryLoading,
       runCategorization,
+      categoryTabMap,
+      categoryTabs,
+      setCategoryTabs,
+      activeTab,
+      setActiveTab,
       patternSuggestions: patternSuggestions.filter((p) => !p.dismissed),
       dismissPattern,
       applyPattern,
@@ -1009,6 +1237,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       topicMap,
       topicLoading,
       runTopicTagging,
+      setAsideThreadIds,
+      addToSetAside,
+      removeFromSetAside,
+      clearSetAside,
+      viewAllThreadIds,
+      viewAllOpen,
+      openViewAll,
+      closeViewAll,
+      clips,
+      addClip,
+      removeClip,
     }),
     [
       selectedThreadId,
@@ -1051,8 +1290,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setCommitments,
       dismissCommitment,
       categoryMap,
+      setCategoryMap,
       categoryLoading,
       runCategorization,
+      categoryTabMap,
+      categoryTabs,
+      setCategoryTabs,
+      activeTab,
+      setActiveTab,
       patternSuggestions,
       dismissPattern,
       applyPattern,
@@ -1060,6 +1305,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       topicMap,
       topicLoading,
       runTopicTagging,
+      setAsideThreadIds,
+      addToSetAside,
+      removeFromSetAside,
+      clearSetAside,
+      viewAllThreadIds,
+      viewAllOpen,
+      openViewAll,
+      closeViewAll,
+      clips,
+      addClip,
+      removeClip,
     ],
   );
 

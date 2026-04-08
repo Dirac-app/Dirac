@@ -161,11 +161,14 @@ function DraftRow({ item }: { item: DraftItem }) {
 }
 
 export default function ActivityPage() {
+  const [mounted, setMounted] = useState(false);
   const [sent, setSent] = useState<SentItem[]>([]);
   const [drafts, setDrafts] = useState<DraftItem[]>([]);
   const [loadingSent, setLoadingSent] = useState(true);
   const [loadingDrafts, setLoadingDrafts] = useState(true);
   const [activeTab, setActiveTab] = useState("sent");
+
+  useEffect(() => setMounted(true), []);
 
   const fetchSent = useCallback(async () => {
     setLoadingSent(true);
@@ -214,6 +217,8 @@ export default function ActivityPage() {
     const now = new Date();
     return d.toDateString() === now.toDateString();
   });
+
+  if (!mounted) return <div className="dirac-panel flex flex-1 flex-col overflow-hidden" />;
 
   return (
     <div className="dirac-panel flex flex-1 flex-col overflow-hidden">

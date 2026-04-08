@@ -46,6 +46,8 @@ export interface ResultItem {
   subject: string;
   from: string;
   reason: string;
+  triage?: string;
+  isUrgent?: boolean;
 }
 
 export interface ParsedSegment {

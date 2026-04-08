@@ -18,12 +18,14 @@ import {
   Monitor,
   Sun,
   Moon,
+  Sunrise,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { useAppState, TONE_CONTEXT_LABELS } from "@/lib/store";
 import type { ToneProfile, ConditionalTone, ToneContext } from "@/lib/store";
 
@@ -75,148 +77,117 @@ const FORMALITY_LABELS: Record<string, string> = {
 
 // ─── AI Settings Section ─────────────────────────────────
 
-interface ModelOption {
-  id: string;
-  label: string;
-  provider: string;
-  speed: "fast" | "medium" | "slow";
-  cost: "cheap" | "mid" | "expensive";
-  context: string;
-  note?: string;
-}
+import { PRESET_META, type ModelPreset, FAST_MODEL, STANDARD_MODEL } from "@/lib/model-config";
 
-const PRESET_MODELS: ModelOption[] = [
-  {
-    id: "anthropic/claude-haiku-4-4",
-    label: "Claude Haiku 4.4",
-    provider: "Anthropic",
-    speed: "fast",
-    cost: "cheap",
-    context: "200K tokens",
-    note: "Default — fast, affordable, great for email tasks",
-  },
-  {
-    id: "anthropic/claude-sonnet-4-5",
-    label: "Claude Sonnet 4.5",
-    provider: "Anthropic",
-    speed: "medium",
-    cost: "mid",
-    context: "200K tokens",
-    note: "Stronger reasoning and writing quality",
-  },
-  {
-    id: "anthropic/claude-3.5-sonnet",
-    label: "Claude 3.5 Sonnet",
-    provider: "Anthropic",
-    speed: "medium",
-    cost: "mid",
-    context: "200K tokens",
-    note: "Excellent at long-form writing and nuance",
-  },
-  {
-    id: "google/gemini-2.0-flash-001",
-    label: "Gemini 2.0 Flash",
-    provider: "Google",
-    speed: "fast",
-    cost: "cheap",
-    context: "1M tokens",
-    note: "Fast, cheap, huge context window",
-  },
-  {
-    id: "google/gemini-2.5-pro-preview-03-25",
-    label: "Gemini 2.5 Pro",
-    provider: "Google",
-    speed: "medium",
-    cost: "mid",
-    context: "1M tokens",
-    note: "Strongest reasoning from Google",
-  },
-  {
-    id: "openai/gpt-4o",
-    label: "GPT-4o",
-    provider: "OpenAI",
-    speed: "medium",
-    cost: "expensive",
-    context: "128K tokens",
-    note: "Great at structured output and function calling",
-  },
-  {
-    id: "openai/gpt-4o-mini",
-    label: "GPT-4o Mini",
-    provider: "OpenAI",
-    speed: "fast",
-    cost: "cheap",
-    context: "128K tokens",
-    note: "Fast and cheap OpenAI model",
-  },
-  {
-    id: "meta-llama/llama-3.3-70b-instruct",
-    label: "Llama 3.3 70B",
-    provider: "Meta",
-    speed: "medium",
-    cost: "cheap",
-    context: "128K tokens",
-    note: "Open source, no data retention",
-  },
-];
-
-const SPEED_COLORS = {
-  fast:   "text-green-600  bg-green-50  dark:bg-green-950/40  dark:text-green-400",
-  medium: "text-yellow-600 bg-yellow-50 dark:bg-yellow-950/40 dark:text-yellow-400",
-  slow:   "text-orange-600 bg-orange-50 dark:bg-orange-950/40 dark:text-orange-400",
-};
-
-const COST_COLORS = {
-  cheap:     "text-green-600  bg-green-50  dark:bg-green-950/40  dark:text-green-400",
-  mid:       "text-yellow-600 bg-yellow-50 dark:bg-yellow-950/40 dark:text-yellow-400",
-  expensive: "text-red-600    bg-red-50    dark:bg-red-950/40    dark:text-red-400",
-};
-
-const COST_LABEL  = { cheap: "$",  mid: "$$",  expensive: "$$$" };
-const SPEED_LABEL = { fast: "Fast", medium: "Med", slow: "Slow" };
-
-function ModelPill({ label, color }: { label: string; color: string }) {
-  return (
-    <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold ${color}`}>
-      {label}
-    </span>
-  );
-}
-
-function AiSettingsSection() {
-  const [selectedModel,    setSelectedModel]    = useState<string>("anthropic/claude-haiku-4-4");
-  const [customModel,      setCustomModel]      = useState<string>("");
-  const [aboutMe,          setAboutMe]          = useState<string>("");
-  const [modelSearch,      setModelSearch]      = useState<string>("");
-  const [saving,           setSaving]           = useState(false);
-  const [saved,            setSaved]            = useState(false);
-  const [saveError,        setSaveError]        = useState<string | null>(null);
-  const [loading,          setLoading]          = useState(true);
+function MorningBriefingSettingsSection() {
+  const [enabled, setEnabled] = useState(true);
+  const [weekdaysOnly, setWeekdaysOnly] = useState(false);
+  const [morningOnly, setMorningOnly] = useState(true);
+  const [maxItems, setMaxItems] = useState("5");
 
   useEffect(() => {
     try {
-      const savedModel = localStorage.getItem("dirac-ai-model");
+      const raw = localStorage.getItem("dirac_morning_brief_settings");
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as {
+        enabled?: boolean;
+        weekdaysOnly?: boolean;
+        morningOnly?: boolean;
+        maxItems?: number;
+      };
+      setEnabled(parsed.enabled ?? true);
+      setWeekdaysOnly(parsed.weekdaysOnly ?? false);
+      setMorningOnly(parsed.morningOnly ?? true);
+      setMaxItems(String(parsed.maxItems ?? 5));
+    } catch {}
+  }, []);
+
+  const save = useCallback((next: {
+    enabled?: boolean;
+    weekdaysOnly?: boolean;
+    morningOnly?: boolean;
+    maxItems?: number;
+  }) => {
+    try {
+      const current = {
+        enabled,
+        weekdaysOnly,
+        morningOnly,
+        maxItems: Number(maxItems) || 5,
+      };
+      localStorage.setItem("dirac_morning_brief_settings", JSON.stringify({ ...current, ...next }));
+      window.dispatchEvent(new StorageEvent("storage", { key: "dirac_morning_brief_settings" }));
+    } catch {}
+  }, [enabled, weekdaysOnly, morningOnly, maxItems]);
+
+  return (
+    <section>
+      <div className="flex items-center gap-2 mb-4">
+        <Sunrise className="h-4 w-4 text-muted-foreground" />
+        <h2 className="text-sm font-semibold text-foreground">Morning briefing</h2>
+      </div>
+      <div className="space-y-3 rounded-lg border border-border p-4">
+        <label className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-medium text-foreground">Enable morning briefing</div>
+            <p className="text-xs text-muted-foreground">Show a proactive daily plan for the most important threads.</p>
+          </div>
+          <input type="checkbox" checked={enabled} onChange={(e) => { setEnabled(e.target.checked); save({ enabled: e.target.checked }); }} />
+        </label>
+        <label className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-medium text-foreground">Only show in the morning</div>
+            <p className="text-xs text-muted-foreground">Auto-open only before midday. You can still reopen it manually.</p>
+          </div>
+          <input type="checkbox" checked={morningOnly} onChange={(e) => { setMorningOnly(e.target.checked); save({ morningOnly: e.target.checked }); }} />
+        </label>
+        <label className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-medium text-foreground">Weekdays only</div>
+            <p className="text-xs text-muted-foreground">Useful if you want the briefing to feel more like a workday ritual.</p>
+          </div>
+          <input type="checkbox" checked={weekdaysOnly} onChange={(e) => { setWeekdaysOnly(e.target.checked); save({ weekdaysOnly: e.target.checked }); }} />
+        </label>
+        <div>
+          <label className="text-xs text-muted-foreground">Max items in briefing</label>
+          <Input
+            value={maxItems}
+            onChange={(e) => setMaxItems(e.target.value)}
+            onBlur={() => save({ maxItems: Math.min(8, Math.max(3, Number(maxItems) || 5)) })}
+            className="mt-1 w-24 text-sm"
+          />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const PRESET_ORDER: ModelPreset[] = ["speed", "balanced", "quality"];
+
+function AiSettingsSection() {
+  const [preset,    setPresetState] = useState<ModelPreset>("balanced");
+  const [aboutMe,   setAboutMe]     = useState<string>("");
+  const [saving,    setSaving]      = useState(false);
+  const [saved,     setSaved]       = useState(false);
+  const [saveError, setSaveError]   = useState<string | null>(null);
+  const [loading,   setLoading]     = useState(true);
+
+  useEffect(() => {
+    try {
+      const savedPreset = localStorage.getItem("dirac-ai-preset") as ModelPreset | null;
+      if (savedPreset && PRESET_ORDER.includes(savedPreset)) setPresetState(savedPreset);
       const savedAbout = localStorage.getItem("dirac-about-me");
-      if (savedModel) {
-        const isPreset = PRESET_MODELS.some(m => m.id === savedModel);
-        if (isPreset) {
-          setSelectedModel(savedModel);
-        } else {
-          setSelectedModel("custom");
-          setCustomModel(savedModel);
-        }
-      }
       if (savedAbout) setAboutMe(savedAbout);
     } catch {}
     setLoading(false);
   }, []);
 
-  const saveSettings = useCallback((aiModel: string, aboutMeVal: string) => {
+  const persist = useCallback((nextPreset: ModelPreset, nextAbout: string) => {
     setSaving(true);
     setSaveError(null);
     try {
-      localStorage.setItem("dirac-ai-model", aiModel);
-      localStorage.setItem("dirac-about-me", aboutMeVal);
+      localStorage.setItem("dirac-ai-preset", nextPreset);
+      localStorage.setItem("dirac-about-me", nextAbout);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch {
@@ -226,30 +197,14 @@ function AiSettingsSection() {
     }
   }, []);
 
-  const handleModelSelect = (modelId: string) => {
-    setSelectedModel(modelId);
-    const activeModel = modelId === "custom" ? customModel : modelId;
-    if (activeModel) saveSettings(activeModel, aboutMe);
+  const handlePresetSelect = (p: ModelPreset) => {
+    setPresetState(p);
+    persist(p, aboutMe);
   };
 
-  const handleCustomModelBlur = () => {
-    if (customModel.trim()) saveSettings(customModel.trim(), aboutMe);
-  };
+  const handleAboutMeBlur = () => persist(preset, aboutMe);
 
-  const handleAboutMeBlur = () => {
-    const activeModel = selectedModel === "custom" ? customModel : selectedModel;
-    saveSettings(activeModel, aboutMe);
-  };
-
-  const filteredModels = modelSearch.trim()
-    ? PRESET_MODELS.filter(m =>
-        m.label.toLowerCase().includes(modelSearch.toLowerCase()) ||
-        m.id.toLowerCase().includes(modelSearch.toLowerCase()) ||
-        m.provider.toLowerCase().includes(modelSearch.toLowerCase())
-      )
-    : PRESET_MODELS;
-
-  const activeModelInfo = PRESET_MODELS.find(m => m.id === selectedModel);
+  const meta = PRESET_META[preset];
 
   return (
     <section>
@@ -269,108 +224,62 @@ function AiSettingsSection() {
 
       <div className="space-y-6">
 
-        {/* Model selector */}
+        {/* Quality preset */}
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-xs font-medium text-muted-foreground">Model</label>
-            {activeModelInfo && (
-              <span className="text-[11px] text-muted-foreground">
-                Active: <span className="font-medium text-foreground">{activeModelInfo.label}</span>
-              </span>
-            )}
-            {selectedModel === "custom" && customModel && (
-              <span className="text-[11px] text-muted-foreground">
-                Active: <span className="font-mono font-medium text-foreground">{customModel}</span>
-              </span>
-            )}
-          </div>
+          <label className="text-xs font-medium text-muted-foreground mb-2 block">Quality preset</label>
 
           {loading ? (
             <div className="flex items-center gap-2 py-4 text-xs text-muted-foreground">
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…
             </div>
           ) : (
-            <div className="space-y-2">
-              {/* Search */}
-              <Input
-                value={modelSearch}
-                onChange={e => setModelSearch(e.target.value)}
-                placeholder="Search models…"
-                className="text-xs h-8"
-              />
-
-              {/* Model list */}
-              <div className="rounded-lg border border-border overflow-hidden divide-y divide-border">
-                {filteredModels.length === 0 && (
-                  <p className="px-3 py-4 text-xs text-muted-foreground text-center">No models match</p>
-                )}
-                {filteredModels.map(m => {
-                  const isSelected = selectedModel === m.id;
+            <>
+              <div className="grid grid-cols-3 gap-2">
+                {PRESET_ORDER.map((p) => {
+                  const isSelected = preset === p;
                   return (
                     <button
-                      key={m.id}
-                      onClick={() => handleModelSelect(m.id)}
-                      className={`w-full flex items-start gap-3 px-3 py-2.5 text-left transition-colors ${
+                      key={p}
+                      onClick={() => handlePresetSelect(p)}
+                      className={cn(
+                        "flex flex-col items-center gap-1 rounded-lg border px-3 py-3 text-center transition-colors",
                         isSelected
-                          ? "bg-primary/8 dark:bg-primary/10"
-                          : "hover:bg-muted/50"
-                      }`}
+                          ? "border-primary bg-primary/8 dark:bg-primary/10"
+                          : "border-border hover:bg-muted/50",
+                      )}
                     >
-                      {/* Radio dot */}
-                      <div className={`mt-0.5 h-3.5 w-3.5 shrink-0 rounded-full border-2 transition-colors ${
-                        isSelected ? "border-primary bg-primary" : "border-muted-foreground/30"
-                      }`} />
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`text-xs font-medium ${isSelected ? "text-foreground" : "text-foreground"}`}>
-                            {m.label}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground/50">{m.provider}</span>
-                          <div className="flex items-center gap-1 ml-auto">
-                            <ModelPill label={SPEED_LABEL[m.speed]} color={SPEED_COLORS[m.speed]} />
-                            <ModelPill label={COST_LABEL[m.cost]} color={COST_COLORS[m.cost]} />
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3 mt-0.5">
-                          {m.note && (
-                            <p className="text-[11px] text-muted-foreground truncate">{m.note}</p>
-                          )}
-                          <span className="text-[10px] text-muted-foreground/40 shrink-0 ml-auto">{m.context}</span>
-                        </div>
-                      </div>
+                      <div className={cn(
+                        "h-3 w-3 rounded-full border-2 transition-colors",
+                        isSelected ? "border-primary bg-primary" : "border-muted-foreground/30",
+                      )} />
+                      <span className={cn(
+                        "text-xs font-medium",
+                        isSelected ? "text-foreground" : "text-muted-foreground",
+                      )}>
+                        {PRESET_META[p].label}
+                      </span>
                     </button>
                   );
                 })}
-
-                {/* Custom slug */}
-                <button
-                  onClick={() => handleModelSelect("custom")}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${
-                    selectedModel === "custom" ? "bg-primary/8 dark:bg-primary/10" : "hover:bg-muted/50"
-                  }`}
-                >
-                  <div className={`h-3.5 w-3.5 shrink-0 rounded-full border-2 transition-colors ${
-                    selectedModel === "custom" ? "border-primary bg-primary" : "border-muted-foreground/30"
-                  }`} />
-                  <span className="text-xs font-medium text-foreground">Custom slug</span>
-                  <span className="text-[10px] text-muted-foreground/50 ml-auto">
-                    any model on openrouter.ai/models
-                  </span>
-                </button>
               </div>
 
-              {selectedModel === "custom" && (
-                <Input
-                  value={customModel}
-                  onChange={e => setCustomModel(e.target.value)}
-                  onBlur={handleCustomModelBlur}
-                  placeholder="e.g. deepseek/deepseek-r1-distill-qwen-32b"
-                  className="text-xs font-mono"
-                  autoFocus
-                />
-              )}
-            </div>
+              {/* Description + model detail */}
+              <div className="mt-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5 space-y-2">
+                <p className="text-[11px] text-muted-foreground">{meta.description}</p>
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-muted-foreground/70">Background tasks</span>
+                    <span className="font-mono text-foreground/80">{FAST_MODEL.split("/")[1]}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-muted-foreground/70">Drafts &amp; chat</span>
+                    <span className="font-mono text-foreground/80">
+                      {preset === "speed" ? FAST_MODEL.split("/")[1] : STANDARD_MODEL.split("/")[1]}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </>
           )}
         </div>
 
@@ -747,6 +656,213 @@ function ToneSection() {
   );
 }
 
+// ─── Inbox sections settings ─────────────────────────────
+
+import {
+  EXTRA_SECTION_LABELS,
+  type ExtraSection,
+} from "@/components/inbox/thread-list";
+
+const ALL_SECTIONS: ExtraSection[] = ["urgent", "waiting_on", "needs_reply", "done", "snoozed"];
+const SECTIONS_LS_KEY_SETTINGS = "dirac-inbox-sections";
+
+const SECTION_DESCRIPTIONS: Record<ExtraSection, string> = {
+  urgent:      "Threads you've marked as high priority",
+  waiting_on:  "Threads where you've replied and are waiting for a response",
+  needs_reply: "Threads the AI has flagged as needing your reply",
+  done:        "Threads you've marked as done",
+  snoozed:     "Threads you've snoozed for later",
+};
+
+function InboxSectionsSection() {
+  const [enabled, setEnabled] = useState<ExtraSection[]>([]);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(SECTIONS_LS_KEY_SETTINGS);
+      if (saved) setEnabled(JSON.parse(saved));
+    } catch {}
+  }, []);
+
+  const toggle = (section: ExtraSection) => {
+    setEnabled(prev => {
+      const next = prev.includes(section)
+        ? prev.filter(s => s !== section)
+        : [...prev, section];
+      try { localStorage.setItem(SECTIONS_LS_KEY_SETTINGS, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+
+  return (
+    <section>
+      <div className="flex items-center gap-2 mb-1">
+        <h2 className="text-sm font-semibold text-foreground">Inbox sections</h2>
+      </div>
+      <p className="text-xs text-muted-foreground/70 mb-4">
+        "New for you" always shows unread threads. Add extra sections below to surface specific thread types at a glance.
+      </p>
+      <div className="flex flex-col gap-2">
+        {ALL_SECTIONS.map(section => (
+          <label key={section} className="flex items-start gap-3 cursor-pointer group">
+            <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border bg-background transition-colors group-hover:border-primary/50">
+              <input
+                type="checkbox"
+                className="sr-only"
+                checked={enabled.includes(section)}
+                onChange={() => toggle(section)}
+              />
+              {enabled.includes(section) && (
+                <div className="h-2.5 w-2.5 rounded-sm bg-primary" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">{EXTRA_SECTION_LABELS[section]}</p>
+              <p className="text-xs text-muted-foreground/60">{SECTION_DESCRIPTIONS[section]}</p>
+            </div>
+          </label>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ─── Category tabs settings ─────────────────────────────
+
+function CategoryTabsSection() {
+  const { categoryTabs, setCategoryTabs } = useAppState();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState("");
+
+  const toggleVisible = (id: string) => {
+    setCategoryTabs(categoryTabs.map(t =>
+      t.id === id ? { ...t, visible: !t.visible } : t,
+    ));
+  };
+
+  const startRename = (tab: { id: string; label: string }) => {
+    setEditingId(tab.id);
+    setEditLabel(tab.label);
+  };
+
+  const saveRename = () => {
+    if (!editingId || !editLabel.trim()) { setEditingId(null); return; }
+    setCategoryTabs(categoryTabs.map(t =>
+      t.id === editingId ? { ...t, label: editLabel.trim() } : t,
+    ));
+    setEditingId(null);
+  };
+
+  const moveTab = (id: string, dir: -1 | 1) => {
+    const idx = categoryTabs.findIndex(t => t.id === id);
+    const swapIdx = idx + dir;
+    if (swapIdx < 0 || swapIdx >= categoryTabs.length) return;
+    const next = [...categoryTabs];
+    [next[idx], next[swapIdx]] = [next[swapIdx], next[idx]];
+    next.forEach((t, i) => { t.order = i; });
+    setCategoryTabs(next);
+  };
+
+  const deleteTab = (id: string) => {
+    setCategoryTabs(categoryTabs.filter(t => t.id !== id));
+  };
+
+  if (categoryTabs.length === 0) {
+    return (
+      <section>
+        <div className="flex items-center gap-2 mb-1">
+          <h2 className="text-sm font-semibold text-foreground">Category tabs</h2>
+        </div>
+        <p className="text-xs text-muted-foreground/70">
+          Category tabs will appear once Dirac categorizes your emails. They&apos;re auto-detected from your inbox patterns.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section>
+      <div className="flex items-center gap-2 mb-1">
+        <h2 className="text-sm font-semibold text-foreground">Category tabs</h2>
+      </div>
+      <p className="text-xs text-muted-foreground/70 mb-4">
+        Tabs are auto-detected from your email patterns. Rename, reorder, or hide them.
+      </p>
+      <div className="flex flex-col gap-1.5">
+        {categoryTabs.map((tab, idx) => (
+          <div
+            key={tab.id}
+            className={cn(
+              "flex items-center gap-3 rounded-lg border border-border/60 bg-background px-3 py-2.5 transition-all",
+              !tab.visible && "opacity-40",
+            )}
+          >
+            {/* Visibility toggle */}
+            <button
+              onClick={() => toggleVisible(tab.id)}
+              className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border bg-background transition-colors hover:border-primary/50"
+            >
+              {tab.visible && <div className="h-2.5 w-2.5 rounded-sm bg-primary" />}
+            </button>
+
+            {/* Label (editable) */}
+            {editingId === tab.id ? (
+              <input
+                autoFocus
+                value={editLabel}
+                onChange={e => setEditLabel(e.target.value)}
+                onBlur={saveRename}
+                onKeyDown={e => { if (e.key === "Enter") saveRename(); if (e.key === "Escape") setEditingId(null); }}
+                className="flex-1 bg-transparent text-sm font-medium text-foreground outline-none border-b border-primary/30"
+              />
+            ) : (
+              <button
+                onClick={() => startRename(tab)}
+                className="flex-1 text-left text-sm font-medium text-foreground hover:text-primary transition-colors"
+                title="Click to rename"
+              >
+                {tab.label}
+              </button>
+            )}
+
+            {/* Thread count */}
+            <span className="text-[10px] text-muted-foreground/50 tabular-nums shrink-0">
+              {tab.id}
+            </span>
+
+            {/* Reorder */}
+            <div className="flex items-center gap-0.5 shrink-0">
+              <button
+                onClick={() => moveTab(tab.id, -1)}
+                disabled={idx === 0}
+                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/40 hover:bg-accent hover:text-muted-foreground disabled:opacity-20 disabled:pointer-events-none transition-colors"
+              >
+                <svg className="h-3 w-3" viewBox="0 0 10 10" fill="none"><path d="M2 6l3-3 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+              <button
+                onClick={() => moveTab(tab.id, 1)}
+                disabled={idx === categoryTabs.length - 1}
+                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/40 hover:bg-accent hover:text-muted-foreground disabled:opacity-20 disabled:pointer-events-none transition-colors"
+              >
+                <svg className="h-3 w-3" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+            </div>
+
+            {/* Delete */}
+            <button
+              onClick={() => deleteTab(tab.id)}
+              title="Remove tab"
+              className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground/30 hover:bg-destructive/10 hover:text-destructive transition-colors"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 // ─── Settings content ───────────────────────────────────
 
 function SettingsContent() {
@@ -999,6 +1115,20 @@ function SettingsContent() {
 
         {/* Other AI settings */}
         <AiSettingsSection />
+
+        <Separator />
+
+        <MorningBriefingSettingsSection />
+
+        <Separator />
+
+        {/* Inbox sections */}
+        <InboxSectionsSection />
+
+        <Separator />
+
+        {/* Category tabs */}
+        <CategoryTabsSection />
 
         <Separator />
 

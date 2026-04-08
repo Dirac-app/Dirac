@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import { format, addHours, nextMonday, setHours, setMinutes, setSeconds } from "date-fns";
 import {
+  Bookmark,
   Archive,
+  ArrowLeft,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -22,7 +24,12 @@ import {
   Zap,
   Mail,
   AlertTriangle,
+  X,
+  PenLine,
+  BookOpen,
+  Wand2,
 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useAppState } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -62,6 +69,7 @@ function getInitials(name: string) {
 export function ThreadView() {
   const {
     selectedThreadId,
+    setSelectedThreadId,
     threads,
     messages,
     messagesLoading,
@@ -69,6 +77,7 @@ export function ThreadView() {
     addToAiContext,
     removeFromAiContext,
     setAiSidebarOpen,
+    setPendingAiQuery,
     toggleStarred,
     markDone,
     unmarkDone,
@@ -81,23 +90,80 @@ export function ThreadView() {
     triageMap,
     toneProfile,
     getRelationshipContext,
+    addClip,
   } = useAppState();
 
-  if (!selectedThreadId) {
-    return (
-      <div className="flex flex-1 items-center justify-center">
-        <div className="text-center">
-          <Inbox className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
-          <p className="text-sm text-muted-foreground">
-            Select a thread to read
-          </p>
-        </div>
-      </div>
-    );
-  }
+  // ── Clip selection popup ──────────────────────────────
+  const [clipPopup, setClipPopup] = useState<{ x: number; y: number; text: string } | null>(null);
+  const clipPopupRef  = useRef<HTMLDivElement>(null);
+  const savedRangeRef = useRef<Range | null>(null);
+
+  useEffect(() => {
+    const onMouseUp = () => {
+      // Small delay lets the browser finalise the Selection object after mouseup
+      setTimeout(() => {
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed || !sel.toString().trim()) return;
+        const text = sel.toString().trim();
+        const range = sel.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) return;
+        savedRangeRef.current = range.cloneRange(); // persist range before React re-render clears it
+        setClipPopup({ x: rect.left + rect.width / 2, y: rect.top - 8, text });
+      }, 60);
+    };
+    const onMouseDown = (e: MouseEvent) => {
+      if (clipPopupRef.current && !clipPopupRef.current.contains(e.target as Node)) {
+        savedRangeRef.current = null;
+        setClipPopup(null);
+      }
+    };
+    document.addEventListener("mouseup", onMouseUp);
+    document.addEventListener("mousedown", onMouseDown);
+    return () => {
+      document.removeEventListener("mouseup", onMouseUp);
+      document.removeEventListener("mousedown", onMouseDown);
+    };
+  }, []);
+
+  // Re-apply saved selection synchronously before paint — keeps the blue highlight visible
+  useLayoutEffect(() => {
+    if (clipPopup && savedRangeRef.current) {
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(savedRangeRef.current);
+      }
+    }
+  }, [clipPopup]);
+
+  // Escape → back to inbox
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !e.defaultPrevented) setSelectedThreadId(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [setSelectedThreadId]);
+
+  if (!selectedThreadId) return null;
 
   const thread = threads.find((t) => t.id === selectedThreadId);
   if (!thread) return null;
+
+  const handleClip = () => {
+    if (!clipPopup) return;
+    const isUrl = /^https?:\/\//i.test(clipPopup.text);
+    addClip({
+      threadId: thread.id,
+      threadSubject: thread.subject,
+      content: clipPopup.text,
+      type: isUrl ? "link" : "quote",
+    });
+    savedRangeRef.current = null;
+    window.getSelection()?.removeAllRanges();
+    setClipPopup(null);
+  };
 
   const isDiscord = thread.platform === "DISCORD";
   const inContext = isInAiContext(thread.id);
@@ -119,20 +185,32 @@ export function ThreadView() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Thread header */}
-      <div className="border-b border-border px-6 py-3">
+      <div className="border-b border-border px-4 py-3">
         <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              {isDiscord && (
-                <MessageSquare className="h-4 w-4 shrink-0 text-indigo-500" />
-              )}
-              <h2 className="truncate text-lg font-semibold text-foreground">
-                {thread.subject}
-              </h2>
+          <div className="flex items-center gap-3 min-w-0">
+            {/* Back button */}
+            <button
+              onClick={() => setSelectedThreadId(null)}
+              className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-colors"
+              title="Back to inbox (Esc)"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Inbox
+            </button>
+            <div className="h-4 w-px bg-border shrink-0" />
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                {isDiscord && (
+                  <MessageSquare className="h-4 w-4 shrink-0 text-indigo-500" />
+                )}
+                <h2 className="truncate text-base font-semibold text-foreground">
+                  {thread.subject}
+                </h2>
+              </div>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {thread.participants.map((p) => p.name).join(", ")}
+              </p>
             </div>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {thread.participants.map((p) => p.name).join(", ")}
-            </p>
           </div>
 
           {/* Thread actions */}
@@ -209,27 +287,6 @@ export function ThreadView() {
           <SnoozeButton threadId={thread.id} onSnooze={snoozeThread} />
         </div>
       </div>
-
-        <div className="mt-3">
-          <div className="rounded-lg border border-border bg-accent/20 px-3 py-2">
-            <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              Recommended next move
-            </div>
-            <p className="mt-1 text-sm text-foreground">
-              {isDone
-                ? "This thread is resolved. Keep it archived mentally unless something changes."
-                : snoozeState
-                  ? "Deferred for later — no need to think about it right now."
-                  : triage === "needs_reply"
-                    ? "Reply or explicitly defer. This likely needs your decision."
-                    : triage === "waiting_on"
-                      ? "Don't reply yet — track it as blocked on them."
-                      : triage === "automated"
-                        ? "Likely low-touch. Skim, archive, or ignore unless it changes state."
-                        : "Read once, decide fast: reply, snooze, or mark done."}
-            </p>
-          </div>
-        </div>
       </div>
 
       {/* Snooze banner */}
@@ -279,6 +336,24 @@ export function ThreadView() {
         toneProfile={toneProfile}
         getRelationshipContext={getRelationshipContext}
       />
+
+      {/* Clip popup — appears above selected text, stays until dismissed */}
+      {clipPopup && (
+        <div
+          ref={clipPopupRef}
+          className="pointer-events-auto fixed z-50 flex items-center rounded-lg border border-border bg-background shadow-xl px-1.5 py-1 -translate-x-1/2 -translate-y-full"
+          style={{ left: clipPopup.x, top: clipPopup.y }}
+          onMouseDown={e => e.preventDefault()}
+        >
+          <button
+            onClick={handleClip}
+            className="flex items-center gap-1.5 rounded px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-accent transition-colors"
+          >
+            <Bookmark className="h-3 w-3 text-primary" />
+            Clip
+          </button>
+        </div>
+      )}
 
       {/* Messages */}
       <ScrollArea className="flex-1">
@@ -350,8 +425,10 @@ export function ThreadView() {
         platform={thread.platform}
         participants={thread.participants}
         category={category}
-        onOpenAi={() => {
+        triage={triage}
+        onSendToAi={(prompt) => {
           addToAiContext({ id: thread.id, label: thread.subject });
+          setPendingAiQuery(prompt);
           setAiSidebarOpen(true);
         }}
       />
@@ -517,235 +594,401 @@ function SnoozeButton({
 
 // ─── Quick AI Actions ────────────────────────────────────
 
-interface QuickAction {
+interface DraftOption {
   id: string;
   label: string;
-  icon: typeof ThumbsUp;
-  prompt: string;
+  body: string;
 }
 
-const DEFAULT_ACTIONS: QuickAction[] = [
-  {
-    id: "ack",
-    label: "Acknowledge",
-    icon: ThumbsUp,
-    prompt: "Send a brief acknowledgment reply — something like 'got it, thanks' in my tone. Keep it to 1-2 sentences max.",
-  },
-  {
-    id: "decline",
-    label: "Decline",
-    icon: ThumbsDown,
-    prompt: "Politely decline or pass on whatever is being asked/offered. Keep it brief and professional in my tone.",
-  },
-  {
-    id: "more_info",
-    label: "Ask for details",
-    icon: HelpCircle,
-    prompt: "Reply asking for more information or clarification about what they're discussing. Keep it concise, in my tone.",
-  },
-];
-
-const CATEGORY_ACTIONS: Record<FounderCategory, QuickAction[]> = {
-  customer: [
-    { id: "ack_customer", label: "Acknowledge", icon: ThumbsUp, prompt: "Acknowledge the customer's message warmly. Let them know their message was received and will be addressed." },
-    { id: "ask_details", label: "Ask for details", icon: HelpCircle, prompt: "Politely ask the customer for more details to better help them. Be specific about what info would help." },
-    { id: "escalate", label: "Escalate internally", icon: Zap, prompt: "Draft a brief internal note about this customer issue to escalate to the team. Summarize the problem and urgency." },
-  ],
-  investor: [
-    { id: "express_interest", label: "Express interest", icon: ThumbsUp, prompt: "Reply expressing interest in what the investor is proposing or discussing. Be professional and enthusiastic." },
-    { id: "decline_polite", label: "Politely decline", icon: ThumbsDown, prompt: "Politely decline the investor's offer or proposal. Be respectful, leave the door open for future opportunities." },
-    { id: "request_meeting", label: "Request meeting", icon: HelpCircle, prompt: "Reply requesting a meeting or call to discuss further. Suggest a couple of time slots or ask for their availability." },
-  ],
-  vendor: [
-    { id: "ack_vendor", label: "Acknowledge", icon: ThumbsUp, prompt: "Briefly acknowledge the vendor's message. Keep it professional and short." },
-    { id: "archive_vendor", label: "Got it, archive", icon: Check, prompt: "Send a brief 'noted, thanks' reply suitable for a vendor/service email." },
-    { id: "more_info_vendor", label: "Need more info", icon: HelpCircle, prompt: "Ask the vendor for more details or clarification about their service, pricing, or offer." },
-  ],
-  outreach: [
-    { id: "not_interested", label: "Not interested", icon: ThumbsDown, prompt: "Politely decline this cold outreach. Be brief and clear but not rude." },
-    { id: "tell_more", label: "Tell me more", icon: HelpCircle, prompt: "Reply expressing some interest and asking for more specific information about their offer." },
-    { id: "schedule_call", label: "Schedule call", icon: Zap, prompt: "Reply suggesting a call to discuss their proposal further. Ask for their availability or suggest a couple of times." },
-  ],
-  automated: [
-    { id: "ack_auto", label: "Acknowledge", icon: ThumbsUp, prompt: "Send a brief acknowledgment if needed." },
-  ],
-  personal: DEFAULT_ACTIONS,
-};
-
-function QuickActions({
+export function QuickActions({
   threadId,
   threadSubject,
   platform,
   participants,
-  onOpenAi,
+  onSendToAi,
+  triage,
   category,
 }: {
   threadId: string;
   threadSubject: string;
   platform: string;
   participants: { name: string; email: string }[];
-  onOpenAi: () => void;
+  onSendToAi: (prompt: string) => void;
+  triage?: TriageCategory;
   category?: FounderCategory;
 }) {
   const { toneProfile } = useAppState();
   const { toast } = useToast();
+
+  // Draft-with-AI widget
+  const [draftOptions, setDraftOptions] = useState<DraftOption[]>([]);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [draftOpen, setDraftOpen] = useState(false);
+  const [editingBody, setEditingBody] = useState<Record<string, string>>({});
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [sending, setSending] = useState<string | null>(null);
   const [sent, setSent] = useState<string | null>(null);
+
+  // Manual reply composer
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualBody, setManualBody] = useState("");
+  const [manualSending, setManualSending] = useState(false);
+  const [aiRewriting, setAiRewriting] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
+  const cachedContextRef = useRef<{ from: string; body: string; sentAt: string }[] | null>(null);
 
-  const actions = category ? (CATEGORY_ACTIONS[category] ?? DEFAULT_ACTIONS) : DEFAULT_ACTIONS;
+  const fetchThreadContext = async () => {
+    if (cachedContextRef.current) return cachedContextRef.current;
+    const isOutlook = platform === "OUTLOOK";
+    const url = isOutlook ? `/api/outlook/threads/${threadId}` : `/api/gmail/threads/${threadId}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const ctx = (data.messages ?? []).map(
+      (m: { fromName: string; bodyText: string; sentAt: string }) => ({
+        from: m.fromName,
+        body: m.bodyText,
+        sentAt: m.sentAt,
+      }),
+    );
+    cachedContextRef.current = ctx;
+    return ctx;
+  };
 
-  const handleQuickAction = async (action: QuickAction) => {
-    setSending(action.id);
+  const handleDraftWithAi = async () => {
+    if (draftOpen && draftOptions.length > 0) {
+      setDraftOpen(false);
+      return;
+    }
+    setDraftOpen(true);
+    setManualOpen(false);
+    setDraftOptions([]);
+    setDraftLoading(true);
     setError(null);
-
     try {
-      // Fetch thread messages for context
-      const isOutlook = platform === "OUTLOOK";
-      const url = isOutlook
-        ? `/api/outlook/threads/${threadId}`
-        : `/api/gmail/threads/${threadId}`;
-      const threadRes = await fetch(url);
-      const threadData = threadRes.ok ? await threadRes.json() : null;
-
-      const context = threadData
-        ? [
-            {
-              threadId,
-              subject: threadSubject,
-              messages: (threadData.messages ?? []).map(
-                (m: { fromName: string; bodyText: string; sentAt: string }) => ({
-                  from: m.fromName,
-                  body: m.bodyText,
-                  sentAt: m.sentAt,
-                }),
-              ),
-            },
-          ]
-        : undefined;
-
-      // Get AI draft
-      const aiRes = await fetch("/api/ai/chat", {
+      const messages = await fetchThreadContext();
+      const res = await fetch("/api/ai/quick-drafts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: action.prompt,
-          context,
+          actionLabel: `Reply to this email${triage === "waiting_on" ? " (follow-up nudge)" : ""}${category ? ` (${category} thread)` : ""}`,
+          threadSubject,
+          messages: messages ?? [],
           toneProfile: toneProfile ?? undefined,
-          model: localStorage.getItem("dirac-ai-model") || undefined,
+          preset: localStorage.getItem("dirac-ai-preset") || undefined,
         }),
       });
+      if (!res.ok) throw new Error("Failed");
+      const data = await res.json();
+      const options: DraftOption[] = data.options ?? [];
+      setDraftOptions(options);
+      setEditingBody(Object.fromEntries(options.map((o) => [o.id, o.body])));
+    } catch {
+      setError("Couldn't generate drafts.");
+      setDraftOpen(false);
+    } finally {
+      setDraftLoading(false);
+    }
+  };
 
-      if (!aiRes.ok) throw new Error("AI request failed");
+  const handleSendOption = async (option: DraftOption) => {
+    const body = editingBody[option.id] ?? option.body;
+    setSending(option.id);
+    setError(null);
+    try {
+      const isOutlook = platform === "OUTLOOK";
+      const recipient = participants[0];
+      const sendUrl = isOutlook ? "/api/outlook/send" : "/api/gmail/send";
+      const payload = isOutlook
+        ? { to: recipient?.email ?? "", subject: threadSubject, body }
+        : { threadId, to: recipient?.email ?? "", subject: threadSubject, body };
+      const res = await fetch(sendUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      if (!res.ok) throw new Error("Send failed");
+      setSent(option.id);
+      toast({ title: "Reply sent", description: option.label, variant: "success" });
+      setTimeout(() => { setSent(null); setDraftOpen(false); setDraftOptions([]); }, 2000);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed";
+      setError(msg);
+      toast({ title: "Reply failed", description: msg, variant: "error" });
+    } finally {
+      setSending(null);
+    }
+  };
 
-      const reader = aiRes.body?.getReader();
-      if (!reader) throw new Error("No response body");
+  const handleManualSend = async () => {
+    if (!manualBody.trim()) return;
+    setManualSending(true);
+    setError(null);
+    try {
+      const isOutlook = platform === "OUTLOOK";
+      const recipient = participants[0];
+      const sendUrl = isOutlook ? "/api/outlook/send" : "/api/gmail/send";
+      const payload = isOutlook
+        ? { to: recipient?.email ?? "", subject: threadSubject, body: manualBody.trim() }
+        : { threadId, to: recipient?.email ?? "", subject: threadSubject, body: manualBody.trim() };
+      const res = await fetch(sendUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      if (!res.ok) throw new Error("Send failed");
+      toast({ title: "Reply sent", variant: "success" });
+      setManualBody("");
+      setManualOpen(false);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed";
+      setError(msg);
+      toast({ title: "Reply failed", description: msg, variant: "error" });
+    } finally {
+      setManualSending(false);
+    }
+  };
 
+  const handleAiAssist = async () => {
+    setAiRewriting(true);
+    try {
+      const messages = await fetchThreadContext();
+      const prompt = manualBody.trim()
+        ? `Improve and polish this draft reply, keeping the same intent:\n\n${manualBody}`
+        : `Draft a concise reply to the thread "${threadSubject}" in my tone.`;
+      const context = messages
+        ? [{ threadId, subject: threadSubject, messages: messages.map((m) => ({ from: m.from, body: m.body, sentAt: m.sentAt })) }]
+        : undefined;
+      const res = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: prompt, context, toneProfile: toneProfile ?? undefined, preset: localStorage.getItem("dirac-ai-preset") || undefined }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No body");
       const decoder = new TextDecoder();
       let accumulated = "";
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         accumulated += decoder.decode(value, { stream: true });
+        const match = accumulated.match(/```draft\n([\s\S]*?)```/);
+        setManualBody(match ? match[1].trim() : accumulated.replace(/```[\w]*\n?/g, "").trim());
       }
-
-      // Extract draft content from the response
-      const draftMatch = accumulated.match(/```draft\n([\s\S]*?)```/);
-      const draftBody = draftMatch ? draftMatch[1].trim() : accumulated.trim();
-
-      if (!draftBody) throw new Error("Empty draft");
-
-      // Send the reply
-      const recipient = participants[0];
-      const sendUrl = isOutlook ? "/api/outlook/send" : "/api/gmail/send";
-      const sendPayload = isOutlook
-        ? { to: recipient?.email ?? "", subject: threadSubject, body: draftBody }
-        : { threadId, to: recipient?.email ?? "", subject: threadSubject, body: draftBody };
-
-      const sendRes = await fetch(sendUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(sendPayload),
-      });
-
-      if (!sendRes.ok) throw new Error("Send failed");
-
-      setSent(action.id);
-      toast({ title: `"${action.label}" reply sent`, variant: "success" });
-      setTimeout(() => setSent(null), 3000);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed";
-      setError(msg);
-      toast({ title: "Reply failed", description: msg, variant: "error" });
-      setTimeout(() => setError(null), 3000);
+    } catch {
+      // silently fall back
     } finally {
-      setSending(null);
+      setAiRewriting(false);
     }
   };
 
   return (
     <div className="border-t border-border px-6 py-3">
-      <div className="flex items-center gap-2">
-        <div className="flex items-center gap-1.5">
-          {actions.map((action) => {
-            const Icon = action.icon;
-            const isSending = sending === action.id;
-            const isSent = sent === action.id;
+      {/* Header */}
+      <p className="mb-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
+        Recommended actions
+      </p>
 
-            return (
-              <Tooltip key={action.id}>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-1.5 px-3 text-xs"
-                    onClick={() => handleQuickAction(action)}
-                    disabled={!!sending}
-                  >
-                    {isSending ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : isSent ? (
-                      <Check className="h-3 w-3 text-green-600" />
-                    ) : (
-                      <Icon className="h-3 w-3" />
-                    )}
-                    {isSent ? "Sent" : action.label}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  AI generates and sends a &quot;{action.label.toLowerCase()}&quot; reply in your tone
-                </TooltipContent>
-              </Tooltip>
-            );
-          })}
-        </div>
-
-        <Separator orientation="vertical" className="mx-1 h-5" />
+      {/* 3 fixed buttons */}
+      <div className="flex items-center gap-1.5">
+        <Button
+          size="sm"
+          className={cn("h-8 gap-1.5 px-3 text-xs", draftOpen && "ring-1 ring-primary/40")}
+          onClick={handleDraftWithAi}
+          disabled={draftLoading}
+        >
+          {draftLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+          Draft with AI
+        </Button>
 
         <Button
           variant="outline"
           size="sm"
           className="h-8 gap-1.5 px-3 text-xs"
-          onClick={onOpenAi}
+          onClick={() => onSendToAi(`Summarize the thread "${threadSubject}" — key points, action items, and what I should do next.`)}
         >
-          <Sparkles className="h-3 w-3" />
-          AI reply
+          <BookOpen className="h-3 w-3" />
+          Summarize
         </Button>
 
         <Button
-          variant="ghost"
+          variant="outline"
           size="sm"
-          className="h-8 gap-1.5 px-3 text-xs text-muted-foreground"
-          onClick={onOpenAi}
+          className={cn("h-8 gap-1.5 px-3 text-xs", manualOpen && "ring-1 ring-primary/30")}
+          onClick={() => { setManualOpen((v) => !v); setDraftOpen(false); }}
         >
-          <Reply className="h-3 w-3" />
-          Full reply
+          <PenLine className="h-3 w-3" />
+          Manual reply
         </Button>
 
-        {error && (
-          <span className="text-xs text-red-500 ml-auto">{error}</span>
-        )}
+        {error && <span className="ml-auto text-xs text-red-500/70">{error}</span>}
       </div>
+
+      {/* ── Draft-with-AI options widget ── */}
+      <AnimatePresence>
+        {draftOpen && (
+          <motion.div
+            key="draft-options"
+            initial={{ opacity: 0, height: 0, marginTop: 0 }}
+            animate={{ opacity: 1, height: "auto", marginTop: 12 }}
+            exit={{ opacity: 0, height: 0, marginTop: 0 }}
+            transition={{ duration: 0.22, ease: [0.25, 0.1, 0.25, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="rounded-xl border border-border/60 bg-muted/15 px-4 py-3">
+              <div className="flex items-center justify-between mb-2.5">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">
+                  Pick a draft
+                </p>
+                <button
+                  onClick={() => { setDraftOpen(false); setDraftOptions([]); }}
+                  className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-muted-foreground transition-colors"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+
+              {/* Loading */}
+              {draftLoading && (
+                <div className="space-y-2 animate-pulse">
+                  {[0, 1, 2].map((i) => (
+                    <div key={i} className="rounded-lg border border-border/40 bg-background px-3 py-2.5 space-y-1.5">
+                      <div className="h-2.5 w-20 rounded bg-muted/60" />
+                      <div className="h-2.5 w-full rounded bg-muted/45" />
+                      <div className="h-2.5 w-4/5 rounded bg-muted/35" />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Options */}
+              {!draftLoading && draftOptions.length > 0 && (
+                <div className="space-y-2">
+                  {draftOptions.map((option, idx) => {
+                    const isEditing = editingId === option.id;
+                    const isSending = sending === option.id;
+                    const isSent = sent === option.id;
+                    const currentBody = editingBody[option.id] ?? option.body;
+                    return (
+                      <motion.div
+                        key={option.id}
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.18, delay: idx * 0.06 }}
+                        className="rounded-lg border border-border/40 bg-background px-3 py-2.5 hover:border-border/70 transition-colors"
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <p className="text-[11.5px] font-medium text-foreground/80">{option.label}</p>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => setEditingId(isEditing ? null : option.id)}
+                              title={isEditing ? "Done editing" : "Edit"}
+                              className={cn(
+                                "flex h-5 w-5 items-center justify-center rounded transition-colors",
+                                isEditing ? "text-primary" : "text-foreground/60 hover:text-foreground"
+                              )}
+                            >
+                              <PenLine className="h-2.5 w-2.5" />
+                            </button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 px-2 text-[11px] gap-1"
+                              onClick={() => handleSendOption(option)}
+                              disabled={!!sending}
+                            >
+                              {isSending ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : isSent ? <Check className="h-2.5 w-2.5 text-teal-500" /> : <Send className="h-2.5 w-2.5" />}
+                              {isSent ? "Sent" : "Send"}
+                            </Button>
+                          </div>
+                        </div>
+                        {isEditing ? (
+                          <textarea
+                            value={currentBody}
+                            onChange={(e) => setEditingBody((prev) => ({ ...prev, [option.id]: e.target.value }))}
+                            className="w-full resize-none rounded-md border border-border bg-muted/20 px-2.5 py-2 text-[12px] leading-[1.6] text-foreground/80 outline-none focus:ring-1 focus:ring-ring min-h-[80px]"
+                            autoFocus
+                          />
+                        ) : (
+                          <p className="text-[12px] leading-[1.55] text-muted-foreground/80">{currentBody}</p>
+                        )}
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Manual reply composer ── */}
+      <AnimatePresence>
+        {manualOpen && (
+          <motion.div
+            key="manual-reply"
+            initial={{ opacity: 0, height: 0, marginTop: 0 }}
+            animate={{ opacity: 1, height: "auto", marginTop: 12 }}
+            exit={{ opacity: 0, height: 0, marginTop: 0 }}
+            transition={{ duration: 0.22, ease: [0.25, 0.1, 0.25, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="rounded-xl border border-border/60 bg-background shadow-sm overflow-hidden">
+              {/* Composer header */}
+              <div className="flex items-center justify-between gap-3 border-b border-border/50 px-3 py-2">
+                <div className="flex items-center gap-3 text-[12px] text-muted-foreground min-w-0">
+                  <span className="shrink-0 font-medium">To</span>
+                  <span className="truncate text-foreground/80">
+                    {participants[0]?.name || participants[0]?.email || "—"}
+                    {participants[0]?.email && participants[0]?.name ? ` <${participants[0].email}>` : ""}
+                  </span>
+                </div>
+                <button
+                  onClick={() => { setManualOpen(false); setManualBody(""); }}
+                  className="shrink-0 flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-muted-foreground transition-colors"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+
+              {/* Body textarea */}
+              <textarea
+                value={manualBody}
+                onChange={(e) => setManualBody(e.target.value)}
+                placeholder="Write your reply…"
+                className="w-full resize-none bg-transparent px-3 py-3 text-[13px] leading-[1.65] text-foreground placeholder:text-muted-foreground/40 outline-none min-h-[130px]"
+                autoFocus={manualOpen}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleManualSend();
+                }}
+              />
+
+              {/* Footer toolbar */}
+              <div className="flex items-center gap-2 border-t border-border/50 px-3 py-2">
+                <Button
+                  size="sm"
+                  className="h-7 px-3 text-xs gap-1.5"
+                  onClick={handleManualSend}
+                  disabled={!manualBody.trim() || manualSending}
+                >
+                  {manualSending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                  Send
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2.5 text-xs gap-1.5"
+                  onClick={handleAiAssist}
+                  disabled={aiRewriting}
+                >
+                  {aiRewriting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
+                  {manualBody.trim() ? "AI rewrite" : "Draft with AI"}
+                </Button>
+
+                <span className="ml-auto text-[10px] text-muted-foreground/40">
+                  ⌘↵ to send
+                </span>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
+

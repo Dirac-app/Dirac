@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getApiKeyForUser } from "@/lib/user-db";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
+import { FAST_MODEL } from "@/lib/model-config";
+import { rateLimiters, rateLimitResponse } from "@/lib/rate-limit";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -34,6 +36,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "No API key configured. Please contact support." }, { status: 503 });
   }
 
+  const rl = rateLimiters.background.check(session.userId ?? session.user?.email ?? "anonymous");
+  if (!rl.ok) return rateLimitResponse(rl);
+
   const body: { threads: ThreadSummary[] } = await request.json();
   if (!body.threads?.length) {
     return NextResponse.json({ results: [] });
@@ -59,7 +64,7 @@ export async function POST(request: NextRequest) {
         "X-Title": "Dirac",
       },
       body: JSON.stringify({
-        model: process.env.OPENROUTER_MODEL ?? "google/gemini-2.0-flash-001",
+        model: FAST_MODEL,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           {
