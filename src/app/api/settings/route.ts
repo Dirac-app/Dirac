@@ -10,7 +10,7 @@ export async function GET() {
   const guard = await requireSession();
   if (guard.error) return guard.response;
 
-  const aiModel = await getModelForUser(guard.session.userId ?? "");
+  const aiModel = await getModelForUser(guard.userId ?? "");
 
   return NextResponse.json({
     aiModel,

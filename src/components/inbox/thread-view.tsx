@@ -750,7 +750,7 @@ export function QuickActions({
         ? `Improve and polish this draft reply, keeping the same intent:\n\n${manualBody}`
         : `Draft a concise reply to the thread "${threadSubject}" in my tone.`;
       const context = messages
-        ? [{ threadId, subject: threadSubject, messages: messages.map((m) => ({ from: m.from, body: m.body, sentAt: m.sentAt })) }]
+        ? [{ threadId, subject: threadSubject, messages: messages.map((m: { from: string; body: string; sentAt: string }) => ({ from: m.from, body: m.body, sentAt: m.sentAt })) }]
         : undefined;
       const res = await fetch("/api/ai/chat", {
         method: "POST",
