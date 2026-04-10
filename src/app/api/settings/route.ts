@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth-guard";
-import { getDefaultModel } from "@/lib/user-db";
+import { getModelForUser } from "@/lib/user-db";
 
 /**
  * Settings are stored client-side in localStorage for the MVP.
@@ -10,8 +10,10 @@ export async function GET() {
   const guard = await requireSession();
   if (guard.error) return guard.response;
 
+  const aiModel = await getModelForUser(guard.session.userId ?? "");
+
   return NextResponse.json({
-    aiModel: getDefaultModel(),
+    aiModel,
     aboutMe: "",
   });
 }

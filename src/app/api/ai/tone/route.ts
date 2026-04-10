@@ -7,8 +7,6 @@ import { getOutlookAccessToken } from "@/lib/outlook-token";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { FAST_MODEL } from "@/lib/model-config";
 import { rateLimiters, rateLimitResponse } from "@/lib/rate-limit";
-import { FAST_MODEL } from "@/lib/model-config";
-import { rateLimiters, rateLimitResponse } from "@/lib/rate-limit";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
