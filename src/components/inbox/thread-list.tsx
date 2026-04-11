@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { useAppState } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { AccountsEmptyState, SearchEmptyState } from "@/components/ui/empty-state";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -653,21 +654,9 @@ export function ThreadList() {
             ))}
           </div>
         ) : allVisible.length === 0 && threads.length === 0 ? (
-          <div className="flex flex-col items-center justify-center px-8 py-20 text-center gap-4">
-            <Inbox className="h-10 w-10 text-muted-foreground/25" />
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">No accounts connected</p>
-              <p className="mt-1 text-xs text-muted-foreground/50">Connect Gmail or Outlook in settings</p>
-            </div>
-            <Button size="sm" asChild>
-              <Link href="/settings">Connect an account →</Link>
-            </Button>
-          </div>
+          <AccountsEmptyState />
         ) : allVisible.length === 0 ? (
-          <div className="flex flex-col items-center justify-center px-8 py-20 text-center">
-            <Inbox className="mb-3 h-8 w-8 text-muted-foreground/25" />
-            <p className="text-sm text-muted-foreground">No threads match your search</p>
-          </div>
+          <SearchEmptyState />
         ) : (
           <div className="flex flex-col">
             {/* New for you — unread only */}

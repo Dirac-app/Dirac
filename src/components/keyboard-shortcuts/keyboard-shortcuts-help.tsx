@@ -57,6 +57,20 @@ export function KeyboardShortcutsHelp() {
   useEffect(() => {
     const handler = () => setOpen(true);
     window.addEventListener("dirac:shortcuts-help", handler);
+
+    const SHORTCUTS_SEEN_KEY = "dirac_shortcuts_seen";
+    const seen = localStorage.getItem(SHORTCUTS_SEEN_KEY);
+    if (!seen) {
+      const timer = setTimeout(() => {
+        setOpen(true);
+        localStorage.setItem(SHORTCUTS_SEEN_KEY, "true");
+      }, 3000);
+      return () => {
+        window.removeEventListener("dirac:shortcuts-help", handler);
+        clearTimeout(timer);
+      };
+    }
+
     return () => window.removeEventListener("dirac:shortcuts-help", handler);
   }, []);
 

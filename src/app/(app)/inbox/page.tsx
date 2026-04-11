@@ -83,7 +83,7 @@ export default function InboxPage() {
               <Button
                 variant="outline"
                 size="icon"
-                className="absolute bottom-4 right-4 h-10 w-10 rounded-full shadow-sm z-10"
+                className="absolute bottom-4 right-4 h-10 w-10 rounded-full shadow-sm z-10 hidden lg:flex"
                 onClick={() => setAiSidebarOpen(true)}
               >
                 <Sparkles className="h-4 w-4" />
@@ -93,7 +93,9 @@ export default function InboxPage() {
           </Tooltip>
         )}
       </div>
-      <AiSidebar />
+      <div className="hidden lg:block">
+        <AiSidebar />
+      </div>
     </>
   );
 }

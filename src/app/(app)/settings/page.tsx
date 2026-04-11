@@ -28,6 +28,8 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useAppState, TONE_CONTEXT_LABELS } from "@/lib/store";
 import type { ToneProfile, ConditionalTone, ToneContext } from "@/lib/store";
+import { useThemeConfig } from "@/lib/theme";
+import { ThemeSelector } from "@/components/ui/theme-selector";
 
 // ─── Outlook icon (simple SVG) ──────────────────────────
 
@@ -309,6 +311,7 @@ function AiSettingsSection() {
 function AppearanceSection() {
   const { theme, setTheme } = useTheme();
   const { density, setDensity } = useAppState();
+  const { config, setColorScheme, setDensity: setThemeDensity } = useThemeConfig();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -330,10 +333,20 @@ function AppearanceSection() {
         <h2 className="text-sm font-semibold text-foreground">Appearance</h2>
       </div>
 
-      <div className="space-y-5">
-        {/* Theme */}
+      <div className="space-y-6">
+        {/* New Theme Selector with Color Schemes */}
+        <ThemeSelector 
+          colorScheme={config.colorScheme}
+          density={config.density}
+          onColorSchemeChange={setColorScheme}
+          onDensityChange={setThemeDensity}
+        />
+
+        <Separator />
+
+        {/* Legacy Theme (Light/Dark/System) - keeping for compatibility */}
         <div>
-          <label className="text-xs font-medium text-muted-foreground">Theme</label>
+          <label className="text-xs font-medium text-muted-foreground">Theme Mode</label>
           <div className="mt-2 grid grid-cols-3 gap-2">
             {themes.map(t => {
               const Icon = t.icon;
@@ -353,32 +366,6 @@ function AppearanceSection() {
                 </button>
               );
             })}
-          </div>
-        </div>
-
-        {/* Density */}
-        <div>
-          <label className="text-xs font-medium text-muted-foreground">Thread density</label>
-          <div className="mt-2 space-y-1.5">
-            {densities.map(d => (
-              <button
-                key={d.id}
-                onClick={() => setDensity(d.id)}
-                className={`w-full flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${
-                  density === d.id
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-muted-foreground/40"
-                }`}
-              >
-                <div className={`h-3.5 w-3.5 shrink-0 rounded-full border-2 transition-colors ${
-                  density === d.id ? "border-primary bg-primary" : "border-muted-foreground/30"
-                }`} />
-                <div>
-                  <p className="text-xs font-medium text-foreground">{d.label}</p>
-                  <p className="text-[11px] text-muted-foreground">{d.desc}</p>
-                </div>
-              </button>
-            ))}
           </div>
         </div>
       </div>
