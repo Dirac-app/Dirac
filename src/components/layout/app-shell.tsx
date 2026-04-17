@@ -15,7 +15,7 @@ import { MorningBriefing } from "@/components/morning/morning-briefing";
 import { SetAsideBar } from "@/components/set-aside/set-aside-bar";
 import { ViewAllOverlay } from "@/components/inbox/view-all-overlay";
 import { OnboardingModal } from "@/components/onboarding/onboarding-modal";
-import { useThemeConfig, getColorSchemeClass, getDensityClass } from "@/lib/theme";
+import { ThemeConfigProvider, useThemeConfig, getColorSchemeClass, getDensityClass } from "@/lib/theme";
 import { useEffect, useState } from "react";
 
 function ThemedAppShell({ children }: { children: ReactNode }) {
@@ -52,6 +52,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <NextThemes attribute="class" defaultTheme="light" enableSystem={true}>
       <ToastProvider>
       <SessionProvider>
+        <ThemeConfigProvider>
         <AppProvider>
           <KeyboardShortcutsProvider />
           <TooltipProvider delayDuration={0}>
@@ -65,6 +66,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <KeyboardShortcutsHelp />
           <OnboardingModal />
         </AppProvider>
+        </ThemeConfigProvider>
       </SessionProvider>
       </ToastProvider>
     </NextThemes>

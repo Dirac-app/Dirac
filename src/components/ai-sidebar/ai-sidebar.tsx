@@ -839,7 +839,7 @@ export function AiSidebar() {
   const isThreadOpen = !!selectedThreadId;
 
   return (
-    <div className={cn("dirac-panel ai-panel-glow flex flex-col overflow-hidden transition-[width] duration-200", isThreadOpen ? "w-96" : "w-80")}>
+    <div className={cn("dirac-panel ai-panel-glow flex h-full flex-col overflow-hidden transition-[width] duration-200", isThreadOpen ? "w-96" : "w-80")}>
       {/* ─── Header ─────────────────────────────────────── */}
       <div className="ai-glow-header flex h-[49px] items-center justify-between border-b border-border px-3">
         <div className="relative flex items-center gap-2 min-w-0" ref={historyRef}>

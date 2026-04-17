@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { ThemeProvider as NextThemesProvider } from "next-themes";
 
 export type Theme = "light" | "dark" | "system";
 
@@ -21,29 +20,6 @@ export interface ThemeConfig {
 
 const STORAGE_KEY = "dirac-theme-config";
 
-const COLOR_SCHEMES: Record<ColorScheme, { light: string; dark: string }> = {
-  default: {
-    light: "",
-    dark: "",
-  },
-  midnight: {
-    light: "midnight",
-    dark: "midnight",
-  },
-  forest: {
-    light: "forest",
-    dark: "forest",
-  },
-  sunset: {
-    light: "sunset",
-    dark: "sunset",
-  },
-  ocean: {
-    light: "ocean",
-    dark: "ocean",
-  },
-};
-
 export function getStoredConfig(): ThemeConfig | null {
   if (typeof window === "undefined") return null;
   try {
@@ -59,7 +35,18 @@ export function storeConfig(config: ThemeConfig) {
   } catch {}
 }
 
-export function useThemeConfig() {
+// Shared context so every consumer of useThemeConfig shares the same state
+interface ThemeConfigContextValue {
+  config: ThemeConfig;
+  setColorScheme: (scheme: ColorScheme) => void;
+  setDensity: (density: Density) => void;
+  colorSchemes: ColorScheme[];
+  densities: Density[];
+}
+
+const ThemeConfigContext = React.createContext<ThemeConfigContextValue | null>(null);
+
+export function ThemeConfigProvider({ children }: { children: React.ReactNode }) {
   const [config, setConfig] = React.useState<ThemeConfig>(() => {
     const stored = getStoredConfig();
     return stored ?? { colorScheme: "default", density: "comfortable" };
@@ -81,13 +68,27 @@ export function useThemeConfig() {
     });
   }, []);
 
-  return {
+  const value = React.useMemo<ThemeConfigContextValue>(() => ({
     config,
     setColorScheme,
     setDensity,
-    colorSchemes: Object.keys(COLOR_SCHEMES) as ColorScheme[],
-    densities: ["compact", "comfortable", "spacious"] as Density[],
-  };
+    colorSchemes: ["default", "midnight", "forest", "sunset", "ocean"],
+    densities: ["compact", "comfortable", "spacious"],
+  }), [config, setColorScheme, setDensity]);
+
+  return (
+    <ThemeConfigContext.Provider value={value}>
+      {children}
+    </ThemeConfigContext.Provider>
+  );
+}
+
+export function useThemeConfig(): ThemeConfigContextValue {
+  const ctx = React.useContext(ThemeConfigContext);
+  if (!ctx) {
+    throw new Error("useThemeConfig must be used within ThemeConfigProvider");
+  }
+  return ctx;
 }
 
 export function getColorSchemeClass(scheme: ColorScheme): string {
@@ -97,45 +98,4 @@ export function getColorSchemeClass(scheme: ColorScheme): string {
 
 export function getDensityClass(density: Density): string {
   return `density-${density}`;
-}
-
-interface DiracThemeProviderProps {
-  children: React.ReactNode;
-  defaultTheme?: Theme;
-  storageKey?: string;
-}
-
-export function DiracThemeProvider({
-  children,
-  defaultTheme = "system",
-  storageKey = "dirac-theme",
-  ...props
-}: DiracThemeProviderProps) {
-  const [colorScheme, setColorScheme] = React.useState<ColorScheme>("default");
-  const [density, setDensity] = React.useState<Density>("comfortable");
-
-  React.useEffect(() => {
-    const stored = getStoredConfig();
-    if (stored) {
-      setColorScheme(stored.colorScheme);
-      setDensity(stored.density);
-    }
-  }, []);
-
-  const colorSchemeClass = getColorSchemeClass(colorScheme);
-  const densityClass = getDensityClass(density);
-
-  return (
-    <NextThemesProvider
-      defaultTheme={defaultTheme}
-      storageKey={storageKey}
-      attribute="class"
-      enableSystem={true}
-      {...props}
-    >
-      <div className={`${colorSchemeClass} ${densityClass}`}>
-        {children}
-      </div>
-    </NextThemesProvider>
-  );
 }

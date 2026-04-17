@@ -42,6 +42,30 @@ import {
   TOPIC_TAG_COLORS,
 } from "@/lib/types";
 
+// Muted avatar palette — low-saturation, soft tones
+const AVATAR_COLORS = [
+  "bg-stone-200 text-stone-500 dark:bg-stone-700/60 dark:text-stone-300",
+  "bg-slate-200 text-slate-500 dark:bg-slate-700/60 dark:text-slate-300",
+  "bg-zinc-200 text-zinc-500 dark:bg-zinc-700/60 dark:text-zinc-300",
+  "bg-neutral-200 text-neutral-500 dark:bg-neutral-700/60 dark:text-neutral-300",
+  "bg-gray-200 text-gray-500 dark:bg-gray-700/60 dark:text-gray-300",
+  "bg-stone-300/60 text-stone-600 dark:bg-stone-600/50 dark:text-stone-200",
+  "bg-slate-300/60 text-slate-600 dark:bg-slate-600/50 dark:text-slate-200",
+  "bg-zinc-300/60 text-zinc-600 dark:bg-zinc-600/50 dark:text-zinc-200",
+];
+
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return (name[0] ?? "?").toUpperCase();
+}
+
+function hashString(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
 // ─── Individual thread card ──────────────────────────────
 
 function ThreadCard({
@@ -126,12 +150,15 @@ function ThreadCard({
     allBadges.push({ label: "Snoozed", color: "text-amber-600 dark:text-amber-300 bg-amber-500/12 dark:bg-amber-400/15", kind: "status" });
   }
 
-  // Left border accent by triage state
-  const borderAccent =
-    thread.isUrgent        ? "border-l-2 border-l-rose-500"   :
-    triage === "needs_reply" ? "border-l-2 border-l-sky-500"  :
-    triage === "waiting_on"  ? "border-l-2 border-l-indigo-400" :
-    "border-l-2 border-l-transparent";
+  const avatarColor = AVATAR_COLORS[hashString(sender) % AVATAR_COLORS.length];
+  const initials = getInitials(sender);
+
+  // Status dot color for the sender row — communicates urgency at a glance
+  const statusDot =
+    thread.isUrgent         ? "bg-rose-500"   :
+    triage === "needs_reply" ? "bg-sky-500"   :
+    triage === "waiting_on"  ? "bg-indigo-400" :
+    null;
 
   return (
     <ContextMenu>
@@ -139,41 +166,60 @@ function ThreadCard({
         <button
           onClick={onSelect}
           className={cn(
-            "group relative flex w-full flex-col gap-1 border-b border-border/60 px-6 py-4 text-left transition-all duration-150",
+            "group relative flex w-full items-start gap-3 border-b border-border/40 px-5 py-3.5 text-left transition-all duration-150",
             isBulkSelected
-              ? "bg-primary/8 border-l-[3px] border-l-primary"
-              : borderAccent,
-            isBulkSelected
-              ? ""
+              ? "bg-primary/6"
               : isSelected
                 ? "bg-accent/50"
-                : "hover:bg-accent/30",
+                : "hover:bg-accent/25",
           )}
         >
-          {/* Bulk checkbox indicator */}
-          {isBulkSelected && (
-            <span className="absolute left-1.5 top-1/2 -translate-y-1/2 flex h-4 w-4 items-center justify-center rounded-sm bg-primary">
-              <svg className="h-3 w-3 text-primary-foreground" viewBox="0 0 10 10" fill="none">
-                <path d="M2 5l2.5 2.5L8 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </span>
-          )}
-            {/* Row 1: sender + time + star */}
-            <div className="flex items-center gap-2 min-w-0">
+          {/* Avatar */}
+          <div className="relative mt-0.5 shrink-0">
+            {isBulkSelected ? (
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary">
+                <svg className="h-3.5 w-3.5 text-primary-foreground" viewBox="0 0 10 10" fill="none">
+                  <path d="M2 5l2.5 2.5L8 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </span>
+            ) : (
+              <span className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-semibold leading-none select-none",
+                avatarColor,
+              )}>
+                {initials}
+              </span>
+            )}
+            {/* Unread indicator — dot on the avatar */}
+            {thread.isUnread && !isBulkSelected && (
+              <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-background" />
+            )}
+          </div>
+
+          {/* Content */}
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            {/* Row 1: sender + status dot + message count | time + star */}
+            <div className="flex items-center gap-1.5 min-w-0">
               <span className={cn(
                 "truncate text-[13px] leading-5",
-                thread.isUnread ? "font-semibold text-foreground" : "font-medium text-foreground/75",
+                thread.isUnread ? "font-semibold text-foreground" : "font-medium text-muted-foreground",
               )}>
                 {sender}
               </span>
+              {statusDot && (
+                <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", statusDot)} />
+              )}
               {thread.platform === "DISCORD" && (
-                <MessageSquare className="h-3 w-3 shrink-0 text-indigo-500/70" />
+                <MessageSquare className="h-3 w-3 shrink-0 text-indigo-500/60" />
               )}
               {thread.messageCount > 1 && (
-                <span className="text-[10px] text-muted-foreground/50 tabular-nums">({thread.messageCount})</span>
+                <span className="text-[10px] text-muted-foreground/40 tabular-nums">
+                  {thread.messageCount}
+                </span>
               )}
-              <div className="ml-auto flex items-center gap-1.5 shrink-0">
-                {isSnoozed && <Clock className="h-3 w-3 text-amber-500" />}
+              <div className="ml-auto flex items-center gap-1 shrink-0">
+                {isSnoozed && <Clock className="h-3 w-3 text-amber-500/70" />}
+                <span className="text-[11px] text-muted-foreground/40 whitespace-nowrap tabular-nums">{timeAgo}</span>
                 <div
                   role="button"
                   tabIndex={0}
@@ -181,55 +227,50 @@ function ThreadCard({
                   onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); toggleStarred(thread.id); }}}
                   className={cn(
                     "rounded p-0.5 transition-opacity cursor-pointer",
-                    thread.isStarred ? "opacity-100" : "opacity-0 group-hover:opacity-70",
+                    thread.isStarred ? "opacity-100" : "opacity-0 group-hover:opacity-60",
                   )}
                 >
                   <Star className={cn(
-                    "h-3.5 w-3.5 transition-colors",
-                    thread.isStarred ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground hover:text-yellow-400",
+                    "h-3 w-3 transition-colors",
+                    thread.isStarred ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/60 hover:text-yellow-400",
                   )} />
                 </div>
-                <span className="text-[11px] text-muted-foreground/50 whitespace-nowrap tabular-nums">{timeAgo}</span>
               </div>
             </div>
 
             {/* Row 2: subject */}
             <p className={cn(
-              "mt-0.5 text-sm leading-snug line-clamp-1",
-              thread.isUnread ? "font-semibold text-foreground" : "font-normal text-foreground/70",
+              "text-[13.5px] leading-snug line-clamp-1",
+              thread.isUnread ? "font-medium text-foreground" : "font-normal text-foreground/65",
             )}>
               {thread.subject}
             </p>
 
             {/* Row 3: snippet */}
-            <p className="mt-1 line-clamp-1 text-[12.5px] leading-relaxed text-muted-foreground/50">
+            <p className="line-clamp-1 text-[12px] leading-relaxed text-muted-foreground/45">
               {thread.snippet ?? ""}
             </p>
 
-            {/* Row 4: badges */}
+            {/* Row 4: badges — compact inline */}
             {allBadges.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
+              <div className="mt-1 flex flex-wrap items-center gap-1">
                 {allBadges.slice(0, 4).map((b, i) => (
                   <span
                     key={i}
                     className={cn(
-                      "inline-flex items-center gap-0.5 px-2 py-0.5 text-[11px] font-medium leading-tight whitespace-nowrap",
-                      b.kind === "who" ? "rounded-full" : "rounded-md",
+                      "inline-flex items-center gap-0.5 px-1.5 py-px text-[10px] font-medium leading-snug whitespace-nowrap",
+                      b.kind === "who" ? "rounded-full" : "rounded",
                       b.color,
                     )}
                   >
-                    {b.kind === "who"  && <span className="opacity-50 font-normal">@</span>}
-                    {b.kind === "what" && <span className="opacity-50 font-normal">#</span>}
+                    {b.kind === "who"  && <span className="opacity-40 font-normal">@</span>}
+                    {b.kind === "what" && <span className="opacity-40 font-normal">#</span>}
                     {b.label}
                   </span>
                 ))}
               </div>
             )}
-
-          {/* Unread dot — left side, inside the card */}
-          {thread.isUnread && (
-            <div className="absolute left-1.5 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-primary" />
-          )}
+          </div>
         </button>
       </ContextMenuTrigger>
 
@@ -642,14 +683,16 @@ export function ThreadList() {
         {threadsLoading && threads.length === 0 ? (
           <div className="flex flex-col">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="flex flex-col gap-2 border-b border-border px-5 py-4 animate-pulse">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="h-3 rounded bg-muted" style={{ width: `${80 + (i * 23) % 80}px` }} />
-                  <div className="h-3 w-10 rounded bg-muted" />
+              <div key={i} className="flex items-start gap-3 border-b border-border/40 px-5 py-3.5 animate-pulse">
+                <div className="h-8 w-8 shrink-0 rounded-full bg-muted" />
+                <div className="flex flex-1 flex-col gap-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="h-3 rounded bg-muted" style={{ width: `${80 + (i * 23) % 80}px` }} />
+                    <div className="h-3 w-10 rounded bg-muted" />
+                  </div>
+                  <div className="h-3 rounded bg-muted" style={{ width: `${140 + (i * 31) % 120}px` }} />
+                  <div className="h-3 w-full rounded bg-muted opacity-40" />
                 </div>
-                <div className="h-3 rounded bg-muted" style={{ width: `${140 + (i * 31) % 120}px` }} />
-                <div className="h-3 w-full rounded bg-muted opacity-40" />
-                <div className="h-3 rounded bg-muted opacity-30" style={{ width: `${80 + (i * 19) % 100}px` }} />
               </div>
             ))}
           </div>

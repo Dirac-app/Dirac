@@ -941,12 +941,12 @@ function SettingsContent() {
   // ─── Render ───────────────────────────────────────────
 
   return (
-    <div className="dirac-panel flex flex-1 flex-col overflow-auto">
-      <div className="border-b border-border px-6 py-3">
+    <div className="dirac-panel flex flex-1 flex-col overflow-hidden">
+      <div className="shrink-0 border-b border-border px-6 py-3">
         <h1 className="text-sm font-semibold text-foreground">Settings</h1>
       </div>
 
-      <div className="mx-auto w-full max-w-xl space-y-8 px-6 py-6">
+      <div className="mx-auto w-full max-w-xl flex-1 overflow-y-auto space-y-8 px-6 py-6">
         {/* Profile */}
         <section>
           <div className="flex items-center gap-2 mb-4">

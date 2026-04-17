@@ -93,7 +93,7 @@ export default function InboxPage() {
           </Tooltip>
         )}
       </div>
-      <div className="hidden lg:block">
+      <div className="hidden lg:flex h-full">
         <AiSidebar />
       </div>
     </>
