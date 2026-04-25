@@ -119,12 +119,14 @@ function ThreadCard({
     (t) => !(t === "personal" && (category === "personal" || category === "automated")),
   ) ?? topics[0] ?? null;
 
-  type BadgeKind = "who" | "what" | "status";
+  type BadgeKind = "what" | "status";
   const allBadges: { label: string; color: string; kind: BadgeKind }[] = [];
 
-  if (category) {
-    allBadges.push({ label: FOUNDER_CATEGORY_LABELS[category], color: FOUNDER_CATEGORY_COLORS[category], kind: "who" });
-  }
+  // Sender-type badge lives inline with the sender name (not in the bottom badge row)
+  const categoryBadge = category
+    ? { label: FOUNDER_CATEGORY_LABELS[category], color: FOUNDER_CATEGORY_COLORS[category] }
+    : null;
+
   if (topicBadge) {
     allBadges.push({ label: TOPIC_TAG_LABELS[topicBadge], color: TOPIC_TAG_COLORS[topicBadge], kind: "what" });
   }
@@ -198,14 +200,25 @@ function ThreadCard({
 
           {/* Content */}
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            {/* Row 1: sender + status dot + message count | time + star */}
+            {/* Row 1: sender + category + status dot + message count | time + star */}
             <div className="flex items-center gap-1.5 min-w-0">
               <span className={cn(
-                "truncate text-[13px] leading-5",
+                "truncate text-[13px] leading-5 shrink min-w-0",
                 thread.isUnread ? "font-semibold text-foreground" : "font-medium text-muted-foreground",
               )}>
                 {sender}
               </span>
+              {categoryBadge && (
+                <span
+                  className={cn(
+                    "inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-px font-serif italic text-[11px] leading-snug whitespace-nowrap",
+                    categoryBadge.color,
+                  )}
+                >
+                  <span className="opacity-40 not-italic font-sans">@</span>
+                  {categoryBadge.label}
+                </span>
+              )}
               {statusDot && (
                 <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", statusDot)} />
               )}
@@ -213,7 +226,7 @@ function ThreadCard({
                 <MessageSquare className="h-3 w-3 shrink-0 text-indigo-500/60" />
               )}
               {thread.messageCount > 1 && (
-                <span className="text-[10px] text-muted-foreground/40 tabular-nums">
+                <span className="text-[10px] text-muted-foreground/40 tabular-nums shrink-0">
                   {thread.messageCount}
                 </span>
               )}
@@ -251,19 +264,17 @@ function ThreadCard({
               {thread.snippet ?? ""}
             </p>
 
-            {/* Row 4: badges — compact inline */}
+            {/* Row 4: badges — topic + status only (@ sender badge is inline with sender name) */}
             {allBadges.length > 0 && (
               <div className="mt-1 flex flex-wrap items-center gap-1">
                 {allBadges.slice(0, 4).map((b, i) => (
                   <span
                     key={i}
                     className={cn(
-                      "inline-flex items-center gap-0.5 px-1.5 py-px text-[10px] font-medium leading-snug whitespace-nowrap",
-                      b.kind === "who" ? "rounded-full" : "rounded",
+                      "inline-flex items-center gap-0.5 rounded px-1.5 py-px text-[10px] font-medium leading-snug whitespace-nowrap",
                       b.color,
                     )}
                   >
-                    {b.kind === "who"  && <span className="opacity-40 font-normal">@</span>}
                     {b.kind === "what" && <span className="opacity-40 font-normal">#</span>}
                     {b.label}
                   </span>

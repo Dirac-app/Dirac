@@ -45,6 +45,8 @@ interface RequestBody {
     triage?: string;
     lastMessageAt?: string;
   }[];
+  contactDirectory?: { name?: string; email: string; count?: number }[];
+  recentSends?: { to: string; subject: string; bodyPreview: string; sentAt: string }[];
   toneProfile?: ToneProfile | null;
 }
 
@@ -92,8 +94,36 @@ Rules for MCQs:
 - You may include a brief 1-sentence note before the MCQ block, but nothing after it.
 - Once the user answers MCQs, proceed immediately — do NOT ask more questions.
 
-## Drafts (replying to an existing thread)
-When producing a reply to an existing thread in context, wrap it in triple-backtick fences labeled "draft":
+## Drafts vs Compose — CRITICAL routing rule
+
+This is the most important decision you make. Get it wrong and the user
+sends an email to the wrong person.
+
+A "draft" is ALWAYS a REPLY to the thread currently in context. When the user
+hits Send on a draft block, it goes to the participants of the in-context
+thread — NOT to anyone you mention by name in the body.
+
+A "compose" is ALWAYS a NEW outbound email. The recipient comes from the
+"to" field you specify, not from anything else.
+
+### Use "compose" (NOT "draft") when ANY of these are true:
+- The user mentions a recipient (by name OR email) who is NOT a participant of the in-context thread.
+  Example: in-context thread is from peter@x.com, user asks "email artin@y.com about ..." → COMPOSE.
+- The user uses outbound verbs: "email X", "send to Y", "reach out to Z", "introduce", "loop in", "forward to", "write to", "message".
+- The plan or request involves contacting a third party, even if it stems from a thread that's in context.
+- There is no thread in context at all.
+
+### Use "draft" when ALL of these are true:
+- A thread IS in context.
+- The user wants to RESPOND to that thread's existing participants.
+- Verbs are reply-shaped: "reply", "respond", "answer", "follow up on this", "acknowledge".
+
+### When in doubt, prefer "compose"
+Sending a "draft" to the wrong people is far worse than sending a "compose"
+that the user has to fix. If the in-context thread participants don't clearly
+match the recipient implied by the request, ALWAYS use compose.
+
+## Draft format
 
 \`\`\`draft
 Hey Sarah,
@@ -105,12 +135,12 @@ Alex
 \`\`\`
 
 Rules for drafts:
-- Use "draft" for REPLIES to threads that are already in the AI context.
+- Use only when the answer above is clearly "draft" per the routing rule.
 - Produce the reply text only — no preamble like "Here's a draft".
+- The greeting (e.g. "Hey Sarah,") must address a participant of the in-context thread. If the name in your greeting doesn't match an in-context participant, you should be using "compose" instead.
 - You may include a brief 1-sentence note after the draft block.
 
-## Compose (new email, not a reply)
-When the user asks you to compose/write/send a NEW email (not a reply), wrap it in a JSON block labeled "compose":
+## Compose format (new email, not a reply)
 
 \`\`\`compose
 {
@@ -121,11 +151,15 @@ When the user asks you to compose/write/send a NEW email (not a reply), wrap it 
 \`\`\`
 
 Rules for compose:
-- Use "compose" ONLY for brand-new emails, not replies.
-- "to" can be an email address the user provides, or empty "" if unknown.
+- Use "compose" ONLY for brand-new emails, not replies. If the user is responding to a thread that's already in context, use "draft" instead.
+- "to" MUST be a real email address. Resolve names against the contact directory below before guessing — never fabricate an address.
+- If the user says "email Sarah" and the contact directory has multiple Sarahs (or none), ask an MCQ to disambiguate BEFORE producing the compose block.
+- If the user says "email someone@domain.com", just use that address verbatim.
+- If you genuinely cannot resolve the recipient, leave "to" as "" — the UI will block sending until the user fills it in.
 - The body should use \\n for line breaks.
 - You may include a brief note after the compose block.
-- If the user says "email X about Y", produce a compose block directly. Ask MCQs only if the purpose is ambiguous.
+- If the user says "email X about Y" and X resolves cleanly, produce the compose block directly. Ask MCQs only if the purpose or recipient is ambiguous.
+- Check the "Recently sent" list before composing — if the user already sent the same message minutes ago, ask before duplicating instead of silently re-sending.
 
 ## Finding / searching (IMPORTANT — read carefully)
 When the user asks you to FIND, SHOW, LIST, SEARCH, or LOOK FOR threads — they want RESULTS, not actions.
@@ -319,6 +353,41 @@ export async function POST(request: NextRequest) {
     llmMessages.push({
       role: "system",
       content: `## Full inbox overview (${body.inboxContext.length} threads)\nUse this to answer any inbox-level questions. ThreadIds below are real and safe to use in results/actions blocks.\n\n${rows}`,
+    });
+  }
+
+  // Inject the user's contact directory so the AI can resolve names → emails
+  // when producing compose blocks. Without this, "email Sarah about X" forces
+  // an MCQ every time, which gets old fast.
+  if (body.contactDirectory && body.contactDirectory.length > 0) {
+    const sanitize = (s: string) => s.replace(/\0/g, "");
+    const lines = body.contactDirectory
+      .map((c) => {
+        const name = c.name ? sanitize(c.name) : "";
+        const email = sanitize(c.email);
+        const freq = typeof c.count === "number" ? ` (${c.count} threads)` : "";
+        return name ? `- ${name} <${email}>${freq}` : `- ${email}${freq}`;
+      })
+      .join("\n");
+    llmMessages.push({
+      role: "system",
+      content: `## Contact directory (${body.contactDirectory.length} most-emailed contacts)\nUse this to resolve names mentioned by the user into email addresses for "compose" blocks. If multiple contacts could match a first name, ask an MCQ to disambiguate. Never invent an address that isn't here unless the user typed one explicitly.\n\n${lines}`,
+    });
+  }
+
+  // Recent AI-initiated sends — gives the AI memory across turns of "yes,
+  // I sent that already" so it doesn't double-send when a user follows up.
+  if (body.recentSends && body.recentSends.length > 0) {
+    const sanitize = (s: string) => s.replace(/\0/g, "");
+    const lines = body.recentSends
+      .map((s) => {
+        const when = s.sentAt.slice(0, 16).replace("T", " ");
+        return `- [${when}] to ${sanitize(s.to)} — "${sanitize(s.subject)}" (${sanitize(s.bodyPreview)})`;
+      })
+      .join("\n");
+    llmMessages.push({
+      role: "system",
+      content: `## Recently sent by you via Dirac (last ~7 days)\nThese have already been delivered. If the user asks for a follow-up, write a NEW follow-up — do not re-send the original. If the user appears to be requesting something you already sent, confirm before composing a duplicate.\n\n${lines}`,
     });
   }
 

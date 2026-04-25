@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState, useCallback } from "react";
+import { Suspense, useEffect, useState, useCallback, useRef } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { useTheme } from "next-themes";
 import { useSearchParams } from "next/navigation";
@@ -19,7 +19,25 @@ import {
   Sun,
   Moon,
   Sunrise,
+  AtSign,
+  Keyboard,
+  LayoutGrid,
+  Inbox as InboxIcon,
 } from "lucide-react";
+import {
+  type SenderOverride,
+  loadSenderOverrides,
+  addSenderOverride,
+  removeSenderOverride,
+  normalizePattern,
+  describeOverride,
+  SENDER_OVERRIDES_CHANGED_EVENT,
+} from "@/lib/sender-overrides";
+import {
+  FOUNDER_CATEGORY_LABELS,
+  FOUNDER_CATEGORY_COLORS,
+  type FounderCategory,
+} from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -850,6 +868,202 @@ function CategoryTabsSection() {
   );
 }
 
+// ─── Sender rules (manual @sender-type overrides) ──────────────────
+
+const OVERRIDE_CATEGORY_ORDER: FounderCategory[] = [
+  "team",
+  "customer",
+  "investor",
+  "vendor",
+  "recruiter",
+  "pr_media",
+  "outreach",
+  "personal",
+  "automated",
+];
+
+function SenderOverridesSection() {
+  const [overrides, setOverrides] = useState<SenderOverride[]>([]);
+  const [pattern, setPattern] = useState("");
+  const [category, setCategory] = useState<FounderCategory>("customer");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setOverrides(loadSenderOverrides());
+    const sync = () => setOverrides(loadSenderOverrides());
+    window.addEventListener(SENDER_OVERRIDES_CHANGED_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(SENDER_OVERRIDES_CHANGED_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+
+  const handleAdd = () => {
+    setError(null);
+    const norm = normalizePattern(pattern);
+    if (!norm) {
+      setError("Enter a valid email (sam@acme.com) or domain (@acme.com).");
+      return;
+    }
+    const added = addSenderOverride(pattern, category);
+    if (!added) {
+      setError("Couldn't save that rule.");
+      return;
+    }
+    setOverrides(loadSenderOverrides());
+    setPattern("");
+  };
+
+  const handleRemove = (id: string) => {
+    removeSenderOverride(id);
+    setOverrides(loadSenderOverrides());
+  };
+
+  return (
+    <section id="sender-rules">
+      <div className="flex items-center gap-2 mb-1">
+        <AtSign className="h-4 w-4 text-muted-foreground" />
+        <h2 className="text-sm font-semibold text-foreground">Sender rules</h2>
+      </div>
+      <p className="text-xs text-muted-foreground/70 mb-4">
+        Pin a specific email or whole domain to a sender type. Rules beat the AI
+        classifier — what you set here is what shows on the thread card. Leave
+        empty and Dirac decides automatically.
+      </p>
+
+      {/* Existing rules */}
+      {overrides.length > 0 && (
+        <div className="mb-4 flex flex-col gap-1.5">
+          {overrides.map((r) => (
+            <div
+              key={r.id}
+              className="flex items-center gap-3 rounded-lg border border-border/60 bg-background px-3 py-2"
+            >
+              <span className="font-mono text-[12px] text-foreground/90 truncate flex-1 min-w-0">
+                {describeOverride(r)}
+              </span>
+              <span
+                className={cn(
+                  "shrink-0 rounded-full px-2 py-0.5 font-serif italic text-[11px] whitespace-nowrap",
+                  FOUNDER_CATEGORY_COLORS[r.category],
+                )}
+              >
+                <span className="opacity-40 not-italic font-sans">@</span>
+                {FOUNDER_CATEGORY_LABELS[r.category]}
+              </span>
+              <button
+                onClick={() => handleRemove(r.id)}
+                title="Remove rule"
+                className="shrink-0 flex h-5 w-5 items-center justify-center rounded text-muted-foreground/40 hover:bg-destructive/10 hover:text-destructive transition-colors"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add-new row */}
+      <div className="rounded-lg border border-border p-3 space-y-2">
+        <div className="flex items-start gap-2">
+          <Input
+            value={pattern}
+            onChange={(e) => { setPattern(e.target.value); setError(null); }}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAdd(); } }}
+            placeholder="sam@acme.com  or  @acme.com"
+            className="text-sm font-mono flex-1"
+          />
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value as FounderCategory)}
+            className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring"
+          >
+            {OVERRIDE_CATEGORY_ORDER.map((c) => (
+              <option key={c} value={c}>
+                {FOUNDER_CATEGORY_LABELS[c]}
+              </option>
+            ))}
+          </select>
+          <Button
+            size="sm"
+            onClick={handleAdd}
+            disabled={!pattern.trim()}
+            className="gap-1"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add
+          </Button>
+        </div>
+        {error && <p className="text-[11px] text-red-500">{error}</p>}
+        <p className="text-[11px] text-muted-foreground/60">
+          Email rules win over domain rules. Longer domains beat shorter ones
+          (so <span className="font-mono">mail.acme.com</span> is more specific
+          than <span className="font-mono">acme.com</span>).
+        </p>
+      </div>
+    </section>
+  );
+}
+
+// ─── Settings navigation (Google-Docs-style left TOC) ───
+
+interface SettingsSection {
+  id: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}
+
+const SETTINGS_SECTIONS: SettingsSection[] = [
+  { id: "profile",          label: "Profile",           icon: User },
+  { id: "accounts",         label: "Email accounts",    icon: Mail },
+  { id: "appearance",       label: "Appearance",        icon: Monitor },
+  { id: "tone",             label: "Writing tone",      icon: Sparkles },
+  { id: "ai",               label: "AI settings",       icon: Sparkles },
+  { id: "morning-briefing", label: "Morning briefing",  icon: Sunrise },
+  { id: "sender-rules",     label: "Sender rules",      icon: AtSign },
+  { id: "inbox-sections",   label: "Inbox sections",    icon: InboxIcon },
+  { id: "category-tabs",    label: "Category tabs",     icon: LayoutGrid },
+  { id: "shortcuts",        label: "Keyboard shortcuts", icon: Keyboard },
+];
+
+function SettingsNav({
+  activeId,
+  scrollTo,
+}: {
+  activeId: string;
+  scrollTo: (id: string) => void;
+}) {
+  return (
+    <nav className="flex flex-col gap-0.5 text-[13px]">
+      {SETTINGS_SECTIONS.map((s) => {
+        const Icon = s.icon;
+        const active = activeId === s.id;
+        return (
+          <button
+            key={s.id}
+            onClick={() => scrollTo(s.id)}
+            className={cn(
+              "group flex items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors",
+              active
+                ? "bg-accent/70 text-foreground"
+                : "text-muted-foreground hover:bg-accent/40 hover:text-foreground",
+            )}
+          >
+            <Icon
+              className={cn(
+                "h-3.5 w-3.5 shrink-0 transition-colors",
+                active ? "text-foreground" : "text-muted-foreground/60",
+              )}
+            />
+            <span className="truncate">{s.label}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
 // ─── Settings content ───────────────────────────────────
 
 function SettingsContent() {
@@ -857,6 +1071,67 @@ function SettingsContent() {
   const searchParams = useSearchParams();
   const isLoading = status === "loading";
   const gmailConnected = session?.gmailConnected ?? false;
+
+  // TOC active-section tracking. We observe every section with a known id and
+  // pick whichever one is closest to the top of the scroll container.
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const [activeSectionId, setActiveSectionId] = useState<string>(
+    SETTINGS_SECTIONS[0]?.id ?? "",
+  );
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    // Manual scroll-driven active tracking. IntersectionObserver on a nested
+    // scroll container can be flaky across browsers, so this hand-rolled
+    // "closest-to-top" check is more predictable.
+    const updateActive = () => {
+      const containerTop = container.getBoundingClientRect().top;
+      // Offset slightly so a section becomes "active" once it's near the top,
+      // not strictly once its top crosses the viewport edge.
+      const threshold = containerTop + 80;
+      let bestId = SETTINGS_SECTIONS[0]?.id ?? "";
+      let bestDelta = Number.NEGATIVE_INFINITY;
+      for (const s of SETTINGS_SECTIONS) {
+        const el = document.getElementById(s.id);
+        if (!el) continue;
+        const top = el.getBoundingClientRect().top;
+        const delta = top - threshold;
+        // Pick the section whose top is just above the threshold (delta ≤ 0
+        // and as close to 0 as possible).
+        if (delta <= 0 && delta > bestDelta) {
+          bestDelta = delta;
+          bestId = s.id;
+        }
+      }
+      setActiveSectionId((prev) => (prev === bestId ? prev : bestId));
+    };
+
+    updateActive();
+    container.addEventListener("scroll", updateActive, { passive: true });
+    window.addEventListener("resize", updateActive);
+    return () => {
+      container.removeEventListener("scroll", updateActive);
+      window.removeEventListener("resize", updateActive);
+    };
+  }, []);
+
+  const scrollToSection = useCallback((id: string) => {
+    const el = document.getElementById(id);
+    const container = scrollContainerRef.current;
+    if (!el || !container) return;
+    const containerTop = container.getBoundingClientRect().top;
+    const elTop = el.getBoundingClientRect().top;
+    // scrollBy keeps it relative to the current scroll position — avoids
+    // off-by-one bugs compared to element.scrollIntoView inside a scroll container.
+    container.scrollBy({
+      top: elTop - containerTop - 12,
+      behavior: "smooth",
+    });
+    // Optimistically mark active; the scroll listener will correct if wrong.
+    setActiveSectionId(id);
+  }, []);
 
   // Outlook state
   const [outlookStatus, setOutlookStatus] = useState<OutlookStatus>({
@@ -946,9 +1221,20 @@ function SettingsContent() {
         <h1 className="text-sm font-semibold text-foreground">Settings</h1>
       </div>
 
-      <div className="mx-auto w-full max-w-xl flex-1 overflow-y-auto space-y-8 px-6 py-6">
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto"
+      >
+        <div className="mx-auto flex max-w-4xl gap-10 px-6 py-6">
+          {/* Left TOC — hidden on narrow screens; sticky on md+ */}
+          <aside className="hidden md:block sticky top-6 w-48 shrink-0 self-start">
+            <SettingsNav activeId={activeSectionId} scrollTo={scrollToSection} />
+          </aside>
+
+          {/* Right content — same width cap as before so existing sections lay out identically */}
+          <div className="flex-1 min-w-0 max-w-xl space-y-8">
         {/* Profile */}
-        <section>
+        <section id="profile">
           <div className="flex items-center gap-2 mb-4">
             <User className="h-4 w-4 text-muted-foreground" />
             <h2 className="text-sm font-semibold text-foreground">Profile</h2>
@@ -977,7 +1263,7 @@ function SettingsContent() {
         <Separator />
 
         {/* Connected accounts */}
-        <section>
+        <section id="accounts">
           <div className="flex items-center gap-2 mb-4">
             <Plus className="h-4 w-4 text-muted-foreground" />
             <h2 className="text-sm font-semibold text-foreground">
@@ -1091,36 +1377,41 @@ function SettingsContent() {
         <Separator />
 
         {/* Appearance */}
-        <AppearanceSection />
+        <div id="appearance"><AppearanceSection /></div>
 
         <Separator />
 
         {/* AI preferences — Tone */}
-        <ToneSection />
+        <div id="tone"><ToneSection /></div>
 
         <Separator />
 
         {/* Other AI settings */}
-        <AiSettingsSection />
+        <div id="ai"><AiSettingsSection /></div>
 
         <Separator />
 
-        <MorningBriefingSettingsSection />
+        <div id="morning-briefing"><MorningBriefingSettingsSection /></div>
+
+        <Separator />
+
+        {/* Sender rules — manual @sender-type overrides */}
+        <SenderOverridesSection />
 
         <Separator />
 
         {/* Inbox sections */}
-        <InboxSectionsSection />
+        <div id="inbox-sections"><InboxSectionsSection /></div>
 
         <Separator />
 
         {/* Category tabs */}
-        <CategoryTabsSection />
+        <div id="category-tabs"><CategoryTabsSection /></div>
 
         <Separator />
 
         {/* Keyboard shortcuts */}
-        <section>
+        <section id="shortcuts">
           <div className="flex items-center gap-2 mb-3">
             <h2 className="text-sm font-semibold text-foreground">Keyboard shortcuts</h2>
           </div>
@@ -1145,6 +1436,8 @@ function SettingsContent() {
           </div>
         </section>
 
+          </div>
+        </div>
       </div>
     </div>
   );

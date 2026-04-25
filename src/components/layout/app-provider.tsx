@@ -24,6 +24,12 @@ import type {
   TopicTag,
 } from "@/lib/types";
 import { TAB_COLORS } from "@/lib/types";
+import {
+  loadSenderOverrides,
+  matchSenderOverride,
+  SENDER_OVERRIDES_CHANGED_EVENT,
+  type SenderOverride,
+} from "@/lib/sender-overrides";
 
 // ─── Local storage helpers for starred / urgent state ────
 
@@ -160,6 +166,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const cat = localStorage.getItem(CATEGORIES_KEY);
       if (cat) setCategoryMap(JSON.parse(cat));
     } catch {}
+    // Sender overrides — hydrate once on mount; a separate effect listens
+    // for updates so the rule list stays live across tabs and from the
+    // settings page without requiring a refresh.
+    setSenderOverrides(loadSenderOverrides());
     try {
       const tabs = localStorage.getItem("dirac-category-tabs");
       if (tabs) setCategoryTabsState(JSON.parse(tabs));
@@ -176,6 +186,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const tp = localStorage.getItem(TOPICS_KEY);
       if (tp) setTopicMap(JSON.parse(tp));
     } catch {}
+  }, []);
+
+  // Keep senderOverrides live. Fires from settings UI (same tab → custom event)
+  // and from other tabs (→ native storage event).
+  useEffect(() => {
+    const refresh = () => setSenderOverrides(loadSenderOverrides());
+    window.addEventListener(SENDER_OVERRIDES_CHANGED_EVENT, refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener(SENDER_OVERRIDES_CHANGED_EVENT, refresh);
+      window.removeEventListener("storage", refresh);
+    };
   }, []);
 
   // Merged + sorted threads with starred/urgent overlays
@@ -221,6 +243,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ─── Founder categories (Direction B) ───────────────────
   const [categoryMap, setCategoryMap] = useState<Record<string, FounderCategory>>({});
   const [categoryLoading, setCategoryLoading] = useState(false);
+  // User-configured sender rules (settings → Sender rules). These shortcut the
+  // AI classifier when a thread's sender matches a rule.
+  const [senderOverrides, setSenderOverrides] = useState<SenderOverride[]>([]);
 
   // ─── Dynamic category tabs ────────────────────────────
   const [categoryTabMap, setCategoryTabMap] = useState<Record<string, string>>({});
@@ -543,6 +568,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const clearAiContext = useCallback(() => {
+    setAiContext([]);
+  }, []);
+
   const isInAiContext = useCallback(
     (id: string) => aiContext.some((c) => c.id === id),
     [aiContext],
@@ -638,6 +667,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const addr = email.toLowerCase();
     const subj = subject.toLowerCase();
 
+    // User-configured rules beat every heuristic — they're an explicit override.
+    const manual = matchSenderOverride(addr, senderOverrides);
+    if (manual) return manual;
+
     // No-reply / machine senders
     const automatedAddressPatterns = [
       "noreply", "no-reply", "no_reply", "donotreply", "do-not-reply", "do_not_reply",
@@ -667,7 +700,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (automatedSubjectPatterns.some((p) => subj.includes(p))) return "automated";
 
     return null; // defer to AI
-  }, []);
+  }, [senderOverrides]);
 
   const runCategorization = useCallback(async () => {
     const allThreads = [...gmailThreads, ...outlookThreads];
@@ -1097,6 +1130,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     runTopicTagging();
   }, [gmailThreads, outlookThreads]);
 
+  // Re-apply sender overrides on top of the existing categoryMap when rules
+  // change. This keeps already-classified threads in sync without needing to
+  // burn a full AI run — instant feedback when the user adds/removes a rule.
+  useEffect(() => {
+    if (senderOverrides.length === 0 && Object.keys(categoryMap).length === 0) return;
+    setCategoryMap((prev) => {
+      let changed = false;
+      const next: Record<string, FounderCategory> = { ...prev };
+      for (const t of threads) {
+        const addr = t.participants[0]?.email ?? "";
+        const forced = matchSenderOverride(addr, senderOverrides);
+        if (forced && next[t.id] !== forced) {
+          next[t.id] = forced;
+          changed = true;
+        }
+      }
+      if (!changed) return prev;
+      try { localStorage.setItem(CATEGORIES_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+    // categoryMap is intentionally omitted from deps — we read the latest via
+    // the functional updater and don't want to re-run when we ourselves write.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [senderOverrides, threads]);
+
   // ─── Fetch messages when thread is selected ───────────
   useEffect(() => {
     if (!selectedThreadId) {
@@ -1197,6 +1255,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addToAiContext,
       removeFromAiContext,
       toggleAiContext,
+      clearAiContext,
       isInAiContext,
       triageMap,
       triageLoading,
@@ -1272,6 +1331,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addToAiContext,
       removeFromAiContext,
       toggleAiContext,
+      clearAiContext,
       isInAiContext,
       triageMap,
       triageLoading,

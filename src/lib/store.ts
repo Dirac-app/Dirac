@@ -87,6 +87,7 @@ export interface AppState {
   addToAiContext: (item: AiContextItem) => void;
   removeFromAiContext: (id: string) => void;
   toggleAiContext: (item: AiContextItem) => void;
+  clearAiContext: () => void;
   isInAiContext: (id: string) => boolean;
   // Triage
   triageMap: Record<string, TriageCategory>;

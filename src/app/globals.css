@@ -120,7 +120,17 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* Explicitly inherit foreground on all elements so browser UA stylesheets
+     (which reset form element color to system-default dark) don't win in dark
+     mode. Utility text-* classes on individual components will override this. */
   body {
+    @apply text-foreground;
+  }
+  input,
+  textarea,
+  button,
+  select,
+  optgroup {
     @apply text-foreground;
   }
 }

@@ -39,13 +39,16 @@ const REVEAL_DELAY_MS = 1400;
 
 interface MorningPlanCard {
   threadId: string;
+  platform: string;
   subject: string;
   sender: string;
   snippet: string;
   summary: string;
   aiSummary?: string;
   needsAction?: boolean;
-  plan: string;
+  plan: string;           // heuristic fallback — shown only until AI plan arrives
+  aiPlan?: string;        // AI-grounded specific plan — preferred when present
+  planLoading?: boolean;  // true while the AI enrichment is in flight
   category?: FounderCategory;
   triage?: TriageCategory;
   urgent: boolean;
@@ -99,6 +102,66 @@ function suppressThread(threadId: string, days: number) {
     until.setDate(until.getDate() + days);
     all[threadId] = until.toISOString().slice(0, 10);
     window.localStorage.setItem(BRIEF_DISMISSED_KEY, JSON.stringify(all));
+  } catch {}
+}
+
+// ── "Shown history" — soft suppression of threads we've already briefed ────
+//
+// The hard-dismissal above only fires when the user takes an explicit action
+// (accept / open-with-ai / trash). That leaves a gap: if a thread shows up in
+// Monday's briefing and the user just closes the modal, it would cheerfully
+// reappear Tuesday, Wednesday, and so on — even if they've since read it in
+// the inbox or decided to let it sit.
+//
+// The shown-history mechanism records *every* thread that appeared in a
+// briefing. On subsequent mornings we filter it out unless:
+//   1. genuinely new activity has arrived (lastMessageAt advanced), or
+//   2. enough days have passed that it's worth re-checking anyway.
+// A separate rule also handles "read since shown" — if the user has since
+// marked the thread read and nothing new came in, we assume it's dealt with.
+
+const BRIEF_SHOWN_KEY = "dirac_brief_shown";
+const SHOWN_RETENTION_DAYS = 21;   // forget shown records after this long
+const SHOWN_RESTAGE_DAYS   = 4;    // re-surface anyway after this many days
+
+interface ShownRecord {
+  shownAt: string;         // ISO — when this thread last appeared in a briefing
+  shownMessageAt: string;  // ISO — the thread's lastMessageAt at that time
+}
+
+function loadShownHistory(): Record<string, ShownRecord> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(BRIEF_SHOWN_KEY) ?? "{}";
+    const parsed = JSON.parse(raw) as Record<string, ShownRecord>;
+    const cutoff = Date.now() - SHOWN_RETENTION_DAYS * 86_400_000;
+    const kept: Record<string, ShownRecord> = {};
+    for (const [id, rec] of Object.entries(parsed)) {
+      if (!rec?.shownAt) continue;
+      if (new Date(rec.shownAt).getTime() >= cutoff) kept[id] = rec;
+    }
+    return kept;
+  } catch {
+    return {};
+  }
+}
+
+function recordShownBriefing(
+  plans: { threadId: string }[],
+  threadsById: Map<string, DiracThread>,
+) {
+  if (typeof window === "undefined" || plans.length === 0) return;
+  try {
+    const all = loadShownHistory();
+    const now = new Date().toISOString();
+    for (const p of plans) {
+      const t = threadsById.get(p.threadId);
+      all[p.threadId] = {
+        shownAt: now,
+        shownMessageAt: t?.lastMessageAt ?? now,
+      };
+    }
+    window.localStorage.setItem(BRIEF_SHOWN_KEY, JSON.stringify(all));
   } catch {}
 }
 
@@ -269,23 +332,33 @@ function PlanCardContent({
         {/* Divider + plan */}
         <div className="mt-2 pt-2 border-t border-border/30">
           <div className="flex items-start justify-between gap-2">
-            {isEditing ? (
+            {plan.planLoading && !plan.aiPlan ? (
+              <div className="flex-1 space-y-1.5 animate-pulse py-0.5">
+                <div className="h-2.5 w-5/6 rounded-md bg-muted/60" />
+                <div className="h-2.5 w-2/3 rounded-md bg-muted/45" />
+              </div>
+            ) : isEditing ? (
               <textarea
-                value={plan.plan}
+                value={plan.aiPlan ?? plan.plan}
                 onChange={(e) => onPlanChange(e.target.value)}
                 className="flex-1 min-h-[72px] resize-none rounded-md border border-border bg-background px-2.5 py-2 text-[12.5px] leading-[1.6] text-foreground/80 outline-none focus:ring-1 focus:ring-ring"
               />
             ) : (
-              <p className="flex-1 text-[12.5px] leading-[1.6] text-muted-foreground/90 italic">{plan.plan}</p>
+              <p className="flex-1 text-[12.5px] leading-[1.6] text-muted-foreground/90 italic">
+                {plan.aiPlan ?? plan.plan}
+              </p>
             )}
             <button
               onClick={onEdit}
+              disabled={plan.planLoading && !plan.aiPlan}
               title={isEditing ? "Done" : "Edit plan"}
               className={cn(
                 "mt-0.5 shrink-0 flex h-5 w-5 items-center justify-center rounded transition-colors",
-                isEditing
-                  ? "text-primary hover:text-primary"
-                  : "text-foreground/60 hover:text-foreground"
+                plan.planLoading && !plan.aiPlan
+                  ? "text-muted-foreground/20 cursor-not-allowed"
+                  : isEditing
+                    ? "text-primary hover:text-primary"
+                    : "text-foreground/60 hover:text-foreground"
               )}
             >
               <Pencil className="h-2.5 w-2.5" />
@@ -343,6 +416,7 @@ export function MorningBriefing() {
     setAiSidebarOpen,
     setPendingAiQuery,
     addToAiContext,
+    clearAiContext,
   } = useAppState();
   const pathname = usePathname();
 
@@ -353,6 +427,7 @@ export function MorningBriefing() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [settings, setSettings] = useState<MorningBriefSettings>(DEFAULT_SETTINGS);
   const [dismissedThreads, setDismissedThreads] = useState<Record<string, string>>({});
+  const [shownHistory, setShownHistory] = useState<Record<string, ShownRecord>>({});
   const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipNextShimmer = useRef(false);
   const hasAutoOpened = useRef<string | null>(null); // stores the date shown, handles overnight tabs
@@ -360,6 +435,7 @@ export function MorningBriefing() {
 
   const candidates = useMemo(() => {
     const today = todayKey();
+    const nowMs = Date.now();
     const scored = threads
       .filter((thread) => {
         if (doneThreads.has(thread.id)) return false;
@@ -367,6 +443,24 @@ export function MorningBriefing() {
         // Skip threads the user has explicitly suppressed from the briefing
         const suppressedUntil = dismissedThreads[thread.id];
         if (suppressedUntil && suppressedUntil >= today) return false;
+
+        // Soft-suppress anything we already surfaced in a previous briefing,
+        // unless fresh activity arrived or it's been several days.
+        const shown = shownHistory[thread.id];
+        if (shown) {
+          const shownAtMs = new Date(shown.shownAt).getTime();
+          const shownMsgMs = shown.shownMessageAt
+            ? new Date(shown.shownMessageAt).getTime()
+            : 0;
+          const threadMsgMs = new Date(thread.lastMessageAt).getTime();
+          const hasNewActivity = threadMsgMs > shownMsgMs;
+          const stale = (nowMs - shownAtMs) / 86_400_000 >= SHOWN_RESTAGE_DAYS;
+
+          if (!hasNewActivity && !stale) return false;
+          // User has read it in the inbox since we showed it, and nothing new
+          // came in → assume it's been handled and don't re-surface.
+          if (!hasNewActivity && !thread.isUnread) return false;
+        }
         return true;
       })
       .map((thread) => {
@@ -397,6 +491,19 @@ export function MorningBriefing() {
         if (!item) return false;
         // Filter out noise: automated and low-signal
         if (item.category === "automated" && !item.thread.isUrgent && item.triage !== "needs_reply") return false;
+
+        // General-usage "seen" detection: if we've never briefed this thread
+        // and the user has already read it in the normal inbox, and nothing
+        // about it demands attention, assume they've made their call.
+        const wasShown = shownHistory[item.thread.id];
+        if (!wasShown && !item.thread.isUnread) {
+          const actionable =
+            item.thread.isUrgent ||
+            item.triage === "needs_reply" ||
+            item.commitmentCount > 0;
+          if (!actionable) return false;
+        }
+
         // Drop threads with a negative score (old + low signal)
         return item.score > 0;
       })
@@ -404,6 +511,7 @@ export function MorningBriefing() {
       .slice(0, settings.maxItems)
       .map(({ thread, triage, category, commitmentCount }) => ({
         threadId: thread.id,
+        platform: thread.platform,
         subject: thread.subject,
         sender: thread.participants[0]?.name || thread.participants[0]?.email || "Unknown",
         snippet: thread.snippet ?? "",
@@ -417,11 +525,12 @@ export function MorningBriefing() {
       }));
 
     return scored;
-  }, [threads, triageMap, categoryMap, commitments, doneThreads, snoozedThreads, settings.maxItems, dismissedThreads]);
+  }, [threads, triageMap, categoryMap, commitments, doneThreads, snoozedThreads, settings.maxItems, dismissedThreads, shownHistory]);
 
   useEffect(() => {
     setSettings(loadMorningSettings());
     setDismissedThreads(loadDismissedThreads());
+    setShownHistory(loadShownHistory());
   }, []);
 
   // Trigger reveal animation when dialog opens
@@ -449,18 +558,30 @@ export function MorningBriefing() {
       enrichAbort.current?.abort();
       return;
     }
-    // Skip if all plans already have AI summaries (re-opened from minimized)
-    if (plans.length === 0 || plans.every((p) => p.aiSummary !== undefined)) return;
+    // Skip if all plans already have AI enrichment (re-opened from minimized)
+    if (plans.length === 0 || plans.every((p) => p.aiSummary !== undefined && p.aiPlan !== undefined)) return;
 
     const controller = new AbortController();
     enrichAbort.current = controller;
 
     const snapshot = plans.map((p) => ({
       threadId: p.threadId,
+      platform: p.platform,
       subject: p.subject,
       sender: p.sender,
       snippet: p.snippet,
+      triage: p.triage,
+      category: p.category,
+      isUrgent: p.urgent,
+      commitmentCount: p.commitmentCount,
+      ageLabel: p.ageLabel,
     }));
+
+    // Flag all cards without an AI plan yet as loading, so the UI can skeleton
+    // the plan text instead of showing the generic heuristic fallback.
+    setPlans((prev) =>
+      prev.map((p) => (p.aiPlan !== undefined ? p : { ...p, planLoading: true })),
+    );
 
     (async () => {
       try {
@@ -470,20 +591,38 @@ export function MorningBriefing() {
           body: JSON.stringify({ cards: snapshot }),
           signal: controller.signal,
         });
-        if (!res.ok) return;
+        if (!res.ok) {
+          setPlans((prev) => prev.map((p) => ({ ...p, planLoading: false })));
+          return;
+        }
         const data = await res.json();
-        if (!data.cards) return;
+        if (!data.cards) {
+          setPlans((prev) => prev.map((p) => ({ ...p, planLoading: false })));
+          return;
+        }
         setPlans((prev) =>
           prev.map((p) => {
-            const ai = (data.cards as { threadId: string; summary: string; needsAction: boolean }[]).find(
-              (c) => c.threadId === p.threadId,
-            );
-            if (!ai) return p;
-            return { ...p, aiSummary: ai.summary, needsAction: ai.needsAction };
+            const ai = (
+              data.cards as {
+                threadId: string;
+                summary: string;
+                needsAction: boolean;
+                plan?: string;
+              }[]
+            ).find((c) => c.threadId === p.threadId);
+            if (!ai) return { ...p, planLoading: false };
+            return {
+              ...p,
+              aiSummary: ai.summary,
+              needsAction: ai.needsAction,
+              aiPlan: ai.plan?.trim() || p.plan,
+              planLoading: false,
+            };
           }),
         );
       } catch {
-        // Silently fall back to heuristic summaries
+        // Silently fall back to heuristic plan/summary
+        setPlans((prev) => prev.map((p) => ({ ...p, planLoading: false })));
       }
     })();
 
@@ -495,7 +634,11 @@ export function MorningBriefing() {
     function handleOpen() {
       setPlans(candidates);
       setOpen(true);
-    }    function handleStorage() {
+      const byId = new Map(threads.map((t) => [t.id, t]));
+      recordShownBriefing(candidates, byId);
+      setShownHistory(loadShownHistory());
+    }
+    function handleStorage() {
       setSettings(loadMorningSettings());
     }
     window.addEventListener("dirac:open-morning-briefing", handleOpen);
@@ -504,7 +647,7 @@ export function MorningBriefing() {
       window.removeEventListener("dirac:open-morning-briefing", handleOpen);
       window.removeEventListener("storage", handleStorage);
     };
-  }, [candidates]);
+  }, [candidates, threads]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -535,8 +678,11 @@ export function MorningBriefing() {
       window.localStorage.setItem(getMorningStorageKey(), "1");
       setPlans(candidates);
       setOpen(true);
+      const byId = new Map(threads.map((t) => [t.id, t]));
+      recordShownBriefing(candidates, byId);
+      setShownHistory(loadShownHistory());
     }
-  }, [pathname, settings, threadsLoading, triageLoading, categoryLoading, threads.length, candidates]);
+  }, [pathname, settings, threadsLoading, triageLoading, categoryLoading, threads, candidates]);
 
   const minimize = () => {
     setOpen(false);
@@ -551,21 +697,52 @@ export function MorningBriefing() {
 
   const refreshDismissed = () => setDismissedThreads(loadDismissedThreads());
 
+  // Detect whether a plan is asking for a NEW outbound email versus a reply
+  // to the in-context thread. The AI's system prompt distinguishes "compose"
+  // from "draft" but doesn't otherwise know which mode the plan implies, so
+  // we feed it a one-line hint based on the plan verbs.
+  const detectPlanIntent = (planText: string): "compose" | "draft" | "neutral" => {
+    const t = planText.toLowerCase();
+    // "Reply", "respond to them", "follow up on this thread" → existing thread
+    if (/\b(reply|respond|follow[\s-]?up on|answer|acknowledge)\b/.test(t)) return "draft";
+    // "Email X", "send to Y", "reach out to Z", "introduce", "write to" → new
+    if (/\b(email|message|write to|reach out|introduce|loop in|cc|forward to|send (an? )?(email|note|message) to)\b/.test(t)) return "compose";
+    return "neutral";
+  };
+
+  const intentHint = (intent: "compose" | "draft" | "neutral") => {
+    if (intent === "compose") return "\n\nNote: this plan calls for a NEW outbound email — produce a `compose` block, not a reply draft. Resolve the recipient from the contact directory.";
+    if (intent === "draft") return "\n\nNote: this plan is a reply to the thread above — produce a `draft` block addressed to the existing participants.";
+    return "";
+  };
+
   const acceptPlan = (plan: MorningPlanCard) => {
+    const effectivePlan = plan.aiPlan ?? plan.plan;
     suppressThread(plan.threadId, 2); // acted on — rest for 2 days
     refreshDismissed();
+    // Scope AI context to just this thread so the agent knows exactly which
+    // email the plan is for — any previously-pinned threads are cleared.
+    clearAiContext();
     addToAiContext({ id: plan.threadId, label: plan.subject });
-    setPendingAiQuery(plan.plan);
+    const hint = intentHint(detectPlanIntent(effectivePlan));
+    setPendingAiQuery(
+      `From this morning's briefing — thread "${plan.subject}" (${plan.sender}). Plan: ${effectivePlan}${hint}`,
+    );
     setAiSidebarOpen(true);
     setSelectedThreadId(plan.threadId);
     minimize();
   };
 
   const openWithAi = (plan: MorningPlanCard) => {
+    const effectivePlan = plan.aiPlan ?? plan.plan;
     suppressThread(plan.threadId, 2);
     refreshDismissed();
+    clearAiContext();
     addToAiContext({ id: plan.threadId, label: plan.subject });
-    setPendingAiQuery(`Help me execute this plan for "${plan.subject}": ${plan.plan}`);
+    const hint = intentHint(detectPlanIntent(effectivePlan));
+    setPendingAiQuery(
+      `Help me execute this plan for "${plan.subject}" from ${plan.sender}: ${effectivePlan}${hint}`,
+    );
     setAiSidebarOpen(true);
     setSelectedThreadId(plan.threadId);
     minimize();
@@ -667,9 +844,13 @@ export function MorningBriefing() {
                           onOpenThread={() => { setSelectedThreadId(plan.threadId); minimize(); }}
                           onDismiss={() => dismissPlan(plan.threadId)}
                           onPlanChange={(val) =>
-                            setPlans((prev) => prev.map((p) =>
-                              p.threadId === plan.threadId ? { ...p, plan: val } : p
-                            ))
+                            setPlans((prev) => prev.map((p) => {
+                              if (p.threadId !== plan.threadId) return p;
+                              // Edit the AI plan if it exists, otherwise the heuristic
+                              return p.aiPlan !== undefined
+                                ? { ...p, aiPlan: val }
+                                : { ...p, plan: val };
+                            }))
                           }
                         />
                       );

@@ -89,12 +89,27 @@ const InboxThreadSchema = z.object({
   isStarred:     z.boolean().optional(),
 });
 
+const ContactDirectoryEntrySchema = z.object({
+  name:  z.string().max(200).optional(),
+  email: z.string().max(320),
+  count: z.number().int().nonnegative().optional(),
+});
+
+const RecentSendSchema = z.object({
+  to:          z.string().max(320),
+  subject:     z.string().max(998),
+  bodyPreview: z.string().max(200),
+  sentAt:      z.string().max(100),
+});
+
 export const AiChatSchema = z.object({
-  message:      z.string().min(1).max(10_000),
-  context:      z.array(ContextThreadSchema).max(50).optional(),
-  inboxContext: z.array(InboxThreadSchema).max(100).optional(),
-  toneProfile:  ToneProfileSchema.nullable().optional(),
-  preset:       z.string().max(20).optional(),
+  message:           z.string().min(1).max(10_000),
+  context:           z.array(ContextThreadSchema).max(50).optional(),
+  inboxContext:      z.array(InboxThreadSchema).max(100).optional(),
+  contactDirectory:  z.array(ContactDirectoryEntrySchema).max(80).optional(),
+  recentSends:       z.array(RecentSendSchema).max(30).optional(),
+  toneProfile:       ToneProfileSchema.nullable().optional(),
+  preset:            z.string().max(20).optional(),
 });
 
 // ── Helper ───────────────────────────────────────────────────────────────────
