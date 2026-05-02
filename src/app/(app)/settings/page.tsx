@@ -1025,6 +1025,7 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
   { id: "inbox-sections",   label: "Inbox sections",    icon: InboxIcon },
   { id: "category-tabs",    label: "Category tabs",     icon: LayoutGrid },
   { id: "shortcuts",        label: "Keyboard shortcuts", icon: Keyboard },
+  { id: "onboarding",       label: "Onboarding",        icon: Sparkles },
 ];
 
 function SettingsNav({
@@ -1407,6 +1408,31 @@ function SettingsContent() {
 
         {/* Category tabs */}
         <div id="category-tabs"><CategoryTabsSection /></div>
+
+        <Separator />
+
+        {/* Re-run onboarding */}
+        <section id="onboarding">
+          <div className="flex items-center gap-2 mb-3">
+            <h2 className="text-sm font-semibold text-foreground">Onboarding</h2>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            Re-run the welcome flow. Useful if you skipped a step or want to revisit your tone & persona choices.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              try {
+                window.localStorage.removeItem("dirac_onboarding_complete");
+                window.localStorage.removeItem("dirac_onboarding_progress");
+                window.location.reload();
+              } catch {}
+            }}
+          >
+            Restart onboarding
+          </Button>
+        </section>
 
         <Separator />
 

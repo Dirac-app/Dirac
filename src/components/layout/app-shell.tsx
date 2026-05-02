@@ -14,7 +14,7 @@ import { ToastProvider } from "@/components/ui/toast";
 import { MorningBriefing } from "@/components/morning/morning-briefing";
 import { SetAsideBar } from "@/components/set-aside/set-aside-bar";
 import { ViewAllOverlay } from "@/components/inbox/view-all-overlay";
-import { OnboardingModal } from "@/components/onboarding/onboarding-modal";
+import { OnboardingController } from "@/components/onboarding/onboarding-controller";
 import { ThemeConfigProvider, useThemeConfig, getColorSchemeClass, getDensityClass } from "@/lib/theme";
 import { useEffect, useState } from "react";
 
@@ -64,7 +64,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <SetAsideBar />
           <ViewAllOverlay />
           <KeyboardShortcutsHelp />
-          <OnboardingModal />
+          <OnboardingController />
         </AppProvider>
         </ThemeConfigProvider>
       </SessionProvider>
