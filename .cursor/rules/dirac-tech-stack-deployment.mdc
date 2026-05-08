@@ -1,0 +1,68 @@
+---
+description: Dirac tech stack + deployment foundations (Railway-first, serverful, workers/queues, OAuth-safe)
+alwaysApply: true
+---
+
+# Dirac tech stack & deployment (strong foundation)
+
+## Guiding principles
+- Prefer **long-running services + workers** over “functions-only” serverless for connectors, sync, and queues.
+- Keep the product shippable early, but never paint ourselves into a corner for multi-platform.
+
+## Recommended stack (baseline)
+### Frontend + web server
+- **Next.js (App Router) + React + TypeScript**
+- UI: **Tailwind + shadcn/ui**
+- Run as a **Node server in a container** (not edge-only).
+
+### Backend shape (pragmatic)
+- Start as a **single repo** with Next route handlers/server actions for API.
+- Add a dedicated API service later only if/when needed (e.g., `api/` with Fastify/Nest).
+
+### Data
+- **Postgres** + **Prisma**
+- Store connector tokens server-side; encrypt refresh tokens at rest (app-level encryption key via env/secret manager).
+
+### Background work (required for “Cursor for messages”)
+- **Redis + BullMQ**
+- A separate **worker** process/service handles:
+  - Gmail sync (poll + incremental sync)
+  - Gmail push ingest (when using watch + Pub/Sub or webhook events)
+  - AI jobs (summaries, task extraction, ranking) and retries
+  - Periodic “triage scoring” and tagging
+
+### Realtime (optional early)
+- Start with **SSE** for inbox/thread refresh; websockets later if needed.
+
+### Observability (from day 1)
+- Errors: **Sentry**
+- Analytics/product: **PostHog** (or similar)
+- Structured logs + request IDs (OpenTelemetry later if needed)
+
+## Deployment: Railway (recommended)
+Railway is a good fit because it supports **containerized services**, **managed Postgres/Redis**, and multiple long-running services.
+
+### Railway service layout (minimum)
+- **web**: Next.js Node server (serves UI + API endpoints)
+- **worker**: BullMQ worker (queue consumers)
+- **postgres**: managed
+- **redis**: managed
+
+### Deployment notes
+- Use Dockerfiles (or Railway Nixpacks) with predictable builds.
+- Run Prisma migrations as a deploy step (or a one-off “migrate” job per release).
+- Use Railway env vars/secrets for:
+  - `DATABASE_URL`
+  - `REDIS_URL`
+  - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`
+  - `TOKEN_ENCRYPTION_KEY` (32 bytes) for refresh-token encryption
+  - AI provider keys (server-side only)
+
+## Alternatives (also “not serverless trash”)
+- **Fly.io**: great for always-on apps + workers; pair with managed Postgres and Upstash Redis.
+- **Render**: similar model; fine for web + worker + cron.
+
+## What to avoid (for this product)
+- “Functions-only” hosting that makes background sync/queues awkward or brittle.
+- Client-side OAuth token storage for connectors (unsafe).
+- Designing around one platform’s semantics (Gmail) such that adding Discord/IG becomes a rewrite.

@@ -1,0 +1,40 @@
+---
+description: Dirac product UI and UX principles for inbox, copilot, and action flows
+alwaysApply: true
+---
+
+Dirac is a decision-first inbox, not a generic email client.
+
+Prioritize triage speed, clarity of ownership, and confidence in the next action.
+AI should reduce cognitive load, not add another layer of work.
+Manual actions must always remain available; AI recommends, it does not trap the user.
+
+Workflow rules:
+- Any common workflow should take at most 3 steps.
+- The primary action for a thread should be visible without opening extra menus.
+- Users should always be able to reply, archive, snooze, or mark done manually.
+- Prefer one strong recommendation over multiple competing suggestions.
+
+Density rules:
+- Avoid puffy cards and excessive vertical whitespace.
+- On any list row, show at most 4 meaningful text elements: sender, subject, one status/action line, and one small metadata cluster.
+- Keep thread rows compact enough that multiple items are visible without feeling cramped.
+- Do not show ellipses unless text is actually truncated by layout constraints.
+- Prefer tighter spacing and clearer hierarchy over decorative breathing room.
+
+AI copilot rules:
+- The AI panel should start with a short summary and one recommended next move.
+- Do not front-load the sidebar with too many controls, badges, or long explanations.
+- Advanced AI tools can exist, but should come after the summary/recommendation layer.
+- If AI confidence is low, surface uncertainty briefly and let the user act manually.
+
+Inbox rules:
+- The inbox should behave like a work queue, not a raw message dump.
+- Prioritize showing what needs me, what is waiting, and what is urgent.
+- Status should be easier to scan than snippets.
+- Badges should be sparse and high-signal only.
+
+Visual rules:
+- Functional clarity beats stylistic flourish.
+- Use whitespace to separate meaning, not to make the interface feel expensive.
+- Favor compact, sharp, calm layouts over oversized, bubbly, or overly soft cards.

@@ -1,0 +1,44 @@
+---
+description: Dirac product personality, layout, density, and interaction principles
+alwaysApply: true
+---
+
+# Dirac product style & UX (Cursor for communications)
+
+## Product personality
+- Calm, high-signal, no fluff.
+- Always make it clear: **what’s selected**, **what will happen**, **what to do next**.
+
+## Layout principles
+- Default to **three-pane**: list (left) / content (center) / AI (right, toggleable).
+- AI is a **tool**, not the destination; it must not block reading/sending.
+- Scope should be visible (e.g., “Context: 3 threads” with a quick details affordance).
+
+## Density & progressive disclosure
+- Compact, scannable UI by default.
+- Show short summaries first; allow expand for detail.
+- Keep “Assumptions” optional/collapsible.
+
+## Action-first interactions
+- Each screen must answer “what can I do here?” with obvious actions:
+  - Inbox: filters, multi-select actions
+  - Thread: reply/send, mark done/snooze/tag
+  - AI sidebar: quick actions row; MCQ card only when needed
+- Avoid requiring typing for common operations.
+
+## Multi-platform clarity (without fragmentation)
+- Unified default view; indicate platform differences (icon, message type, action availability).
+- Avoid per-platform tabs; use filters and saved views instead.
+
+## Drafting UX safety
+- Autosave drafts locally, allow easy revert/discard.
+- “Send” is always explicit; never implicit sending.
+
+## Keyboard-first (design for it now)
+- Plan for: j/k navigate, enter open, cmd+enter send, tab/shift-tab focus.
+
+## Visual style
+- Neutral surfaces, subtle borders, minimal shadows.
+- One accent color for primary actions.
+- Avoid heavy gradients/illustrations; content is the product.
+- Follow the visual design system in `dirac-visual-design-system.mdc` (inspirations, colorways, tokens, guardrails).
