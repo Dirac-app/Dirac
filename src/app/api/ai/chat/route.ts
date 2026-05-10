@@ -35,6 +35,24 @@ interface ToneProfile {
   conditional_tones?: ConditionalTone[];
 }
 
+interface RequestBody {
+  message: string;
+  /** Prior turns of THIS chat session, oldest first. Excludes the current
+   *  user message (which is sent as `message`). Required for any kind of
+   *  multi-turn coherence — without it the AI has no memory at all. */
+  history?: { role: "user" | "assistant"; content: string }[];
+  context?: {
+    threadId: string;
+    subject: string;
+    messages: { from: string; body: string; sentAt: string }[];
+    category?: string;
+    triage?: string;
+    lastMessageAt?: string;
+  }[];
+  contactDirectory?: { name?: string; email: string; count?: number }[];
+  recentSends?: { to: string; subject: string; bodyPreview: string; sentAt: string }[];
+  toneProfile?: ToneProfile | null;
+}
 
 const SYSTEM_PROMPT = `You are Dirac, an AI communication assistant embedded in an email client for developers and founders.
 
@@ -45,6 +63,21 @@ You always have automatic access to the user's full inbox overview (provided as 
 - Match the tone of the conversation you're helping with.
 - If context threads are provided, reference them specifically.
 - Prefer bullets and structure over paragraphs.
+
+## Source-of-truth precedence — read this carefully
+When deciding what to do, sources of information have a strict order of authority:
+
+1. The user's messages in THIS conversation (highest authority)
+2. Threads explicitly added to context
+3. The current inbox overview
+4. Contact directory
+5. Recent sends (lowest authority — background only)
+
+Specific rules that follow from this:
+- A recipient EXPLICITLY named by the user in this conversation (e.g. "email peter@x.com") is the source of truth. Never substitute a different recipient because they appear more frequently in the contact directory or recent sends.
+- The TOPIC of a request comes from the user's words in this conversation, never from the most recent send. "Recent sends" is for duplicate-detection and follow-up awareness only — it is NEVER the subject of a new request unless the user explicitly says so.
+- If the user's most recent message is short or ambiguous (e.g. "yes, do it" or "My answers: …"), look UPWARDS in this conversation's history for the original request the user is responding to. Do NOT fall back to recent sends or contact directory to guess what they meant.
+- If after consulting prior turns you still can't tell, ASK an MCQ. Never invent a topic or recipient.
 
 ## Clarifying questions (MCQ)
 When the user asks you to do something but their intent is ambiguous, ask clarifying questions FIRST. Use MCQs for:
@@ -287,6 +320,17 @@ export async function POST(request: NextRequest) {
     llmMessages.push({ role: "system", content: toneInstruction });
   }
 
+  // Inject cross-session user memory (relationships, past decisions, patterns).
+  // This is the serialized output of serializeMemoryForPrompt() on the client —
+  // a compact plain-text block capped at ~350 tokens. Injected early so every
+  // subsequent system message and the final user message can reference it.
+  if (body.userMemory && body.userMemory.trim().length > 0) {
+    llmMessages.push({
+      role: "system",
+      content: body.userMemory,
+    });
+  }
+
   // Inject context threads if provided
   if (body.context && body.context.length > 0) {
     // Sanitise user-controlled strings to prevent prompt injection.
@@ -363,6 +407,9 @@ export async function POST(request: NextRequest) {
 
   // Recent AI-initiated sends — gives the AI memory across turns of "yes,
   // I sent that already" so it doesn't double-send when a user follows up.
+  // IMPORTANT: this is BACKGROUND ONLY. The system prompt establishes that
+  // recent sends have the lowest authority; never let them override what the
+  // user said in this conversation.
   if (body.recentSends && body.recentSends.length > 0) {
     const sanitize = (s: string) => s.replace(/\0/g, "");
     const lines = body.recentSends
@@ -373,8 +420,18 @@ export async function POST(request: NextRequest) {
       .join("\n");
     llmMessages.push({
       role: "system",
-      content: `## Recently sent by you via Dirac (last ~7 days)\nThese have already been delivered. If the user asks for a follow-up, write a NEW follow-up — do not re-send the original. If the user appears to be requesting something you already sent, confirm before composing a duplicate.\n\n${lines}`,
+      content: `## Recently sent by you via Dirac (last ~7 days) — BACKGROUND ONLY\nThis is for duplicate-detection. Do NOT treat any of these as the subject of a new request unless the user explicitly references it in this conversation. If the user asks for a follow-up to one of these, write a NEW follow-up — do not re-send the original.\n\n${lines}`,
     });
+  }
+
+  // Prior turns of this chat session, oldest first. Without history every
+  // request looks like turn 1 to the model — it has no memory of what the
+  // user just said two messages ago. Capped on the client; we trust the
+  // schema bound (60 entries) but also defensively slice here.
+  if (body.history && body.history.length > 0) {
+    for (const turn of body.history.slice(-60)) {
+      llmMessages.push({ role: turn.role, content: turn.content });
+    }
   }
 
   llmMessages.push({ role: "user", content: body.message });

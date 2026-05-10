@@ -5,6 +5,7 @@ import { ArrowRight, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { VisualPlaceholder } from "./visual-placeholder";
+import { ShaderAnimation } from "@/components/ui/shader-lines";
 
 // ─── Onboarding Shell ───────────────────────────────────────────
 //
@@ -118,15 +119,19 @@ export function OnboardingShell({
   const visuals = visualStyle(config.panel);
 
   return (
-    <div className="fixed inset-0 z-[100] overflow-hidden">
-      {/* Backdrop — uses dirac-bg gradient so it feels like part of the app */}
-      <div className="dirac-bg absolute inset-0" />
+    <div className="fixed inset-0 z-[100] overflow-hidden bg-black">
+      {/* Shader background — fills full screen behind all panels */}
+      <div className="absolute inset-0 opacity-90">
+        <ShaderAnimation />
+      </div>
+      {/* Subtle dark vignette so panel edges read cleanly against the shader */}
+      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/40 pointer-events-none" />
 
       {/* Skip — always available, top right, low-key */}
       {onSkip && !config.immersive && (
         <button
           onClick={onSkip}
-          className="absolute right-6 top-6 z-30 text-xs text-muted-foreground/70 hover:text-foreground transition-colors"
+          className="absolute right-6 top-6 z-30 text-xs text-white/40 hover:text-white/80 transition-colors"
         >
           Skip setup
         </button>
@@ -172,8 +177,9 @@ export function OnboardingShell({
       >
         <motion.div
           className={cn(
-            "dirac-panel relative flex h-full w-full flex-col overflow-hidden",
-            "border border-border/40",
+            "dark relative flex h-full w-full flex-col overflow-hidden rounded-2xl",
+            "border border-white/10",
+            "bg-black/85 backdrop-blur-xl",
           )}
         >
           {/* Panel header — eyebrow + title */}
@@ -185,7 +191,7 @@ export function OnboardingShell({
                   initial={{ opacity: 0, y: -4 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: 0.1 }}
-                  className="mb-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70"
+                  className="mb-2 text-[10px] uppercase tracking-[0.18em] text-white/50"
                 >
                   {eyebrow}
                 </motion.p>
@@ -196,7 +202,7 @@ export function OnboardingShell({
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.4, delay: 0.15 }}
-                  className="text-[28px] leading-[1.15] font-semibold tracking-tight text-foreground"
+                  className="text-[28px] leading-[1.15] font-semibold tracking-tight text-white"
                 >
                   {title}
                 </motion.h1>
@@ -205,10 +211,11 @@ export function OnboardingShell({
           )}
 
           {/* Panel body — fades on step change */}
-          <div className="flex-1 overflow-y-auto px-8 py-4">
+          <div className="flex-1 overflow-y-auto px-8 py-4 text-white/90">
             <AnimatePresence mode="wait">
               <motion.div
                 key={`body-${step}`}
+                className="h-full"
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
@@ -221,16 +228,16 @@ export function OnboardingShell({
 
           {/* Footer — progress dots + back/next */}
           {!config.immersive && (
-            <div className="flex items-center justify-between gap-4 border-t border-border/40 px-8 py-5">
+            <div className="flex items-center justify-between gap-4 border-t border-white/10 px-8 py-5">
               <div className="flex items-center gap-1.5">
                 {Array.from({ length: totalSteps }).map((_, i) => (
                   <div
                     key={i}
                     className={cn(
                       "h-1 rounded-full transition-all duration-500",
-                      i + 1 < step && "w-3 bg-foreground/40",
-                      i + 1 === step && "w-6 bg-foreground",
-                      i + 1 > step && "w-3 bg-foreground/15",
+                      i + 1 < step && "w-3 bg-white/40",
+                      i + 1 === step && "w-6 bg-white",
+                      i + 1 > step && "w-3 bg-white/15",
                     )}
                   />
                 ))}
@@ -242,7 +249,7 @@ export function OnboardingShell({
                     variant="ghost"
                     size="sm"
                     onClick={onBack}
-                    className="h-9 gap-1.5 px-3 text-xs text-muted-foreground hover:text-foreground"
+                    className="h-9 gap-1.5 px-3 text-xs text-white/50 hover:text-white hover:bg-white/10"
                   >
                     <ArrowLeft className="h-3.5 w-3.5" />
                     Back
@@ -252,7 +259,7 @@ export function OnboardingShell({
                   <Button
                     onClick={onNext}
                     disabled={!nextEnabled}
-                    className="h-9 gap-1.5 px-5 text-sm"
+                    className="h-9 gap-1.5 px-5 text-sm bg-white text-black hover:bg-white/90 disabled:opacity-40"
                   >
                     {nextLabel}
                     <ArrowRight className="h-3.5 w-3.5" />

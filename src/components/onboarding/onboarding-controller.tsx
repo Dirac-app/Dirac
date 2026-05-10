@@ -43,12 +43,12 @@ const STEPS: StepRow[] = [
   // PHASE 1 — HOOK
   {
     Component: S.Screen1Pitch,
-    config: { panel: "full", visualSlot: "phase-1" },
+    config: { panel: "full" },
     nextLabel: "Get started",
   },
   {
     Component: S.Screen2Video,
-    config: { panel: "right", visualSlot: "phase-1" },
+    config: { panel: "right", visualSlot: "slot-welcome" },
     eyebrow: "Welcome",
     title: "See it in 45 seconds",
   },
@@ -56,21 +56,21 @@ const STEPS: StepRow[] = [
   // PHASE 2 — SIGNUP
   {
     Component: S.Screen3Persona,
-    config: { panel: "left", visualSlot: "phase-2" },
+    config: { panel: "left", visualSlot: "slot-persona" },
     eyebrow: "Step 1 of 3",
     title: "Who are you?",
     canAdvance: (a) => a.softPersona !== null,
   },
   {
     Component: S.Screen4SignIn,
-    config: { panel: "center", visualSlot: "phase-2" },
+    config: { panel: "full" },
     eyebrow: "Sign in",
     title: "Create your account",
     hideNext: true,
   },
   {
     Component: S.Screen5ConnectInbox,
-    config: { panel: "right", visualSlot: "phase-2" },
+    config: { panel: "right", visualSlot: "slot-connect" },
     eyebrow: "Permissions",
     title: "Connect your inbox",
     hideNext: true,
@@ -79,21 +79,21 @@ const STEPS: StepRow[] = [
   // PHASE 3 — PERSONALIZE
   {
     Component: S.Screen6Problem,
-    config: { panel: "left", visualSlot: "phase-3" },
+    config: { panel: "left", visualSlot: "slot-problems" },
     eyebrow: "Step 2 of 3",
     title: "What's slowing you down?",
     canAdvance: (a) => a.problems.length > 0,
   },
   {
     Component: S.Screen7Tone,
-    config: { panel: "right", visualSlot: "phase-3" },
+    config: { panel: "right", visualSlot: "slot-tone" },
     eyebrow: "Step 3 of 3",
     title: "How do you write?",
     canAdvance: (a) => a.tone !== null,
   },
   {
     Component: S.Screen8DeepPersona,
-    config: { panel: "left", visualSlot: "phase-3" },
+    config: { panel: "left", visualSlot: "slot-deep" },
     eyebrow: "Almost there",
     title: "About your work",
     canAdvance: (a) => a.role !== null && a.volume !== null,
@@ -102,20 +102,20 @@ const STEPS: StepRow[] = [
   // PHASE 4 — AHA
   {
     Component: S.Screen9Syncing,
-    config: { panel: "full", visualSlot: "phase-4" },
+    config: { panel: "full" },
     eyebrow: "Loading",
     title: "Reading your inbox",
     hideNext: true,
   },
   {
     Component: S.Screen10MorningBrief,
-    config: { panel: "right", visualSlot: "phase-4" },
+    config: { panel: "right", visualSlot: "slot-morning" },
     eyebrow: "What you'll see every morning",
     title: "Your morning brief",
   },
   {
     Component: S.Screen11AcceptPlan,
-    config: { panel: "right", visualSlot: "phase-4" },
+    config: { panel: "right", visualSlot: "slot-morning" },
     eyebrow: "Try it now",
     title: "Watch the AI take over",
     hideNext: true,
@@ -124,25 +124,25 @@ const STEPS: StepRow[] = [
   // PHASE 5 — HABIT + DONE
   {
     Component: S.Screen12Notification,
-    config: { panel: "left", visualSlot: "phase-5" },
+    config: { panel: "left", visualSlot: "slot-notify" },
     eyebrow: "Habit",
     title: "Show up every morning",
   },
   {
     Component: S.Screen13Privacy,
-    config: { panel: "right", visualSlot: "phase-5" },
+    config: { panel: "right", visualSlot: "slot-privacy" },
     eyebrow: "Privacy",
     title: "Your inbox is yours",
   },
   {
     Component: S.Screen14Summary,
-    config: { panel: "center", visualSlot: "phase-5" },
+    config: { panel: "full" },
     eyebrow: "Setup complete",
     title: "You're set",
   },
   {
     Component: S.Screen15Enter,
-    config: { panel: "full", visualSlot: "phase-5" },
+    config: { panel: "full" },
     hideNext: true,
   },
 ];

@@ -120,14 +120,28 @@ const RecentSendSchema = z.object({
   sentAt:      z.string().max(100),
 });
 
+// Prior turns of the same chat session. Without this the AI is amnesic and
+// will hallucinate context from recentSends/contactDirectory whenever the
+// current message alone is ambiguous (e.g. "My answers: …" after an MCQ).
+const HistoryMessageSchema = z.object({
+  role:    z.enum(["user", "assistant"]),
+  content: z.string().max(20_000),
+});
+
 export const AiChatSchema = z.object({
   message:           z.string().min(1).max(10_000),
+  history:           z.array(HistoryMessageSchema).max(60).optional(),
   context:           z.array(ContextThreadSchema).max(50).optional(),
   inboxContext:      z.array(InboxThreadSchema).max(100).optional(),
   contactDirectory:  z.array(ContactDirectoryEntrySchema).max(80).optional(),
   recentSends:       z.array(RecentSendSchema).max(30).optional(),
   toneProfile:       ToneProfileSchema.nullable().optional(),
   preset:            z.string().max(20).optional(),
+  // Compact plain-text block from serializeMemoryForPrompt(); injected as a
+  // system message so the AI has cross-session context (relationships, past
+  // decisions) without needing a vector DB. Capped at 4 kB to stay well
+  // within the token budget.
+  userMemory:        z.string().max(4_000).optional(),
 });
 
 // ── Helper ───────────────────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 "use client";
+
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useSession, signIn } from "next-auth/react";
@@ -22,6 +23,7 @@ import {
   KeyRound,
   Building2,
   TrendingUp,
+  PieChart,
   User,
   Target,
 } from "lucide-react";
@@ -38,6 +40,7 @@ import type {
   EmailVolume,
   EmailUseCase,
 } from "@/lib/onboarding";
+
 // Common props every screen receives. Screens read from `answers` and emit
 // patches via `onPatch`. Navigation buttons live in the shell, so screens
 // only need to wire up the panel body.
@@ -46,11 +49,13 @@ export interface ScreenProps {
   onPatch: (patch: Partial<OnboardingAnswers>) => void;
   goNext: () => void;
 }
+
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE 1 — HOOK
 // ═══════════════════════════════════════════════════════════════════════════
+
 // Screen 1 — Pitch + 20s loop
-export function Screen1Pitch(_: ScreenProps) {
+export function Screen1Pitch(_props: ScreenProps) {
   return (
     <div className="flex h-full flex-col items-center justify-center text-center">
       <motion.div
@@ -61,6 +66,7 @@ export function Screen1Pitch(_: ScreenProps) {
       >
         <Sparkles className="h-7 w-7" />
       </motion.div>
+
       <h2 className="max-w-xl text-[42px] leading-[1.05] font-semibold tracking-tight text-foreground">
         Your AI chief of staff for email.
       </h2>
@@ -68,6 +74,7 @@ export function Screen1Pitch(_: ScreenProps) {
         Not a filter. Not a summary. Dirac reads your inbox, plans your day,
         and sends emails for you.
       </p>
+
       <div className="mt-10 flex items-center gap-4 text-xs text-muted-foreground/60">
         <span className="flex items-center gap-1.5">
           <Zap className="h-3 w-3" /> Built for keyboard
@@ -84,14 +91,16 @@ export function Screen1Pitch(_: ScreenProps) {
     </div>
   );
 }
+
 // Screen 2 — Founder video / product walkthrough (optional)
-export function Screen2Video(_: ScreenProps) {
+export function Screen2Video(_props: ScreenProps) {
   return (
     <div className="flex h-full flex-col justify-center">
       <p className="text-[15px] leading-relaxed text-muted-foreground">
         A 45-second look at what Dirac does — straight from the person who
         built it.
       </p>
+
       <button className="group mt-6 relative aspect-video w-full overflow-hidden rounded-xl border border-border/60 bg-foreground/[0.02] hover:bg-foreground/[0.05] transition-colors">
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-foreground text-background shadow-lg group-hover:scale-110 transition-transform">
@@ -102,15 +111,18 @@ export function Screen2Video(_: ScreenProps) {
           Founder intro · 45s
         </div>
       </button>
+
       <p className="mt-4 text-[12px] text-muted-foreground/60">
         Optional. You can skip ahead any time.
       </p>
     </div>
   );
 }
+
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE 2 — SIGNUP
 // ═══════════════════════════════════════════════════════════════════════════
+
 // Screen 3 — Soft persona
 export function Screen3Persona({ answers, onPatch }: ScreenProps) {
   const PERSONAS: { id: SoftPersona; label: string; sub: string; icon: React.ReactNode }[] = [
@@ -118,11 +130,13 @@ export function Screen3Persona({ answers, onPatch }: ScreenProps) {
     { id: "developer",  label: "Developer",  sub: "Lives in the terminal.",    icon: <Code2 className="h-4 w-4" /> },
     { id: "consultant", label: "Consultant", sub: "Working across clients.",   icon: <Users className="h-4 w-4" /> },
   ];
+
   return (
     <div className="flex h-full flex-col">
       <p className="text-[15px] leading-relaxed text-muted-foreground">
-        Pick the closest match. We&apos;ll tune the experience around it.
+        Pick the closest match. We'll tune the experience around it.
       </p>
+
       <div className="mt-6 grid gap-3">
         {PERSONAS.map((p) => (
           <ExampleChip
@@ -138,14 +152,16 @@ export function Screen3Persona({ answers, onPatch }: ScreenProps) {
     </div>
   );
 }
+
 // Screen 4 — Continue with Google (auth)
 //
 // Auth is delegated to the existing NextAuth setup. After sign-in the page
-// re-renders with a session, and we render a "you&apos;re in" confirmation that
+// re-renders with a session, and we render a "you're in" confirmation that
 // auto-advances. Until then, the button is the entire content.
 export function Screen4SignIn({ goNext }: ScreenProps) {
   const { data: session, status } = useSession();
   const [signingIn, setSigningIn] = useState(false);
+
   // Once authenticated, hold for a moment so the user sees the success
   // confirmation, then auto-advance.
   useEffect(() => {
@@ -154,14 +170,16 @@ export function Screen4SignIn({ goNext }: ScreenProps) {
       return () => clearTimeout(t);
     }
   }, [session, goNext]);
+
   const handleSignIn = async () => {
     setSigningIn(true);
-    try {
-      await signIn("google", { redirect: false });
-    } finally {
-      setSigningIn(false);
-    }
+    // OAuth requires a full redirect to Google — redirect: false would
+    // return the URL without navigating, so the flow never starts.
+    // Onboarding progress is in localStorage so the modal resumes on return.
+    await signIn("google");
+    setSigningIn(false); // only reached if signIn throws before redirect
   };
+
   if (status === "loading") {
     return (
       <div className="flex h-full items-center justify-center">
@@ -169,6 +187,7 @@ export function Screen4SignIn({ goNext }: ScreenProps) {
       </div>
     );
   }
+
   if (session?.user?.email) {
     return (
       <motion.div
@@ -186,12 +205,14 @@ export function Screen4SignIn({ goNext }: ScreenProps) {
       </motion.div>
     );
   }
+
   return (
     <div className="flex h-full flex-col justify-center">
       <p className="text-[15px] leading-relaxed text-muted-foreground">
-        Use your Google account. We won&apos;t post anything or contact anyone on
+        Use your Google account. We won't post anything or contact anyone on
         your behalf.
       </p>
+
       <Button
         size="lg"
         onClick={handleSignIn}
@@ -205,6 +226,7 @@ export function Screen4SignIn({ goNext }: ScreenProps) {
         )}
         Continue with Google
       </Button>
+
       <div className="mt-4 flex items-start gap-2 text-[12px] text-muted-foreground/70">
         <Lock className="h-3 w-3 mt-0.5 shrink-0" />
         <span>
@@ -215,29 +237,32 @@ export function Screen4SignIn({ goNext }: ScreenProps) {
     </div>
   );
 }
+
 // Screen 5 — Connect inbox (the OAuth ask)
 //
 // This is the single most important conversion moment. The screen earns the
-// permission by showing exactly what Dirac will and won&apos;t do, side by side.
+// permission by showing exactly what Dirac will and won't do, side by side.
 export function Screen5ConnectInbox({ goNext }: ScreenProps) {
   const { data: session } = useSession();
-  const isConnected = Boolean(session?.gmailConnected || session?.outlookConnected);
+  const isConnected = Boolean(session?.gmailConnected);
   const [connecting, setConnecting] = useState(false);
+
   useEffect(() => {
     if (isConnected) {
       const t = setTimeout(() => goNext(), 1100);
       return () => clearTimeout(t);
     }
   }, [isConnected, goNext]);
+
   const handleConnectGmail = async () => {
     setConnecting(true);
-    try {
-      // Gmail re-uses the Google account — request the gmail scopes.
-      await signIn("google", { redirect: false });
-    } finally {
-      setConnecting(false);
-    }
+    // Same as Screen4 — OAuth must redirect. Gmail scopes are already
+    // included in the Google provider config, so after this redirect the
+    // session will have gmailConnected: true and Screen5 auto-advances.
+    await signIn("google");
+    setConnecting(false);
   };
+
   if (isConnected) {
     return (
       <motion.div
@@ -255,12 +280,14 @@ export function Screen5ConnectInbox({ goNext }: ScreenProps) {
       </motion.div>
     );
   }
+
   return (
     <div className="flex h-full flex-col">
       <p className="text-[15px] leading-relaxed text-muted-foreground">
         Dirac needs read & send access to make the morning brief and AI sidebar
-        work. Here&apos;s exactly what that means.
+        work. Here's exactly what that means.
       </p>
+
       <div className="mt-5 grid grid-cols-2 gap-3">
         {/* What it does */}
         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.03] p-4">
@@ -275,11 +302,12 @@ export function Screen5ConnectInbox({ goNext }: ScreenProps) {
             <li>Send when you click Send</li>
           </ul>
         </div>
+
         {/* What it never does */}
         <div className="rounded-xl border border-border/60 bg-muted/15 p-4">
           <div className="flex items-center gap-1.5 mb-2.5">
             <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
-            <p className="text-[11px] uppercase tracking-wider font-medium text-muted-foreground">What we don&apos;t</p>
+            <p className="text-[11px] uppercase tracking-wider font-medium text-muted-foreground">What we don't</p>
           </div>
           <ul className="space-y-1.5 text-[12.5px] leading-snug text-foreground/80">
             <li>Train any model on your email</li>
@@ -289,6 +317,7 @@ export function Screen5ConnectInbox({ goNext }: ScreenProps) {
           </ul>
         </div>
       </div>
+
       <Button
         size="lg"
         onClick={handleConnectGmail}
@@ -302,15 +331,18 @@ export function Screen5ConnectInbox({ goNext }: ScreenProps) {
         )}
         Connect Gmail
       </Button>
+
       <p className="mt-3 text-center text-[11px] text-muted-foreground/60">
         Outlook also supported · revoke anytime in Settings
       </p>
     </div>
   );
 }
+
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE 3 — PERSONALIZE
 // ═══════════════════════════════════════════════════════════════════════════
+
 // Screen 6 — Biggest email problem (multi, max 2)
 export function Screen6Problem({ answers, onPatch }: ScreenProps) {
   const PROBLEMS: { id: EmailProblem; label: string; sub: string }[] = [
@@ -319,6 +351,7 @@ export function Screen6Problem({ answers, onPatch }: ScreenProps) {
     { id: "slow_replies",    label: "Replies take too long", sub: "Spending hours writing" },
     { id: "no_followups",    label: "I forget to follow up", sub: "Things slip through" },
   ];
+
   const toggle = (id: EmailProblem) => {
     const has = answers.problems.includes(id);
     if (has) {
@@ -330,11 +363,13 @@ export function Screen6Problem({ answers, onPatch }: ScreenProps) {
       onPatch({ problems: [answers.problems[1], id] });
     }
   };
+
   return (
     <div className="flex h-full flex-col">
       <p className="text-[15px] leading-relaxed text-muted-foreground">
-        Pick up to two. We&apos;ll tune triage and the morning brief around these.
+        Pick up to two. We'll tune triage and the morning brief around these.
       </p>
+
       <div className="mt-6 grid gap-2.5">
         {PROBLEMS.map((p) => (
           <ExampleChip
@@ -346,12 +381,14 @@ export function Screen6Problem({ answers, onPatch }: ScreenProps) {
           />
         ))}
       </div>
+
       <p className="mt-4 text-[11px] text-muted-foreground/60">
         {answers.problems.length}/2 selected
       </p>
     </div>
   );
 }
+
 // Screen 7 — Tone (real example sentences)
 export function Screen7Tone({ answers, onPatch }: ScreenProps) {
   const TONES: { id: ToneStyle; label: string; example: string }[] = [
@@ -359,11 +396,13 @@ export function Screen7Tone({ answers, onPatch }: ScreenProps) {
     { id: "professional", label: "Professional", example: "Thank you for reaching out. I'd be happy to..." },
     { id: "warm",         label: "Warm",         example: "Hey! This sounds amazing — let's find a time." },
   ];
+
   return (
     <div className="flex h-full flex-col">
       <p className="text-[15px] leading-relaxed text-muted-foreground">
-        Which sounds like an email youWhich sounds like an email you&apos;d actually sendapos;d actually send? Drafts will match this.
+        Which sounds like an email you'd actually send? Drafts will match this.
       </p>
+
       <div className="mt-6 grid gap-2.5">
         {TONES.map((t) => (
           <ExampleChip
@@ -378,6 +417,7 @@ export function Screen7Tone({ answers, onPatch }: ScreenProps) {
     </div>
   );
 }
+
 // Screen 8 — Deep persona (role + volume + use)
 export function Screen8DeepPersona({ answers, onPatch }: ScreenProps) {
   const ROLES: { id: Role; label: string; icon: React.ReactNode }[] = [
@@ -388,12 +428,14 @@ export function Screen8DeepPersona({ answers, onPatch }: ScreenProps) {
     { id: "investor",   label: "Investor",    icon: <TrendingUp className="h-3.5 w-3.5" /> },
     { id: "other",      label: "Other",       icon: <User className="h-3.5 w-3.5" /> },
   ];
+
   const VOLUMES: { id: EmailVolume; label: string }[] = [
     { id: "lt20",    label: "<20" },
     { id: "20_50",   label: "20–50" },
     { id: "50_100",  label: "50–100" },
     { id: "gt100",   label: "100+" },
   ];
+
   const USES: { id: EmailUseCase; label: string }[] = [
     { id: "customer_sales",      label: "Customer & sales" },
     { id: "internal_team",       label: "Internal team" },
@@ -401,6 +443,7 @@ export function Screen8DeepPersona({ answers, onPatch }: ScreenProps) {
     { id: "newsletter_receipt",  label: "Newsletters & receipts" },
     { id: "personal",            label: "Personal" },
   ];
+
   const toggleUse = (id: EmailUseCase) => {
     const has = answers.useCases.includes(id);
     onPatch({
@@ -409,11 +452,13 @@ export function Screen8DeepPersona({ answers, onPatch }: ScreenProps) {
         : [...answers.useCases, id],
     });
   };
+
   return (
     <div className="flex h-full flex-col gap-5">
       <p className="text-[15px] leading-relaxed text-muted-foreground">
         Three quick taps. Shapes how the AI ranks and routes your inbox.
       </p>
+
       <div>
         <p className="mb-2 text-[11px] uppercase tracking-wider text-muted-foreground/70">Role</p>
         <ChipGroup>
@@ -427,6 +472,7 @@ export function Screen8DeepPersona({ answers, onPatch }: ScreenProps) {
           ))}
         </ChipGroup>
       </div>
+
       <div>
         <p className="mb-2 text-[11px] uppercase tracking-wider text-muted-foreground/70">Daily email volume</p>
         <ChipGroup>
@@ -440,6 +486,7 @@ export function Screen8DeepPersona({ answers, onPatch }: ScreenProps) {
           ))}
         </ChipGroup>
       </div>
+
       <div>
         <p className="mb-2 text-[11px] uppercase tracking-wider text-muted-foreground/70">
           Primary use <span className="text-muted-foreground/40">(pick all that apply)</span>
@@ -458,9 +505,11 @@ export function Screen8DeepPersona({ answers, onPatch }: ScreenProps) {
     </div>
   );
 }
+
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE 4 — AHA
 // ═══════════════════════════════════════════════════════════════════════════
+
 // Screen 9 — Syncing
 //
 // Artificial sequencing of phases gives the user a moment to read the priming
@@ -468,72 +517,112 @@ export function Screen8DeepPersona({ answers, onPatch }: ScreenProps) {
 // seconds. Three messages, ~1.5s each, then auto-advance.
 export function Screen9Syncing({ goNext }: ScreenProps) {
   const PHASES = [
-    { label: "Reading your inbox…",          icon: <Inbox className="h-4 w-4" /> },
-    { label: "Finding what matters…",        icon: <Sparkles className="h-4 w-4" /> },
-    { label: "Ranking by urgency…",          icon: <TrendingUp className="h-4 w-4" /> },
+    "Reading your inbox…",
+    "Finding what matters…",
+    "Ranking by urgency…",
   ];
   const [phaseIdx, setPhaseIdx] = useState(0);
+
   useEffect(() => {
     if (phaseIdx >= PHASES.length - 1) {
-      const t = setTimeout(goNext, 1400);
+      const t = setTimeout(goNext, 1600);
       return () => clearTimeout(t);
     }
-    const t = setTimeout(() => setPhaseIdx((p) => p + 1), 1400);
+    const t = setTimeout(() => setPhaseIdx((p) => p + 1), 1500);
     return () => clearTimeout(t);
   }, [phaseIdx, goNext]);
+
+  // Each skeleton card appears as phaseIdx advances
+  const skeletonCards = [
+    { subjectW: "62%", fromW: "28%", planLines: ["88%", "72%"] },
+    { subjectW: "52%", fromW: "24%", planLines: ["80%", "65%", "45%"] },
+    { subjectW: "68%", fromW: "30%", planLines: ["76%", "58%"] },
+  ];
+
   return (
-    <div className="flex h-full flex-col items-center justify-center text-center">
-      <div className="relative mb-6 flex h-16 w-16 items-center justify-center">
+    <div className="flex h-full flex-col">
+      {/* Morning brief skeleton header */}
+      <div className="flex items-center justify-between mb-5">
+        <div className="space-y-1.5">
+          <div className="h-5 w-40 rounded-full bg-white/20 animate-pulse" />
+          <div className="h-3.5 w-24 rounded-full bg-white/10 animate-pulse" />
+        </div>
         <motion.div
-          className="absolute inset-0 rounded-full border-2 border-foreground/20"
-          animate={{ rotate: 360 }}
-          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+          className="h-5 w-5 rounded-full"
           style={{
-            borderTopColor: "hsl(var(--foreground))",
-            borderRightColor: "transparent",
-            borderBottomColor: "transparent",
-            borderLeftColor: "transparent",
+            border: "2px solid rgba(255,255,255,0.15)",
+            borderTopColor: "rgba(255,255,255,0.6)",
           }}
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
         />
-        <Sparkles className="h-6 w-6 text-foreground" />
       </div>
-      <div className="space-y-3 min-h-[80px]">
-        {PHASES.map((p, i) => (
+
+      {/* Skeleton cards — appear one by one */}
+      <div className="space-y-3 flex-1">
+        {skeletonCards.map((card, i) => (
           <motion.div
             key={i}
-            initial={{ opacity: 0, y: 4 }}
-            animate={{
-              opacity: i <= phaseIdx ? 1 : 0.25,
-              y: 0,
-            }}
-            transition={{ duration: 0.4 }}
-            className="flex items-center justify-center gap-2 text-[15px]"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: phaseIdx >= i ? 1 : 0, y: phaseIdx >= i ? 0 : 6 }}
+            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+            className="rounded-xl border border-white/10 bg-white/[0.05] p-4"
           >
-            <span className={cn(i === phaseIdx ? "text-foreground" : "text-muted-foreground/60")}>
-              {p.icon}
-            </span>
-            <span className={cn(i === phaseIdx ? "text-foreground font-medium" : "text-muted-foreground/60")}>
-              {p.label}
-            </span>
-            {i < phaseIdx && (
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-            )}
+            {/* Subject + sender */}
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div
+                className="h-4 rounded-full bg-white/25 animate-pulse"
+                style={{ width: card.subjectW, animationDelay: `${i * 120}ms` }}
+              />
+              <div
+                className="h-3 rounded-full bg-white/12 animate-pulse shrink-0"
+                style={{ width: card.fromW, animationDelay: `${i * 120 + 80}ms` }}
+              />
+            </div>
+            {/* AI plan lines */}
+            <div className="space-y-2 mb-3">
+              {card.planLines.map((w, j) => (
+                <div
+                  key={j}
+                  className="h-3 rounded-full bg-white/10 animate-pulse"
+                  style={{ width: w, animationDelay: `${i * 120 + j * 80 + 100}ms` }}
+                />
+              ))}
+            </div>
+            {/* Accept plan button skeleton */}
+            <div
+              className="h-7 w-28 rounded-lg bg-white/10 animate-pulse"
+              style={{ animationDelay: `${i * 120 + 260}ms` }}
+            />
           </motion.div>
         ))}
       </div>
+
+      {/* Phase status */}
+      <motion.p
+        key={phaseIdx}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="mt-4 text-[12px] text-white/40"
+      >
+        {PHASES[phaseIdx]}
+      </motion.p>
     </div>
   );
 }
+
 // Screen 10 — First morning brief preview
 //
-// Pulls the user{'''}s actual threads via app state. If <2 threads exist, falls
+// Pulls the user's actual threads via app state. If <2 threads exist, falls
 // back to two demo cards labeled as such — honest, not deceptive.
-export function Screen10MorningBrief(_: ScreenProps) {
+export function Screen10MorningBrief(_props: ScreenProps) {
   const { threads } = useAppState();
   const sampleThreads = threads
     .filter((t) => t.isUnread)
     .slice(0, 3);
+
   const useDemo = sampleThreads.length < 2;
+
   const cards = useDemo
     ? [
         { subject: "Q2 board update — needs your eyes", from: "lisa@acme.vc", plan: "Lisa is asking for the Q2 update by Friday. Reply with status and one open question." },
@@ -544,17 +633,20 @@ export function Screen10MorningBrief(_: ScreenProps) {
         from: t.participants[0]?.email ?? "—",
         plan: "Dirac will draft a plan for this once you click in.",
       }));
+
   return (
     <div className="flex h-full flex-col">
       <p className="text-[15px] leading-relaxed text-muted-foreground">
         Every morning Dirac gives you this — the threads worth your time, with
         a plan for each.
       </p>
+
       {useDemo && (
         <p className="mt-2 text-[11px] text-muted-foreground/60">
-          Your inbox is quiet right now — Here&apos;s what a real brief looks like.
+          Your inbox is quiet right now — here's what a real brief looks like.
         </p>
       )}
+
       <div className="mt-5 space-y-2.5">
         {cards.map((card, i) => (
           <motion.div
@@ -579,16 +671,19 @@ export function Screen10MorningBrief(_: ScreenProps) {
     </div>
   );
 }
+
 // Screen 11 — Accept a plan (interactive aha)
 //
 // The actual aha. User clicks the prominent "Accept plan" button. We show a
 // short faux-AI animation of the sidebar materializing and "typing" a draft.
-// We don&apos;t really send anything — that happens for real once they're in the
+// We don't really send anything — that happens for real once they're in the
 // app. The point is the FEELING of "click → AI takes over."
 export function Screen11AcceptPlan({ goNext }: ScreenProps) {
   const [accepted, setAccepted] = useState(false);
   const [typedChars, setTypedChars] = useState(0);
+
   const draftText = "Hi Lisa — here's the Q2 update. Revenue tracked +18% MoM, two key hires landed, and the Series A conversations are progressing. Open question: should we accelerate the security audit ahead of the round?\n\n— ";
+
   useEffect(() => {
     if (!accepted) return;
     if (typedChars >= draftText.length) {
@@ -598,12 +693,14 @@ export function Screen11AcceptPlan({ goNext }: ScreenProps) {
     const t = setTimeout(() => setTypedChars((c) => Math.min(draftText.length, c + 3)), 18);
     return () => clearTimeout(t);
   }, [accepted, typedChars, draftText.length]);
+
   return (
     <div className="flex h-full flex-col">
       <p className="text-[15px] leading-relaxed text-muted-foreground">
         Click <span className="font-medium text-foreground">Accept plan</span>.
         Watch what happens.
       </p>
+
       <div className="mt-5 rounded-xl border border-border/60 bg-background/40 p-4">
         <p className="text-[13px] font-semibold text-foreground mb-1">
           Q2 board update — needs your eyes
@@ -612,6 +709,7 @@ export function Screen11AcceptPlan({ goNext }: ScreenProps) {
           Lisa is asking for the Q2 update by Friday. Reply with status and one
           open question.
         </p>
+
         {!accepted && (
           <Button
             size="sm"
@@ -623,6 +721,7 @@ export function Screen11AcceptPlan({ goNext }: ScreenProps) {
           </Button>
         )}
       </div>
+
       {accepted && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
@@ -648,6 +747,7 @@ export function Screen11AcceptPlan({ goNext }: ScreenProps) {
           </p>
         </motion.div>
       )}
+
       {typedChars >= draftText.length && (
         <motion.div
           initial={{ opacity: 0 }}
@@ -656,9 +756,10 @@ export function Screen11AcceptPlan({ goNext }: ScreenProps) {
           className="mt-4 flex items-center gap-2 text-[12px] text-muted-foreground"
         >
           <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-          ThatThat&apos;s the loop. Dirac handlesapos;s the loop. Dirac handles the rest from here.
+          That's the loop. Dirac handles the rest from here.
         </motion.div>
       )}
+
       {/* Keyboard shortcut overlay — appears once draft is done */}
       {typedChars >= draftText.length && (
         <motion.div
@@ -677,6 +778,7 @@ export function Screen11AcceptPlan({ goNext }: ScreenProps) {
           </div>
         </motion.div>
       )}
+
       {typedChars >= draftText.length && (
         <motion.div
           initial={{ opacity: 0 }}
@@ -693,6 +795,7 @@ export function Screen11AcceptPlan({ goNext }: ScreenProps) {
     </div>
   );
 }
+
 function Shortcut({ keys, label }: { keys: string[]; label: string }) {
   return (
     <span className="flex items-center gap-1.5">
@@ -710,13 +813,16 @@ function Shortcut({ keys, label }: { keys: string[]; label: string }) {
     </span>
   );
 }
+
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE 5 — HABIT + DONE
 // ═══════════════════════════════════════════════════════════════════════════
+
 // Screen 12 — Notification opt-in
 export function Screen12Notification({ answers, onPatch }: ScreenProps) {
   const [requesting, setRequesting] = useState(false);
   const [granted, setGranted] = useState<boolean | null>(null);
+
   const handleEnable = async () => {
     setRequesting(true);
     try {
@@ -736,16 +842,19 @@ export function Screen12Notification({ answers, onPatch }: ScreenProps) {
       setRequesting(false);
     }
   };
+
   const handleSkip = () => {
     onPatch({ enableMorningNotification: false });
     setGranted(false);
   };
+
   return (
     <div className="flex h-full flex-col">
       <p className="text-[15px] leading-relaxed text-muted-foreground">
         Your morning brief is ready every weekday at 8am. Want a nudge when it
         lands?
       </p>
+
       <div className="mt-6 flex flex-col gap-3">
         <Button
           size="lg"
@@ -762,6 +871,7 @@ export function Screen12Notification({ answers, onPatch }: ScreenProps) {
           )}
           {granted === true ? "Notifications enabled" : "Enable notifications"}
         </Button>
+
         <button
           onClick={handleSkip}
           disabled={requesting || granted !== null}
@@ -770,12 +880,14 @@ export function Screen12Notification({ answers, onPatch }: ScreenProps) {
           Maybe later
         </button>
       </div>
+
       <div className="mt-auto pt-4 text-[11px] text-muted-foreground/60">
         You can change this anytime in Settings.
       </div>
     </div>
   );
 }
+
 // Screen 13 — Privacy reminder
 export function Screen13Privacy(_props: ScreenProps) {
   const POINTS = [
@@ -784,11 +896,13 @@ export function Screen13Privacy(_props: ScreenProps) {
     { icon: <Shield className="h-3.5 w-3.5" />, text: "Models are never trained on your data." },
     { icon: <KeyRound className="h-3.5 w-3.5" />, text: "Disconnect anytime — Dirac forgets you." },
   ];
+
   return (
     <div className="flex h-full flex-col">
       <p className="text-[15px] leading-relaxed text-muted-foreground">
         Email is private. We treat it that way.
       </p>
+
       <div className="mt-6 space-y-3">
         {POINTS.map((p, i) => (
           <motion.div
@@ -805,15 +919,18 @@ export function Screen13Privacy(_props: ScreenProps) {
           </motion.div>
         ))}
       </div>
+
       <p className="mt-auto pt-4 text-[11px] text-muted-foreground/60">
         Full details: <span className="underline">privacy policy</span>
       </p>
     </div>
   );
 }
+
 // Screen 14 — Setup summary
 export function Screen14Summary({ answers }: ScreenProps) {
   const { data: session } = useSession();
+
   const items = [
     {
       label: "Account",
@@ -822,7 +939,7 @@ export function Screen14Summary({ answers }: ScreenProps) {
     },
     {
       label: "Inbox",
-      value: session?.gmailConnected ? "Gmail" : session?.outlookConnected ? "Outlook" : "Connected",
+      value: session?.gmailConnected ? "Gmail" : "Connected",
       icon: <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />,
     },
     {
@@ -836,11 +953,13 @@ export function Screen14Summary({ answers }: ScreenProps) {
       icon: <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />,
     },
   ];
+
   return (
     <div className="flex h-full flex-col">
       <p className="text-[15px] leading-relaxed text-muted-foreground">
-        Here&apos;s how Dirac is set up for you.
+        Here's how Dirac is set up for you.
       </p>
+
       <div className="mt-6 space-y-2">
         {items.map((item, i) => (
           <motion.div
@@ -860,16 +979,19 @@ export function Screen14Summary({ answers }: ScreenProps) {
           </motion.div>
         ))}
       </div>
+
       <p className="mt-auto pt-4 text-[11px] text-muted-foreground/60">
         All of this is editable in Settings.
       </p>
     </div>
   );
 }
+
 // Screen 15 — Enter Dirac (immersive finale)
 export function Screen15Enter({ goNext }: ScreenProps) {
   const handleEnterBrief = () => goNext();
   const handleEnterInbox = () => goNext();
+
   return (
     <div className="flex h-full flex-col items-center justify-center text-center">
       <motion.div
@@ -880,12 +1002,14 @@ export function Screen15Enter({ goNext }: ScreenProps) {
       >
         <Sparkles className="h-10 w-10" />
       </motion.div>
+
       <h2 className="text-[44px] leading-[1.05] font-semibold tracking-tight text-foreground">
         Your inbox is waiting.
       </h2>
       <p className="mt-4 max-w-md text-[15px] leading-relaxed text-muted-foreground">
         Start with the morning brief, or just jump in.
       </p>
+
       <div className="mt-10 flex flex-col gap-3 w-full max-w-xs">
         <Button size="lg" onClick={handleEnterBrief} className="h-12 gap-2">
           <Sparkles className="h-4 w-4" />
@@ -898,10 +1022,13 @@ export function Screen15Enter({ goNext }: ScreenProps) {
     </div>
   );
 }
+
 // ─── helpers ────────────────────────────────────────────────────
+
 function capitalize(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+
 function GoogleIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} aria-hidden>

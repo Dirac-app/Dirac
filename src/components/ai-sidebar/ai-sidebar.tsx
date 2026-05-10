@@ -45,6 +45,14 @@ import {
   recordRecentSend,
 } from "@/lib/recent-sends";
 import {
+  loadUserMemory,
+  saveUserMemory,
+  applyExtraction,
+  serializeMemoryForPrompt,
+  type UserMemory,
+  type ExtractionResult,
+} from "@/lib/user-memory";
+import {
   FOUNDER_CATEGORY_LABELS,
   FOUNDER_CATEGORY_COLORS,
   TOPIC_TAG_LABELS,
@@ -242,15 +250,38 @@ export function AiSidebar() {
     [], // no dependency on activeChatId — reads from ref instead
   );
 
+  // Stable ref so handleNewChat/handleSwitchChat can call extractMemoryFromSession
+  // without a dependency ordering issue (it's defined later in the component).
+  const extractMemoryRef = useRef<
+    ((sessionId: string, messages: ChatMessage[]) => Promise<void>) | null
+  >(null);
+
   const handleNewChat = useCallback(() => {
+    // Snapshot the current session before switching so we can extract memory
+    // from it in the background. Reading from activeChatIdRef/chatMessagesRef
+    // avoids stale closure issues.
+    const prevId = activeChatIdRef.current;
+    const prevMessages = chatMessagesRef.current;
+
     const id = generateChatId();
     setActiveChatIdSynced(id);
     setHistoryOpen(false);
+
+    if (prevId && prevMessages.length > 0) {
+      void extractMemoryRef.current?.(prevId, prevMessages);
+    }
   }, [setActiveChatIdSynced]);
 
   const handleSwitchChat = useCallback((id: string) => {
+    const prevId = activeChatIdRef.current;
+    const prevMessages = chatMessagesRef.current;
+
     setActiveChatIdSynced(id);
     setHistoryOpen(false);
+
+    if (prevId && prevId !== id && prevMessages.length > 0) {
+      void extractMemoryRef.current?.(prevId, prevMessages);
+    }
   }, [setActiveChatIdSynced]);
 
   const handleDeleteChat = useCallback(
@@ -281,6 +312,18 @@ export function AiSidebar() {
   const [composeSends, setComposeSends] = useState<Record<string, ComposeSendState>>({});
   const composeSendsRef = useRef(composeSends);
   composeSendsRef.current = composeSends;
+
+  // ─── Cross-session user memory ──────────────────────────────────────────
+  // Loaded once from localStorage on mount; updated after sessions end via
+  // background call to /api/ai/extract-memory. Serialized into a compact
+  // system message on every request so the AI has persistent context.
+  const [userMemory, setUserMemory] = useState<UserMemory>(() => loadUserMemory());
+  const userMemoryRef = useRef(userMemory);
+  userMemoryRef.current = userMemory;
+
+  // Track which session IDs we've already extracted memory from so we don't
+  // re-process them when the user switches back and forth.
+  const extractedSessionsRef = useRef<Set<string>>(new Set());
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -355,6 +398,13 @@ export function AiSidebar() {
       const next = [...prev, userMsg, { role: "assistant" as const, content: "", segments: [] }];
       const insertIdx = next.length - 1;
 
+      // History = everything before the user msg we're about to send. `prev`
+      // already represents that exact snapshot (next minus the two we just
+      // appended), so we use it directly — no ref dance needed here.
+      const history = prev
+        .filter((m) => m.content && m.content.trim().length > 0)
+        .map((m) => ({ role: m.role, content: m.content }));
+
       // Fire the streaming request
       (async () => {
         isStreamingRef.current = true;
@@ -365,12 +415,14 @@ export function AiSidebar() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               message: query,
+              history: history.length > 0 ? history : undefined,
               context: threadSummaries.length > 0 ? threadSummaries : undefined,
               inboxContext: buildInboxOverview(),
               contactDirectory: buildContactDirectory(),
               recentSends: [...buildPendingSends(), ...loadRecentSends()],
               toneProfile: toneProfile ?? undefined,
               preset: localStorage.getItem("dirac-ai-preset") || undefined,
+              userMemory: serializeMemoryForPrompt(userMemoryRef.current) ?? undefined,
             }),
           });
 
@@ -491,6 +543,87 @@ export function AiSidebar() {
       .map((c) => ({ name: c.name || undefined, email: c.email, count: c.count }));
   }, [threads, session?.user?.email]);
 
+  // ─── Build chat history for the API (turns BEFORE the current user msg) ──
+  //
+  // Without this, every request looks like turn 1 to the model. After an MCQ
+  // answer the model would see only "My answers: …" with no idea what the
+  // original request was, and would hallucinate context from recentSends or
+  // the contact directory. Passing prior turns is what gives multi-turn
+  // coherence.
+  //
+  // We pass the history reading from the ref (latest snapshot at call time)
+  // and slice off the current user message + any empty streaming placeholder.
+  // Empty messages (mid-stream) are filtered defensively. We strip everything
+  // except role+content because OpenRouter only knows about those — segments,
+  // mcqAnswered, etc. are client-only.
+  const buildChatHistory = useCallback((excludeFromIdx: number) => {
+    const all = chatMessagesRef.current;
+    return all
+      .slice(0, Math.max(0, excludeFromIdx))
+      .filter((m) => m.content && m.content.trim().length > 0)
+      .map((m) => ({ role: m.role, content: m.content }));
+  }, []);
+
+  // ─── Background memory extraction ────────────────────────────────────────
+  // Called when a session ends (new chat / switch chat). Fires a lightweight
+  // POST to /api/ai/extract-memory with the session transcript + existing
+  // relationship notes. On success, merges the result into userMemory and
+  // persists to localStorage. Silently no-ops if the session is too short
+  // (< 4 turns) or has already been processed.
+  const extractMemoryFromSession = useCallback(
+    async (sessionId: string, messages: ChatMessage[]) => {
+      if (extractedSessionsRef.current.has(sessionId)) return;
+      // Only worth extracting if there's at least one user + one AI message
+      const substantive = messages.filter(
+        (m) => m.content && m.content.trim().length > 20,
+      );
+      if (substantive.length < 2) return;
+
+      extractedSessionsRef.current.add(sessionId);
+
+      try {
+        const transcript = substantive.map((m) => ({
+          role: m.role,
+          content: m.content.slice(0, 6000),
+        }));
+
+        const res = await fetch("/api/ai/extract-memory", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId,
+            transcript,
+            existingRelationships: userMemoryRef.current.relationships,
+          }),
+        });
+
+        if (!res.ok) return;
+
+        const extraction = (await res.json()) as ExtractionResult;
+        if (
+          extraction.newMemories.length === 0 &&
+          extraction.relationshipUpdates.length === 0
+        )
+          return;
+
+        setUserMemory((prev) => {
+          const updated = applyExtraction(prev, extraction, sessionId);
+          saveUserMemory(updated);
+          return updated;
+        });
+      } catch {
+        // Silent — memory extraction is best-effort, never blocks the user
+      }
+    },
+    [],
+  );
+
+  // Keep the ref in sync with the latest stable callback so that
+  // handleNewChat / handleSwitchChat can call it without a dep-order issue.
+  useEffect(() => {
+    extractMemoryRef.current = extractMemoryFromSession;
+  }, [extractMemoryFromSession]);
+
   // ─── Build inbox overview (always included in every message) ─────────────
   const buildInboxOverview = useCallback(() => {
     return threads
@@ -581,17 +714,25 @@ export function AiSidebar() {
     setIsStreaming(true);
 
     try {
+      // History = everything BEFORE the current user message. The user msg
+      // lives at insertIdx-1 (placeholder is at insertIdx); slicing at
+      // insertIdx-1 gives us the conversation up to but not including the
+      // turn we're sending as `message`.
+      const history = buildChatHistory(insertIdx - 1);
+
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: prompt,
+          history: history.length > 0 ? history : undefined,
           context: fullContext.length > 0 ? fullContext : undefined,
           inboxContext: buildInboxOverview(),
           contactDirectory: buildContactDirectory(),
           recentSends: [...buildPendingSends(), ...loadRecentSends()],
           toneProfile: toneProfile ?? undefined,
           preset: localStorage.getItem("dirac-ai-preset") || undefined,
+          userMemory: serializeMemoryForPrompt(userMemoryRef.current) ?? undefined,
         }),
       });
 
