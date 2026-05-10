@@ -1019,11 +1019,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const promises: Promise<void>[] = [];
 
-    if (session?.gmailConnected) {
+    if (session?.gmailConnected && !session?.error) {
       promises.push(
         fetch("/api/gmail/threads")
-          .then((res) => {
-            if (!res.ok) throw new Error("Gmail fetch failed");
+          .then(async (res) => {
+            if (!res.ok) {
+              const body = await res.text().catch(() => "");
+              throw new Error(`Gmail fetch failed (${res.status}): ${body}`);
+            }
             return res.json();
           })
           .then((data) => {
@@ -1061,8 +1064,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (outlookConnected) {
       promises.push(
         fetch("/api/outlook/threads")
-          .then((res) => {
-            if (!res.ok) throw new Error("Outlook fetch failed");
+          .then(async (res) => {
+            if (!res.ok) {
+              const body = await res.text().catch(() => "");
+              throw new Error(`Outlook fetch failed (${res.status}): ${body}`);
+            }
             return res.json();
           })
           .then((data) => setOutlookThreads(data.threads ?? []))
@@ -1078,8 +1084,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (discordConnected) {
       promises.push(
         fetch("/api/discord/threads")
-          .then((res) => {
-            if (!res.ok) throw new Error("Discord fetch failed");
+          .then(async (res) => {
+            if (!res.ok) {
+              const body = await res.text().catch(() => "");
+              throw new Error(`Discord fetch failed (${res.status}): ${body}`);
+            }
             return res.json();
           })
           .then((data) => setDiscordThreads(data.threads ?? []))

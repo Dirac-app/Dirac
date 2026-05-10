@@ -50,8 +50,7 @@ export function middleware(request: NextRequest) {
  * Configure which routes the middleware runs on
  */
 export const config = {
-  // Run on all routes in development, only API routes in production
-  matcher: process.env.NODE_ENV === 'production' 
-    ? '/api/:path*' 
-    : '/:path*',
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
 };
