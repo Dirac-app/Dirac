@@ -18,12 +18,15 @@ const GmailHeaderSchema = z.object({
 
 const GmailMessagePartSchema: z.ZodType<GmailMessagePart> = z.lazy(() =>
   z.object({
-    mimeType: z.string(),
+    mimeType: z.string().default(""),
     headers: z.array(GmailHeaderSchema).default([]),
-    body: z.object({
-      size: z.number(),
-      data: z.string().optional(),
-    }),
+    // size can be absent in format=metadata responses; data is only in format=full
+    body: z
+      .object({
+        size: z.number().optional().default(0),
+        data: z.string().optional(),
+      })
+      .default({ size: 0 }),
     parts: z.array(GmailMessagePartSchema).optional(),
   })
 );
@@ -31,7 +34,7 @@ const GmailMessagePartSchema: z.ZodType<GmailMessagePart> = z.lazy(() =>
 export interface GmailMessagePart {
   mimeType: string;
   headers: { name: string; value: string }[];
-  body: { size: number; data?: string };
+  body: { size?: number; data?: string };
   parts?: GmailMessagePart[];
 }
 
@@ -40,7 +43,8 @@ const GmailMessageSchema = z.object({
   threadId: z.string(),
   labelIds: z.array(z.string()).default([]),
   snippet: z.string().optional().default(""),
-  internalDate: z.string(),
+  // internalDate is an epoch-ms string; can be absent in partial/draft messages
+  internalDate: z.string().optional().default("0"),
   payload: GmailMessagePartSchema,
 });
 

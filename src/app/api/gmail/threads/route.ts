@@ -65,9 +65,14 @@ export async function GET() {
 
     return NextResponse.json({ threads });
   } catch (error) {
-    console.error("Gmail threads fetch error:", error);
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error("[/api/gmail/threads] fetch error:", detail);
     return NextResponse.json(
-      { error: "Failed to fetch Gmail threads" },
+      {
+        error: "Failed to fetch Gmail threads",
+        // Include detail in dev so it's visible in the browser console
+        ...(process.env.NODE_ENV !== "production" && { detail }),
+      },
       { status: 500 },
     );
   }

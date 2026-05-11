@@ -40,6 +40,174 @@ import type {
   EmailVolume,
   EmailUseCase,
 } from "@/lib/onboarding";
+import type { DiracThread } from "@/lib/types";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Demo-thread utilities
+// Picks the most compelling real inbox thread for the morning-brief demo
+// (Screens 10 & 11). Falls back to synthetic data if the inbox is empty
+// or contains only newsletters / automated mail.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const NOISE_SUBJECT_PATTERNS = [
+  "unsubscribe", "newsletter", "weekly digest", "monthly digest",
+  "digest", "notification", "alert", "noreply", "no-reply",
+  "automated", "do not reply", "donotreply", "your account",
+  "verify", "confirm your", "password reset", "receipt",
+];
+const NOISE_SENDER_PREFIXES = [
+  "noreply", "no-reply", "notifications", "newsletter", "mailer",
+  "donotreply", "do-not-reply", "support+", "alert",
+];
+
+function isNoise(thread: DiracThread): boolean {
+  const sub = thread.subject.toLowerCase();
+  if (NOISE_SUBJECT_PATTERNS.some((p) => sub.includes(p))) return true;
+  const sender = (thread.participants[0]?.email ?? "").toLowerCase();
+  if (NOISE_SENDER_PREFIXES.some((p) => sender.startsWith(p))) return true;
+  return false;
+}
+
+function scoreThread(thread: DiracThread): number {
+  if (isNoise(thread)) return -100;
+  let s = 0;
+  if (thread.isUnread) s += 10;
+  if (thread.isUrgent) s += 8;
+  if (thread.isStarred) s += 5;
+  if (thread.messageCount >= 2) s += 4;
+  if (thread.messageCount >= 4) s += 2;
+  if (thread.status === "DONE") s -= 6;
+  const len = thread.subject.length;
+  if (len >= 10 && len <= 80) s += 3;
+  return s;
+}
+
+export function pickBestDemoThread(threads: DiracThread[]): DiracThread | null {
+  const ranked = [...threads]
+    .map((t) => ({ t, score: scoreThread(t) }))
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score);
+  return ranked[0]?.t ?? null;
+}
+
+type DemoData = {
+  cardSubject: string;
+  cardFrom: string;
+  cardPlan: string;
+  draftText: string;
+  adjustOptions: { label: string; draft: string }[];
+};
+
+const FALLBACK_DEMO: DemoData = {
+  cardSubject: "Q2 board update — needs your eyes",
+  cardFrom: "lisa@acme.vc",
+  cardPlan: "Lisa is asking for the Q2 update by Friday. Reply with status and one open question.",
+  draftText: "Hi Lisa — here's the Q2 update. Revenue tracked +18% MoM, two key hires landed, and the Series A conversations are progressing. Open question: should we accelerate the security audit ahead of the round?\n\n— ",
+  adjustOptions: [
+    {
+      label: "Cool, let's meet Tuesday at 10am! ☕",
+      draft: "Hi Lisa — Q2 is looking strong. Revenue +18% MoM, two key hires landed. Tuesday at 10am works great for a quick sync — does that suit you?\n\n— ",
+    },
+    {
+      label: "Wednesday works better for me",
+      draft: "Hi Lisa — here's the Q2 update. Revenue +18% MoM, two hires in. One open question on the audit timing. Wednesday afternoon better for a call?\n\n— ",
+    },
+    {
+      label: "I'm gonna have to pass — too busy right now",
+      draft: "Hi Lisa — the Q2 numbers are solid (+18% MoM, two key hires). I'm packed this week. Can we push to early next week instead?\n\n— ",
+    },
+  ],
+};
+
+function buildDemoFromThread(thread: DiracThread): DemoData {
+  const sender = thread.participants[0];
+  const firstName =
+    sender?.name?.split(" ")[0] ??
+    sender?.email?.split("@")[0] ??
+    "there";
+  const senderShort = sender?.email ?? firstName;
+  const subjectShort =
+    thread.subject.length > 55
+      ? thread.subject.slice(0, 52) + "…"
+      : thread.subject;
+
+  const sub = thread.subject.toLowerCase();
+  const snip = (thread.snippet ?? "").toLowerCase();
+
+  // Detect intent from subject / snippet keywords
+  const isMeeting = /\b(meet|meeting|sync|call|catch[- ]up|coffee|lunch|chat|schedule|zoom|calendar)\b/.test(sub + " " + snip);
+  const isQuestion = /[?]|follow[- ]?up|question|request|wondering|thought|asking/.test(sub + " " + snip);
+
+  const cardPlan = `${firstName} sent "${subjectShort}". Dirac flagged it as worth your time — here's the suggested reply.`;
+
+  if (isMeeting) {
+    return {
+      cardSubject: thread.subject,
+      cardFrom: senderShort,
+      cardPlan,
+      draftText: `Hi ${firstName} — thanks for the ping on "${subjectShort}". Happy to find a time. Let me know your availability and I'll lock something in.\n\n— `,
+      adjustOptions: [
+        {
+          label: "Cool, Tuesday at 10am works! ☕",
+          draft: `Hi ${firstName} — Tuesday at 10am works for me. Sending a calendar invite now.\n\n— `,
+        },
+        {
+          label: "Wednesday is better for me",
+          draft: `Hi ${firstName} — can we shift to Wednesday? Afternoon works best on my end.\n\n— `,
+        },
+        {
+          label: "I'll have to pass — too packed right now",
+          draft: `Hi ${firstName} — appreciate the invite. Things are pretty packed — can we revisit in two weeks?\n\n— `,
+        },
+      ],
+    };
+  }
+
+  if (isQuestion) {
+    return {
+      cardSubject: thread.subject,
+      cardFrom: senderShort,
+      cardPlan,
+      draftText: `Hi ${firstName} — good question on "${subjectShort}". Here's where I'm at:\n\n[Dirac will fill this in based on context]\n\n— `,
+      adjustOptions: [
+        {
+          label: "Yes — happy to share more context",
+          draft: `Hi ${firstName} — yes, happy to share more context on this. Let me put together a quick summary and send it over.\n\n— `,
+        },
+        {
+          label: "Let's jump on a quick call",
+          draft: `Hi ${firstName} — easier to explain on a call. Do you have 15 mins this week?\n\n— `,
+        },
+        {
+          label: "Need a couple more days on this one",
+          draft: `Hi ${firstName} — I'm still working through this. Give me a couple of days and I'll have a proper answer for you.\n\n— `,
+        },
+      ],
+    };
+  }
+
+  // Generic
+  return {
+    cardSubject: thread.subject,
+    cardFrom: senderShort,
+    cardPlan,
+    draftText: `Hi ${firstName} — following up on "${subjectShort}". I'll get back to you with a full response shortly.\n\n— `,
+    adjustOptions: [
+      {
+        label: "On it — full reply by Friday",
+        draft: `Hi ${firstName} — this is on my radar. I'll send a full reply by end of week.\n\n— `,
+      },
+      {
+        label: "Quick question before I respond",
+        draft: `Hi ${firstName} — before I reply in full: could you clarify what you need most urgently? That'll help me prioritise.\n\n— `,
+      },
+      {
+        label: "Need a few more days",
+        draft: `Hi ${firstName} — "${subjectShort}" is on my list. I need a couple more days — thanks for your patience.\n\n— `,
+      },
+    ],
+  };
+}
 
 // Common props every screen receives. Screens read from `answers` and emit
 // patches via `onPatch`. Navigation buttons live in the shell, so screens
@@ -617,22 +785,26 @@ export function Screen9Syncing({ goNext }: ScreenProps) {
 // back to two demo cards labeled as such — honest, not deceptive.
 export function Screen10MorningBrief(_props: ScreenProps) {
   const { threads } = useAppState();
-  const sampleThreads = threads
-    .filter((t) => t.isUnread)
-    .slice(0, 3);
 
-  const useDemo = sampleThreads.length < 2;
+  // Pick up to 3 high-quality, human threads for the brief preview
+  const realCards = threads
+    .filter((t) => !isNoise(t) && t.isUnread)
+    .sort((a, b) => scoreThread(b) - scoreThread(a))
+    .slice(0, 3)
+    .map((t) => ({
+      subject: t.subject,
+      from: t.participants[0]?.email ?? "—",
+      plan: `${t.participants[0]?.name?.split(" ")[0] ?? t.participants[0]?.email?.split("@")[0] ?? "Someone"} needs a response. Dirac will draft a plan when you open this.`,
+    }));
+
+  const useDemo = realCards.length < 2;
 
   const cards = useDemo
     ? [
         { subject: "Q2 board update — needs your eyes", from: "lisa@acme.vc", plan: "Lisa is asking for the Q2 update by Friday. Reply with status and one open question." },
         { subject: "Series A follow-up", from: "founder@runway.io", plan: "Decline politely — not the right time. Suggest reconnecting in Q3." },
       ]
-    : sampleThreads.map((t) => ({
-        subject: t.subject,
-        from: t.participants[0]?.email ?? "—",
-        plan: "Dirac will draft a plan for this once you click in.",
-      }));
+    : realCards;
 
   return (
     <div className="flex h-full flex-col">
@@ -679,42 +851,66 @@ export function Screen10MorningBrief(_props: ScreenProps) {
 // We don't really send anything — that happens for real once they're in the
 // app. The point is the FEELING of "click → AI takes over."
 export function Screen11AcceptPlan({ goNext }: ScreenProps) {
+  const { threads } = useAppState();
   const [accepted, setAccepted] = useState(false);
   const [typedChars, setTypedChars] = useState(0);
+  const [selectedOption, setSelectedOption] = useState<number | null>(null);
 
-  const draftText = "Hi Lisa — here's the Q2 update. Revenue tracked +18% MoM, two key hires landed, and the Series A conversations are progressing. Open question: should we accelerate the security audit ahead of the round?\n\n— ";
+  // Pick the most compelling real thread; fall back to synthetic Lisa demo
+  const bestThread = pickBestDemoThread(threads);
+  const demo: DemoData = bestThread
+    ? buildDemoFromThread(bestThread)
+    : FALLBACK_DEMO;
+
+  // The displayed draft — swaps to the chosen option's text after user picks
+  const activeDraft =
+    selectedOption !== null
+      ? demo.adjustOptions[selectedOption].draft
+      : demo.draftText;
+
+  const draftDone = typedChars >= activeDraft.length;
 
   useEffect(() => {
     if (!accepted) return;
-    if (typedChars >= draftText.length) {
-      // Hold on the finished draft for a beat, then unlock Next.
-      return;
-    }
-    const t = setTimeout(() => setTypedChars((c) => Math.min(draftText.length, c + 3)), 18);
+    if (draftDone) return;
+    const t = setTimeout(
+      () => setTypedChars((c) => Math.min(activeDraft.length, c + 3)),
+      18,
+    );
     return () => clearTimeout(t);
-  }, [accepted, typedChars, draftText.length]);
+  }, [accepted, typedChars, activeDraft, draftDone]);
+
+  // When user picks an option, re-type the new draft from scratch
+  const handleOption = (idx: number) => {
+    setSelectedOption(idx);
+    setTypedChars(0);
+  };
 
   return (
-    <div className="flex h-full flex-col">
-      <p className="text-[15px] leading-relaxed text-muted-foreground">
+    <div className="flex h-full flex-col gap-3">
+      <p className="text-[14px] leading-relaxed text-muted-foreground">
         Click <span className="font-medium text-foreground">Accept plan</span>.
         Watch what happens.
       </p>
 
-      <div className="mt-5 rounded-xl border border-border/60 bg-background/40 p-4">
-        <p className="text-[13px] font-semibold text-foreground mb-1">
-          Q2 board update — needs your eyes
+      {/* Morning brief card — real email or fallback */}
+      <div className="rounded-xl border border-border/60 bg-background/40 p-3.5">
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <p className="text-[12px] font-semibold text-foreground leading-snug flex-1">
+            {demo.cardSubject}
+          </p>
+          <span className="text-[10px] text-muted-foreground/60 shrink-0 mt-0.5">
+            {demo.cardFrom.split("@")[0]}
+          </span>
+        </div>
+        <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+          {demo.cardPlan}
         </p>
-        <p className="text-[12.5px] leading-relaxed text-muted-foreground">
-          Lisa is asking for the Q2 update by Friday. Reply with status and one
-          open question.
-        </p>
-
         {!accepted && (
           <Button
             size="sm"
             onClick={() => setAccepted(true)}
-            className="mt-3 h-8 gap-1.5 text-xs"
+            className="mt-2.5 h-7 gap-1.5 text-xs"
           >
             Accept plan
             <ArrowRight className="h-3 w-3" />
@@ -722,69 +918,81 @@ export function Screen11AcceptPlan({ goNext }: ScreenProps) {
         )}
       </div>
 
+      {/* AI draft block */}
       {accepted && (
         <motion.div
-          initial={{ opacity: 0, y: 8 }}
+          initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="mt-3 rounded-xl border border-primary/30 bg-primary/[0.03] p-4"
+          transition={{ duration: 0.35 }}
+          className="rounded-xl border border-primary/30 bg-primary/[0.03] p-3.5"
         >
           <div className="flex items-center gap-2 mb-2">
-            <Sparkles className="h-3.5 w-3.5 text-primary" />
+            <Sparkles className="h-3 w-3 text-primary" />
             <p className="text-[10px] uppercase tracking-wider font-medium text-primary/80">
               AI sidebar · drafting
             </p>
           </div>
-          <p className="text-[13px] leading-relaxed text-foreground whitespace-pre-wrap">
-            {draftText.slice(0, typedChars)}
-            {typedChars < draftText.length && (
+          <p className="text-[12px] leading-relaxed text-foreground whitespace-pre-wrap">
+            {activeDraft.slice(0, typedChars)}
+            {!draftDone && (
               <motion.span
                 animate={{ opacity: [1, 0, 1] }}
                 transition={{ duration: 0.8, repeat: Infinity }}
-                className="inline-block w-[2px] h-[14px] bg-foreground ml-0.5 align-middle"
+                className="inline-block w-[2px] h-[13px] bg-foreground ml-0.5 align-middle"
               />
             )}
           </p>
         </motion.div>
       )}
 
-      {typedChars >= draftText.length && (
+      {/* Quick-adjust MCQ panel — appears once initial draft finishes */}
+      {draftDone && selectedOption === null && (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-          className="mt-4 flex items-center gap-2 text-[12px] text-muted-foreground"
-        >
-          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-          That's the loop. Dirac handles the rest from here.
-        </motion.div>
-      )}
-
-      {/* Keyboard shortcut overlay — appears once draft is done */}
-      {typedChars >= draftText.length && (
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
+          initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 1.0, duration: 0.5 }}
-          className="mt-4 rounded-lg border border-border/40 bg-muted/20 px-4 py-3"
+          transition={{ delay: 0.4, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+          className="rounded-xl border border-border/50 bg-muted/30 p-3.5"
         >
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 mb-2">
-            Keyboard shortcuts
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 mb-2.5">
+            Dirac · tune your reply
           </p>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px]">
-            <Shortcut keys={["J", "K"]} label="navigate threads" />
-            <Shortcut keys={["R"]} label="reply" />
-            <Shortcut keys={["⌘", "/"]} label="ask AI" />
+          <div className="flex flex-col gap-2">
+            {demo.adjustOptions.map((opt, i) => (
+              <motion.button
+                key={i}
+                onClick={() => handleOption(i)}
+                className="w-full rounded-lg border border-border/50 bg-background/50 px-3 py-2 text-left text-[12px] text-foreground/80 hover:border-primary/40 hover:bg-primary/[0.04] hover:text-foreground transition-colors"
+                initial={{ opacity: 0, x: -6 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.5 + i * 0.1, duration: 0.35 }}
+              >
+                {opt.label}
+              </motion.button>
+            ))}
           </div>
         </motion.div>
       )}
 
-      {typedChars >= draftText.length && (
+      {/* Confirmation after option chosen + typing done */}
+      {selectedOption !== null && draftDone && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 1.6 }}
-          className="mt-auto pt-4"
+          transition={{ delay: 0.3 }}
+          className="flex items-center gap-2 text-[12px] text-muted-foreground"
+        >
+          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+          Dirac matched your intent. That's the loop.
+        </motion.div>
+      )}
+
+      {/* Continue — only after an option is picked and re-typed */}
+      {selectedOption !== null && draftDone && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.8 }}
+          className="mt-auto pt-2"
         >
           <Button onClick={goNext} className="w-full h-10">
             Continue
