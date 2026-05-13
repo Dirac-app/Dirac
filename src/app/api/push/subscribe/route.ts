@@ -11,11 +11,11 @@ import webpush from "web-push";
 import { pushConfig } from "@/lib/push-config";
 import { pushSubscriptionSchema } from "./schema";
 
-webpush.setVapidDetails(
-  pushConfig.subject,
-  pushConfig.publicKey,
-  pushConfig.privateKey
-);
+function initVapid(): boolean {
+  if (!pushConfig.publicKey || !pushConfig.privateKey) return false;
+  webpush.setVapidDetails(pushConfig.subject, pushConfig.publicKey, pushConfig.privateKey);
+  return true;
+}
 
 // In-memory storage (replace with database in production)
 const subscriptions = new Map<string, PushSubscriptionJSON>();
@@ -29,6 +29,9 @@ interface PushSubscriptionJSON {
 }
 
 export async function POST(request: NextRequest) {
+  if (!initVapid()) {
+    return NextResponse.json({ error: "Push notifications not configured" }, { status: 503 });
+  }
   try {
     const session = await auth();
     

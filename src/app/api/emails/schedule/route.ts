@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-guard";
 import { validateBody, ScheduleEmailSchema } from "@/lib/validation";
-import { prisma } from "@/lib/user-db";
+import { createClient } from "@supabase/supabase-js";
+
+function getDb() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+}
 
 /**
  * POST /api/emails/schedule
  * Schedules an email for future delivery.
- * Body: { to, cc?, bcc?, subject?, body, threadId?, messageId?, scheduledFor, platform }
  */
 export async function POST(request: NextRequest) {
   const guard = await requireAuth();
@@ -19,82 +25,63 @@ export async function POST(request: NextRequest) {
 
   const { to, cc, bcc, subject, body, threadId, messageId, scheduledFor, platform } = parsed.data;
 
-  // Validate scheduledFor is in the future
   const scheduledDate = new Date(scheduledFor);
-  const now = new Date();
-  if (scheduledDate <= now) {
+  if (scheduledDate <= new Date()) {
     return NextResponse.json(
       { error: "Scheduled time must be in the future" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
-  try {
-    const scheduledEmail = await prisma.scheduledEmail.create({
-      data: {
-        userId: guard.userId!,
-        platform,
-        to,
-        cc: cc || null,
-        bcc: bcc || null,
-        subject: subject || null,
-        body,
-        threadId: threadId || null,
-        messageId: messageId || null,
-        scheduledFor: scheduledDate,
-        status: "PENDING",
-      },
-    });
+  const { data, error } = await getDb()
+    .from("scheduled_emails")
+    .insert({
+      user_id: guard.userId,
+      platform,
+      to_address: to,
+      cc_address: cc ?? null,
+      bcc_address: bcc ?? null,
+      subject: subject ?? null,
+      body,
+      thread_id: threadId ?? null,
+      message_id: messageId ?? null,
+      scheduled_for: scheduledDate.toISOString(),
+      status: "PENDING",
+    })
+    .select("id, scheduled_for")
+    .single();
 
-    return NextResponse.json({
-      ok: true,
-      scheduledEmailId: scheduledEmail.id,
-      scheduledFor: scheduledEmail.scheduledFor,
-    });
-  } catch (err) {
-    console.error("Schedule email error:", err);
-    return NextResponse.json(
-      { error: "Failed to schedule email" },
-      { status: 500 }
-    );
+  if (error) {
+    console.error("Schedule email error:", error);
+    return NextResponse.json({ error: "Failed to schedule email" }, { status: 500 });
   }
+
+  return NextResponse.json({
+    ok: true,
+    scheduledEmailId: data.id,
+    scheduledFor: data.scheduled_for,
+  });
 }
 
 /**
  * GET /api/emails/schedule
- * Lists all scheduled emails for the authenticated user.
+ * Lists all pending scheduled emails for the authenticated user.
  */
-export async function GET(request: NextRequest) {
+export async function GET() {
   const guard = await requireAuth();
   if (guard.error) return guard.response;
 
-  try {
-    const scheduledEmails = await prisma.scheduledEmail.findMany({
-      where: {
-        userId: guard.userId!,
-        status: "PENDING",
-      },
-      orderBy: {
-        scheduledFor: "asc",
-      },
-      select: {
-        id: true,
-        to: true,
-        cc: true,
-        subject: true,
-        body: true,
-        scheduledFor: true,
-        platform: true,
-        createdAt: true,
-      },
-    });
+  const { data, error } = await getDb()
+    .from("scheduled_emails")
+    .select("id, to_address, cc_address, subject, body, scheduled_for, platform, created_at")
+    .eq("user_id", guard.userId)
+    .eq("status", "PENDING")
+    .order("scheduled_for", { ascending: true });
 
-    return NextResponse.json({ scheduledEmails });
-  } catch (err) {
-    console.error("List scheduled emails error:", err);
-    return NextResponse.json(
-      { error: "Failed to list scheduled emails" },
-      { status: 500 }
-    );
+  if (error) {
+    console.error("List scheduled emails error:", error);
+    return NextResponse.json({ error: "Failed to list scheduled emails" }, { status: 500 });
   }
+
+  return NextResponse.json({ scheduledEmails: data ?? [] });
 }

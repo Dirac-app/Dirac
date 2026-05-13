@@ -16,7 +16,7 @@ import type { TopicTag, DiracThread } from "@/lib/types";
 
 // Lazy load AiSidebar - only loads when user first interacts with it
 const AiSidebar = dynamic(
-  () => import("@/components/ai-sidebar/ai-sidebar"),
+  () => import("@/components/ai-sidebar/ai-sidebar").then((m) => m.AiSidebar),
   {
     ssr: false,
     loading: () => (

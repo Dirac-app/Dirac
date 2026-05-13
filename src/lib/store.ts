@@ -13,8 +13,6 @@ import type {
   RelationshipContext,
   PatternSuggestion,
   TopicTag,
-  AiContextItem,
-  ToneProfile,
 } from "./types";
 
 // ─── Shared types ───────────────────────────────────────────────────────────
@@ -52,6 +50,14 @@ export interface ToneProfile {
   signoff_style: string;
   example_phrases: string[];
   conditional_tones?: ConditionalTone[];
+}
+
+export interface AiContextItem {
+  id: string;
+  label: string;
+  type?: "thread" | "message" | "clip";
+  threadId?: string;
+  messageId?: string;
 }
 
 export interface Clip {

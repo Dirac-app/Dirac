@@ -20,6 +20,7 @@ import {
   Home,
   Send,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { useAppState } from "@/lib/store";
@@ -38,13 +39,18 @@ const NAV_LINKS = [
 ] as const;
 
 // Mobile bottom nav items (simplified set)
-const BOTTOM_NAV_ITEMS = [
+const BOTTOM_NAV_ITEMS: {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  isCompose?: boolean;
+}[] = [
   { href: "/inbox", label: "Inbox", icon: Inbox },
   { href: "/activity", label: "Activity", icon: Activity },
   { href: "/compose", label: "Compose", icon: PenSquare, isCompose: true },
   { href: "/clips", label: "Clips", icon: Bookmark },
   { href: "/settings", label: "Settings", icon: Settings },
-] as const;
+];
 
 export function AppNav() {
   const pathname = usePathname();
