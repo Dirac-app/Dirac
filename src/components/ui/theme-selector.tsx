@@ -1,9 +1,56 @@
 "use client";
 
 import * as React from "react";
-import { Check, Moon, Sun, Monitor, Palette } from "lucide-react";
+import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTheme } from "next-themes";
 import type { ColorScheme, Density } from "@/lib/theme";
+
+// A unified "app theme" bundles color scheme + dark/light together so the user
+// only ever picks from 4 options and never touches a separate toggle.
+export type AppTheme = "default-light" | "default-dark" | "win95-light" | "win95-dark";
+
+const APP_THEMES: {
+  id: AppTheme;
+  label: string;
+  description: string;
+  colorScheme: ColorScheme;
+  mode: "light" | "dark";
+  preview: { bg: string; panel: string; text: string; accent: string };
+}[] = [
+  {
+    id: "default-light",
+    label: "Default Light",
+    description: "Clean & classic",
+    colorScheme: "default",
+    mode: "light",
+    preview: { bg: "#f5f0eb", panel: "#ffffff", text: "#1a1a2e", accent: "#6366f1" },
+  },
+  {
+    id: "default-dark",
+    label: "Default Dark",
+    description: "Clean & classic",
+    colorScheme: "default",
+    mode: "dark",
+    preview: { bg: "#1a1a1e", panel: "#141414", text: "#f8f8fa", accent: "#a5b4fc" },
+  },
+  {
+    id: "win95-light",
+    label: "Windows 95",
+    description: "Retro light",
+    colorScheme: "retro95",
+    mode: "light",
+    preview: { bg: "#008080", panel: "#c0c0c0", text: "#000000", accent: "#000080" },
+  },
+  {
+    id: "win95-dark",
+    label: "Windows 95",
+    description: "Retro dark",
+    colorScheme: "retro95",
+    mode: "dark",
+    preview: { bg: "#000080", panel: "#1c1c1c", text: "#c0c0c0", accent: "#c0c0c0" },
+  },
+];
 
 interface ThemeSelectorProps {
   colorScheme: ColorScheme;
@@ -12,45 +59,6 @@ interface ThemeSelectorProps {
   onDensityChange: (density: Density) => void;
 }
 
-const COLOR_SCHEME_OPTIONS: { value: ColorScheme; label: string; description: string; colors: string[] }[] = [
-  {
-    value: "default",
-    label: "Default",
-    description: "Clean & classic",
-    colors: ["#6366f1", "#f43f5e", "#22c55e"],
-  },
-  {
-    value: "midnight",
-    label: "Midnight",
-    description: "Deep purple & indigo",
-    colors: ["#6366f1", "#8b5cf6", "#a78bfa"],
-  },
-  {
-    value: "forest",
-    label: "Forest",
-    description: "Earthy greens",
-    colors: ["#22c55e", "#10b981", "#14b8a6"],
-  },
-  {
-    value: "sunset",
-    label: "Sunset",
-    description: "Warm oranges",
-    colors: ["#fb923c", "#f97316", "#ea580c"],
-  },
-  {
-    value: "ocean",
-    label: "Ocean",
-    description: "Cool blues",
-    colors: ["#3b82f6", "#06b6d4", "#0ea5e9"],
-  },
-  {
-    value: "retro95",
-    label: "Windows 95",
-    description: "Classic retro computing aesthetic",
-    colors: ["#c0c0c0", "#000080", "#008000"],
-  },
-];
-
 const DENSITY_OPTIONS: { value: Density; label: string; description: string }[] = [
   { value: "compact", label: "Compact", description: "More content, less space" },
   { value: "comfortable", label: "Comfortable", description: "Balanced spacing" },
@@ -58,48 +66,64 @@ const DENSITY_OPTIONS: { value: Density; label: string; description: string }[] 
 ];
 
 export function ThemeSelector({ colorScheme, density, onColorSchemeChange, onDensityChange }: ThemeSelectorProps) {
+  const { theme, setTheme } = useTheme();
+
+  const activeAppTheme: AppTheme =
+    colorScheme === "retro95"
+      ? theme === "dark" ? "win95-dark" : "win95-light"
+      : theme === "dark" ? "default-dark" : "default-light";
+
+  const handleAppThemeChange = (appTheme: AppTheme) => {
+    const t = APP_THEMES.find(a => a.id === appTheme)!;
+    onColorSchemeChange(t.colorScheme);
+    setTheme(t.mode);
+  };
+
   return (
     <div className="space-y-6">
       <div>
-        <div className="flex items-center gap-2 mb-3">
-          <Palette className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Color Scheme</span>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {COLOR_SCHEME_OPTIONS.map((option) => (
-            <button
-              key={option.value}
-              onClick={() => onColorSchemeChange(option.value)}
-              className={cn(
-                "relative flex flex-col items-center gap-2 p-3 rounded-lg border transition-all",
-                colorScheme === option.value
-                  ? "border-primary bg-primary/5"
-                  : "border-border hover:bg-accent/50"
-              )}
-            >
-              <div className="flex gap-1">
-                {option.colors.map((color, i) => (
+        <span className="text-sm font-medium mb-3 block">Theme</span>
+        <div className="grid grid-cols-2 gap-2">
+          {APP_THEMES.map((t) => {
+            const isActive = activeAppTheme === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => handleAppThemeChange(t.id)}
+                className={cn(
+                  "relative flex flex-col gap-2 p-3 rounded-lg border transition-all text-left",
+                  isActive ? "border-primary bg-primary/5" : "border-border hover:bg-accent/50"
+                )}
+              >
+                {/* Mini preview */}
+                <div
+                  className="w-full h-10 rounded overflow-hidden flex items-end gap-1 p-1"
+                  style={{ background: t.preview.bg }}
+                >
                   <div
-                    key={i}
-                    className="h-4 w-4 rounded-full"
-                    style={{ backgroundColor: color }}
+                    className="flex-1 h-6 rounded-sm"
+                    style={{ background: t.preview.panel }}
                   />
-                ))}
-              </div>
-              <span className="text-xs font-medium">{option.label}</span>
-              {colorScheme === option.value && (
-                <Check className="absolute top-2 right-2 h-3 w-3 text-primary" />
-              )}
-            </button>
-          ))}
+                  <div
+                    className="w-2 h-full rounded-sm opacity-70"
+                    style={{ background: t.preview.accent }}
+                  />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold leading-tight">{t.label}</p>
+                  <p className="text-[10px] text-muted-foreground leading-tight">{t.description}</p>
+                </div>
+                {isActive && (
+                  <Check className="absolute top-2 right-2 h-3 w-3 text-primary" />
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       <div>
-        <div className="flex items-center gap-2 mb-3">
-          <Monitor className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Display Density</span>
-        </div>
+        <span className="text-sm font-medium mb-3 block">Density</span>
         <div className="flex flex-col gap-2">
           {DENSITY_OPTIONS.map((option) => (
             <button
@@ -107,63 +131,18 @@ export function ThemeSelector({ colorScheme, density, onColorSchemeChange, onDen
               onClick={() => onDensityChange(option.value)}
               className={cn(
                 "flex items-center justify-between p-3 rounded-lg border transition-all",
-                density === option.value
-                  ? "border-primary bg-primary/5"
-                  : "border-border hover:bg-accent/50"
+                density === option.value ? "border-primary bg-primary/5" : "border-border hover:bg-accent/50"
               )}
             >
               <div className="text-left">
                 <span className="text-sm font-medium">{option.label}</span>
                 <p className="text-xs text-muted-foreground">{option.description}</p>
               </div>
-              {density === option.value && (
-                <Check className="h-4 w-4 text-primary" />
-              )}
+              {density === option.value && <Check className="h-4 w-4 text-primary" />}
             </button>
           ))}
         </div>
       </div>
     </div>
-  );
-}
-
-interface ThemeToggleProps {
-  colorScheme: ColorScheme;
-  onChange: (scheme: ColorScheme) => void;
-  className?: string;
-}
-
-export function ThemeToggle({ colorScheme, onChange, className }: ThemeToggleProps) {
-  const cycles = ["default", "midnight", "forest", "sunset", "ocean", "retro95"] as const;
-  const currentIndex = cycles.indexOf(colorScheme);
-  
-  const cycle = () => {
-    const nextIndex = (currentIndex + 1) % cycles.length;
-    onChange(cycles[nextIndex]);
-  };
-
-  const labels: Record<ColorScheme, string> = {
-    default: "Default",
-    midnight: "Midnight",
-    forest: "Forest",
-    sunset: "Sunset",
-    ocean: "Ocean",
-    retro95: "Windows 95",
-  };
-
-  return (
-    <button
-      onClick={cycle}
-      className={cn(
-        "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium",
-        "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        "transition-colors",
-        className
-      )}
-      title={`Theme: ${labels[colorScheme]}`}
-    >
-      <Palette className="h-3 w-3" />
-      {labels[colorScheme]}
-    </button>
   );
 }

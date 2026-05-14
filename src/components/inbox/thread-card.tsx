@@ -159,7 +159,7 @@ export function ThreadCard({
         <button
           onClick={onSelect}
           className={cn(
-            "group relative flex w-full items-start gap-3 border-b border-border/40 px-3 md:px-5 py-3.5 md:py-3.5 touch-target text-left transition-all duration-150",
+            "group relative flex w-full items-start gap-3 border-b border-border/40 px-4 md:px-5 py-3 md:py-3 touch-target text-left transition-all duration-150",
             isBulkSelected
               ? "bg-primary/6"
               : isSelected
@@ -168,16 +168,16 @@ export function ThreadCard({
           )}
         >
           {/* Avatar */}
-          <div className="relative mt-0.5 shrink-0">
+          <div className="relative mt-1 shrink-0">
             {isBulkSelected ? (
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary">
                 <svg className="h-3.5 w-3.5 text-primary-foreground" viewBox="0 0 10 10" fill="none">
                   <path d="M2 5l2.5 2.5L8 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               </span>
             ) : (
               <span className={cn(
-                "flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-semibold leading-none select-none",
+                "flex h-9 w-9 items-center justify-center rounded-full text-[11px] font-semibold leading-none select-none",
                 avatarColor,
               )}>
                 {initials}
@@ -244,20 +244,20 @@ export function ThreadCard({
 
             {/* Row 2: subject */}
             <p className={cn(
-              "text-[13.5px] leading-snug line-clamp-1",
-              thread.isUnread ? "font-medium text-foreground" : "font-normal text-foreground/65",
+              "text-[13.5px] leading-normal line-clamp-1",
+              thread.isUnread ? "font-medium text-foreground" : "font-normal text-foreground/70",
             )}>
               {thread.subject}
             </p>
 
             {/* Row 3: snippet */}
-            <p className="line-clamp-1 text-[12px] leading-relaxed text-muted-foreground/45">
+            <p className="line-clamp-1 text-[12px] leading-normal text-muted-foreground/55">
               {thread.snippet ?? ""}
             </p>
 
             {/* Row 4: badges — topic + status only (@ sender badge is inline with sender name) */}
             {allBadges.length > 0 && (
-              <div className="mt-1 flex flex-wrap items-center gap-1">
+              <div className="mt-0.5 flex flex-wrap items-center gap-1">
                 {allBadges.slice(0, 4).map((b, i) => (
                   <span
                     key={i}

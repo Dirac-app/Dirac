@@ -14,7 +14,6 @@ import {
 import { cn } from "@/lib/utils";
 import { useAppState } from "@/lib/store";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { AccountsEmptyState, SearchEmptyState } from "@/components/ui/empty-state";
 import { ThreadListSkeleton } from "@/components/ui/skeleton";
 import type { DiracThread } from "@/lib/types";
@@ -311,8 +310,14 @@ export function ThreadList() {
   const rowVirtualizer = useVirtualizer({
     count: flatList.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 80,
+    estimateSize: (i) => {
+      // Section headers are short; thread cards are taller
+      const item = flatList[i];
+      return item?.type === "header" ? 38 : 80;
+    },
     overscan: 5,
+    // Measure actual rendered heights so items never overlap or leave gaps
+    measureElement: (el) => el.getBoundingClientRect().height,
   });
 
   // Selection logic
@@ -340,7 +345,7 @@ export function ThreadList() {
   }, [flatList, selectedThreadIds, toggleBulkSelect, clearSelection, setSelectedThreadId]);
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full w-full flex-col">
       {/* ── Search bar ── */}
       <div className="flex items-center gap-2 border-b border-border px-3 py-2">
         <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -399,9 +404,14 @@ export function ThreadList() {
       ) : flatList.length === 0 ? (
         <SearchEmptyState />
       ) : (
-        <ScrollArea className="flex-1">
+        // ref must be on the actual scroll container so useVirtualizer can
+        // measure it; wrapping in ScrollArea breaks this because the component
+        // adds an extra div that becomes the real scroll container.
+        <div
+          ref={parentRef}
+          className="flex-1 overflow-y-auto min-h-0 w-full"
+        >
           <div
-            ref={parentRef}
             className="relative w-full"
             style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
           >
@@ -413,6 +423,8 @@ export function ThreadList() {
                 return (
                   <div
                     key={`header-${item.section}`}
+                    data-index={virtualItem.index}
+                    ref={rowVirtualizer.measureElement}
                     style={{
                       position: "absolute",
                       top: 0,
@@ -436,6 +448,8 @@ export function ThreadList() {
               return (
                 <div
                   key={thread.id}
+                  data-index={virtualItem.index}
+                  ref={rowVirtualizer.measureElement}
                   style={{
                     position: "absolute",
                     top: 0,
@@ -459,7 +473,7 @@ export function ThreadList() {
               );
             })}
           </div>
-        </ScrollArea>
+        </div>
       )}
     </div>
   );

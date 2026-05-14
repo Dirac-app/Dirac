@@ -4,13 +4,7 @@ import * as React from "react";
 
 export type Theme = "light" | "dark" | "system";
 
-export type ColorScheme = 
-  | "default" 
-  | "midnight" 
-  | "forest" 
-  | "sunset" 
-  | "ocean"
-  | "retro95";
+export type ColorScheme = "default" | "retro95";
 
 export type Density = "compact" | "comfortable" | "spacious";
 
@@ -73,7 +67,7 @@ export function ThemeConfigProvider({ children }: { children: React.ReactNode })
     config,
     setColorScheme,
     setDensity,
-    colorSchemes: ["default", "midnight", "forest", "sunset", "ocean", "retro95"],
+    colorSchemes: ["default", "retro95"],
     densities: ["compact", "comfortable", "spacious"],
   }), [config, setColorScheme, setDensity]);
 

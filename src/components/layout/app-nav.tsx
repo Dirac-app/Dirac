@@ -8,8 +8,6 @@ import {
   Activity,
   Settings,
   Sparkles,
-  Moon,
-  Sun,
   Keyboard,
   Sunrise,
   Menu,
@@ -17,11 +15,7 @@ import {
   FileText,
   Bookmark,
   X,
-  Home,
-  Send,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
-import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { useAppState } from "@/lib/store";
 import {
@@ -38,37 +32,12 @@ const NAV_LINKS = [
   { href: "/settings", label: "Settings", icon: Settings },
 ] as const;
 
-// Mobile bottom nav items (simplified set)
-const BOTTOM_NAV_ITEMS: {
-  href: string;
-  label: string;
-  icon: LucideIcon;
-  isCompose?: boolean;
-}[] = [
-  { href: "/inbox", label: "Inbox", icon: Inbox },
-  { href: "/activity", label: "Activity", icon: Activity },
-  { href: "/compose", label: "Compose", icon: PenSquare, isCompose: true },
-  { href: "/clips", label: "Clips", icon: Bookmark },
-  { href: "/settings", label: "Settings", icon: Settings },
-];
 
 export function AppNav() {
   const pathname = usePathname();
-  const { composeOpen, setComposeOpen, setComposeMinimized, unreadCount } = useAppState();
-  const { theme, setTheme } = useTheme();
+  const { setComposeOpen, setComposeMinimized, unreadCount } = useAppState();
   const [navOpen, setNavOpen] = useState(false);
   const navRef = useRef<HTMLDivElement>(null);
-  const [isMobile, setIsMobile] = useState(false);
-
-  // Detect mobile viewport
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    checkMobile();
-    window.addEventListener("resize", checkMobile);
-    return () => window.removeEventListener("resize", checkMobile);
-  }, []);
 
   // Close on outside click
   useEffect(() => {
@@ -156,39 +125,6 @@ export function AppNav() {
     </div>
   );
 
-  // Render bottom navigation for mobile
-  const renderMobileBottomNav = () => (
-    <nav className="bottom-nav md:hidden">
-      {BOTTOM_NAV_ITEMS.map(({ href, label, icon: Icon, isCompose }) => {
-        const isActive = pathname === href || (href === "/inbox" && pathname.startsWith("/inbox"));
-        
-        if (isCompose) {
-          return (
-            <button
-              key={href}
-              onClick={handleCompose}
-              className="bottom-nav-item flex-col !min-w-[56px] !min-h-[44px] !p-2 bg-primary text-primary-foreground rounded-full !gap-0"
-              aria-label="Compose"
-            >
-              <PenSquare className="h-5 w-5" strokeWidth={2} />
-            </button>
-          );
-        }
-        
-        return (
-          <Link
-            key={href}
-            href={href}
-            className={cn("bottom-nav-item", isActive && "active")}
-          >
-            <Icon strokeWidth={1.75} />
-            <span>{label}</span>
-          </Link>
-        );
-      })}
-    </nav>
-  );
-
   return (
     <>
       {/* Desktop header */}
@@ -231,20 +167,6 @@ export function AppNav() {
             <TooltipContent side="bottom" sideOffset={6}>Keyboard shortcuts (?)</TooltipContent>
           </Tooltip>
 
-          {/* Theme toggle */}
-          <Tooltip delayDuration={0}>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                className="relative flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground touch-target"
-              >
-                <Sun  className="h-4 w-4 rotate-0 scale-100 transition-transform dark:-rotate-90 dark:scale-0" strokeWidth={1.75} />
-                <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-transform dark:rotate-0 dark:scale-100" strokeWidth={1.75} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" sideOffset={6}>{theme === "dark" ? "Light mode" : "Dark mode"}</TooltipContent>
-          </Tooltip>
-
           <div className="mx-1.5 h-5 w-px bg-border" />
 
           {/* Compose */}
@@ -258,37 +180,22 @@ export function AppNav() {
         </div>
       </header>
 
-      {/* Mobile header - simplified */}
+      {/* Mobile header */}
       <header className="dirac-panel flex md:hidden h-12 items-center justify-between px-3">
-        {/* Logo */}
         <div className="flex items-center gap-2">
           <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <Sparkles className="h-3.5 w-3.5" />
           </div>
           <span className="text-sm font-semibold text-foreground tracking-tight">Dirac</span>
         </div>
-
-        {/* Right actions - simplified for mobile */}
-        <div className="flex items-center gap-1">
-          <Tooltip delayDuration={0}>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground touch-target"
-              >
-                <Sun className="h-4 w-4 rotate-0 scale-100 transition-transform dark:-rotate-90 dark:scale-0" strokeWidth={1.75} />
-                <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-transform dark:rotate-0 dark:scale-100" strokeWidth={1.75} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" sideOffset={6}>
-              {theme === "dark" ? "Light mode" : "Dark mode"}
-            </TooltipContent>
-          </Tooltip>
-        </div>
+        <button
+          onClick={handleCompose}
+          className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 touch-target"
+        >
+          <PenSquare className="h-3.5 w-3.5" strokeWidth={2} />
+          Compose
+        </button>
       </header>
-
-      {/* Mobile bottom navigation */}
-      {renderMobileBottomNav()}
     </>
   );
 }

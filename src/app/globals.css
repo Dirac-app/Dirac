@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -211,258 +212,6 @@
    Color Scheme Themes
    ======================== */
 
-/* Midnight Theme */
-.theme-midnight:not(.dark) {
-  --primary: oklch(0.55 0.12 265);
-  --primary-foreground: oklch(1 0 0);
-  --background: oklch(0.97 0.012 260);
-  --foreground: oklch(0.18 0.03 260);
-  --card: oklch(0.97 0.012 260);
-  --card-foreground: oklch(0.18 0.03 260);
-  --popover: oklch(0.99 0.005 260);
-  --popover-foreground: oklch(0.18 0.03 260);
-  --secondary: oklch(0.93 0.025 260);
-  --secondary-foreground: oklch(0.18 0.03 260);
-  --muted: oklch(0.93 0.025 260);
-  --muted-foreground: oklch(0.48 0.05 260);
-  --accent: oklch(0.93 0.025 260);
-  --accent-foreground: oklch(0.18 0.03 260);
-  --border: oklch(0.88 0.02 260);
-  --input: oklch(0.88 0.02 260);
-  --ring: oklch(0.55 0.12 265);
-  
-  --panel-bg: oklch(0.995 0.003 260);
-  --panel-border: oklch(0.9 0.015 260);
-  --dirac-bg-1: rgba(99, 102, 241, 0.15);
-  --dirac-bg-2: rgba(139, 92, 246, 0.12);
-  --dirac-bg-3: rgba(167, 139, 250, 0.1);
-  --dirac-bg-base: #eeedf8;
-}
-
-.theme-midnight.dark {
-  --background: oklch(0.08 0.02 260);
-  --foreground: oklch(0.95 0.01 260);
-  --card: oklch(0.12 0.025 260);
-  --card-foreground: oklch(0.95 0.01 260);
-  --popover: oklch(0.12 0.025 260);
-  --popover-foreground: oklch(0.95 0.01 260);
-  --primary: oklch(0.75 0.15 265);
-  --primary-foreground: oklch(0.1 0.01 260);
-  --secondary: oklch(0.18 0.03 260);
-  --secondary-foreground: oklch(0.95 0.01 260);
-  --muted: oklch(0.18 0.03 260);
-  --muted-foreground: oklch(0.6 0.04 260);
-  --accent: oklch(0.18 0.03 260);
-  --accent-foreground: oklch(0.95 0.01 260);
-  --border: oklch(0.25 0.025 260);
-  --input: oklch(0.25 0.025 260);
-  --ring: oklch(0.75 0.15 265);
-  
-  --panel-bg: oklch(0.1 0.02 260);
-  --panel-border: oklch(0.2 0.025 260);
-  --dirac-bg-1: rgba(99, 102, 241, 0.25);
-  --dirac-bg-2: rgba(139, 92, 246, 0.2);
-  --dirac-bg-3: rgba(167, 139, 250, 0.15);
-  --dirac-bg-base: #08081a;
-}
-
-.theme-midnight .dirac-bg {
-  background:
-    radial-gradient(ellipse at 15% 20%, var(--dirac-bg-1) 0%, transparent 55%),
-    radial-gradient(ellipse at 85% 75%, var(--dirac-bg-2) 0%, transparent 55%),
-    radial-gradient(ellipse at 50% 50%, var(--dirac-bg-3) 0%, transparent 60%),
-    var(--dirac-bg-base);
-}
-
-/* Forest Theme */
-.theme-forest:not(.dark) {
-  --primary: oklch(0.45 0.15 145);
-  --primary-foreground: oklch(1 0 0);
-  --background: oklch(0.97 0.018 145);
-  --foreground: oklch(0.18 0.03 145);
-  --card: oklch(0.97 0.018 145);
-  --card-foreground: oklch(0.18 0.03 145);
-  --popover: oklch(0.99 0.008 145);
-  --popover-foreground: oklch(0.18 0.03 145);
-  --secondary: oklch(0.93 0.03 145);
-  --secondary-foreground: oklch(0.18 0.03 145);
-  --muted: oklch(0.93 0.03 145);
-  --muted-foreground: oklch(0.48 0.05 145);
-  --accent: oklch(0.93 0.03 145);
-  --accent-foreground: oklch(0.18 0.03 145);
-  --border: oklch(0.88 0.025 145);
-  --input: oklch(0.88 0.025 145);
-  --ring: oklch(0.45 0.15 145);
-  
-  --panel-bg: oklch(0.995 0.005 145);
-  --panel-border: oklch(0.9 0.018 145);
-  --dirac-bg-1: rgba(34, 197, 94, 0.15);
-  --dirac-bg-2: rgba(16, 185, 129, 0.12);
-  --dirac-bg-3: rgba(20, 184, 166, 0.1);
-  --dirac-bg-base: #edf7f0;
-}
-
-.theme-forest.dark {
-  --background: oklch(0.1 0.03 150);
-  --foreground: oklch(0.95 0.01 150);
-  --card: oklch(0.14 0.03 150);
-  --card-foreground: oklch(0.95 0.01 150);
-  --popover: oklch(0.14 0.03 150);
-  --popover-foreground: oklch(0.95 0.01 150);
-  --primary: oklch(0.7 0.18 150);
-  --primary-foreground: oklch(0.1 0.02 150);
-  --secondary: oklch(0.2 0.04 150);
-  --secondary-foreground: oklch(0.95 0.01 150);
-  --muted: oklch(0.2 0.04 150);
-  --muted-foreground: oklch(0.6 0.05 150);
-  --accent: oklch(0.2 0.04 150);
-  --accent-foreground: oklch(0.95 0.01 150);
-  --border: oklch(0.25 0.03 150);
-  --input: oklch(0.25 0.03 150);
-  --ring: oklch(0.7 0.18 150);
-  
-  --panel-bg: oklch(0.12 0.025 150);
-  --panel-border: oklch(0.2 0.03 150);
-  --dirac-bg-1: rgba(34, 197, 94, 0.2);
-  --dirac-bg-2: rgba(16, 185, 129, 0.15);
-  --dirac-bg-3: rgba(20, 184, 166, 0.12);
-  --dirac-bg-base: #081410;
-}
-
-.theme-forest .dirac-bg {
-  background:
-    radial-gradient(ellipse at 15% 20%, var(--dirac-bg-1) 0%, transparent 55%),
-    radial-gradient(ellipse at 85% 75%, var(--dirac-bg-2) 0%, transparent 55%),
-    radial-gradient(ellipse at 50% 50%, var(--dirac-bg-3) 0%, transparent 60%),
-    var(--dirac-bg-base);
-}
-
-/* Sunset Theme */
-.theme-sunset:not(.dark) {
-  --primary: oklch(0.6 0.18 30);
-  --primary-foreground: oklch(1 0 0);
-  --background: oklch(0.97 0.015 30);
-  --foreground: oklch(0.2 0.03 30);
-  --card: oklch(0.97 0.015 30);
-  --card-foreground: oklch(0.2 0.03 30);
-  --popover: oklch(0.99 0.006 30);
-  --popover-foreground: oklch(0.2 0.03 30);
-  --secondary: oklch(0.93 0.03 30);
-  --secondary-foreground: oklch(0.2 0.03 30);
-  --muted: oklch(0.93 0.03 30);
-  --muted-foreground: oklch(0.5 0.05 30);
-  --accent: oklch(0.93 0.03 30);
-  --accent-foreground: oklch(0.2 0.03 30);
-  --border: oklch(0.89 0.025 30);
-  --input: oklch(0.89 0.025 30);
-  --ring: oklch(0.6 0.18 30);
-  
-  --panel-bg: oklch(0.995 0.004 30);
-  --panel-border: oklch(0.92 0.015 30);
-  --dirac-bg-1: rgba(251, 146, 60, 0.18);
-  --dirac-bg-2: rgba(249, 115, 22, 0.14);
-  --dirac-bg-3: rgba(234, 88, 12, 0.1);
-  --dirac-bg-base: #f7f0e8;
-}
-
-.theme-sunset.dark {
-  --background: oklch(0.1 0.03 25);
-  --foreground: oklch(0.96 0.01 30);
-  --card: oklch(0.14 0.03 25);
-  --card-foreground: oklch(0.96 0.01 30);
-  --popover: oklch(0.14 0.03 25);
-  --popover-foreground: oklch(0.96 0.01 30);
-  --primary: oklch(0.8 0.15 30);
-  --primary-foreground: oklch(0.1 0.02 25);
-  --secondary: oklch(0.22 0.04 25);
-  --secondary-foreground: oklch(0.96 0.01 30);
-  --muted: oklch(0.22 0.04 25);
-  --muted-foreground: oklch(0.65 0.05 30);
-  --accent: oklch(0.22 0.04 25);
-  --accent-foreground: oklch(0.96 0.01 30);
-  --border: oklch(0.28 0.03 25);
-  --input: oklch(0.28 0.03 25);
-  --ring: oklch(0.8 0.15 30);
-  
-  --panel-bg: oklch(0.12 0.025 25);
-  --panel-border: oklch(0.22 0.03 25);
-  --dirac-bg-1: rgba(251, 146, 60, 0.25);
-  --dirac-bg-2: rgba(249, 115, 22, 0.2);
-  --dirac-bg-3: rgba(234, 88, 12, 0.15);
-  --dirac-bg-base: #140c08;
-}
-
-.theme-sunset .dirac-bg {
-  background:
-    radial-gradient(ellipse at 15% 20%, var(--dirac-bg-1) 0%, transparent 55%),
-    radial-gradient(ellipse at 85% 75%, var(--dirac-bg-2) 0%, transparent 55%),
-    radial-gradient(ellipse at 50% 50%, var(--dirac-bg-3) 0%, transparent 60%),
-    var(--dirac-bg-base);
-}
-
-/* Ocean Theme */
-.theme-ocean:not(.dark) {
-  --primary: oklch(0.55 0.12 210);
-  --primary-foreground: oklch(1 0 0);
-  --background: oklch(0.97 0.015 215);
-  --foreground: oklch(0.18 0.03 215);
-  --card: oklch(0.97 0.015 215);
-  --card-foreground: oklch(0.18 0.03 215);
-  --popover: oklch(0.99 0.006 215);
-  --popover-foreground: oklch(0.18 0.03 215);
-  --secondary: oklch(0.93 0.03 215);
-  --secondary-foreground: oklch(0.18 0.03 215);
-  --muted: oklch(0.93 0.03 215);
-  --muted-foreground: oklch(0.48 0.05 215);
-  --accent: oklch(0.93 0.03 215);
-  --accent-foreground: oklch(0.18 0.03 215);
-  --border: oklch(0.88 0.025 215);
-  --input: oklch(0.88 0.025 215);
-  --ring: oklch(0.55 0.12 210);
-  
-  --panel-bg: oklch(0.995 0.004 215);
-  --panel-border: oklch(0.9 0.015 215);
-  --dirac-bg-1: rgba(59, 130, 246, 0.15);
-  --dirac-bg-2: rgba(6, 182, 212, 0.12);
-  --dirac-bg-3: rgba(14, 165, 233, 0.1);
-  --dirac-bg-base: #eaf2f8;
-}
-
-.theme-ocean.dark {
-  --background: oklch(0.1 0.02 220);
-  --foreground: oklch(0.96 0.01 220);
-  --card: oklch(0.14 0.025 220);
-  --card-foreground: oklch(0.96 0.01 220);
-  --popover: oklch(0.14 0.025 220);
-  --popover-foreground: oklch(0.96 0.01 220);
-  --primary: oklch(0.7 0.14 210);
-  --primary-foreground: oklch(0.1 0.01 220);
-  --secondary: oklch(0.2 0.03 220);
-  --secondary-foreground: oklch(0.96 0.01 220);
-  --muted: oklch(0.2 0.03 220);
-  --muted-foreground: oklch(0.6 0.04 220);
-  --accent: oklch(0.2 0.03 220);
-  --accent-foreground: oklch(0.96 0.01 220);
-  --border: oklch(0.25 0.025 220);
-  --input: oklch(0.25 0.025 220);
-  --ring: oklch(0.7 0.14 210);
-  
-  --panel-bg: oklch(0.12 0.02 220);
-  --panel-border: oklch(0.2 0.025 220);
-  --dirac-bg-1: rgba(59, 130, 246, 0.25);
-  --dirac-bg-2: rgba(6, 182, 212, 0.2);
-  --dirac-bg-3: rgba(14, 165, 233, 0.15);
-  --dirac-bg-base: #0a1424;
-}
-
-.theme-ocean .dirac-bg {
-  background:
-    radial-gradient(ellipse at 15% 20%, var(--dirac-bg-1) 0%, transparent 55%),
-    radial-gradient(ellipse at 85% 75%, var(--dirac-bg-2) 0%, transparent 55%),
-    radial-gradient(ellipse at 50% 50%, var(--dirac-bg-3) 0%, transparent 60%),
-    var(--dirac-bg-base);
-}
-
 /* Windows 95 Retro Theme */
 .theme-retro95 {
   --win95-gray: #c0c0c0;
@@ -501,39 +250,41 @@
   --dirac-bg-base: #008080;
 }
 
+/* Win95 Dark — navy desktop with classic silver panels */
 .theme-retro95.dark {
-  --background: #008080;
-  --foreground: #000000;
-  --card: #c0c0c0;
-  --card-foreground: #000000;
-  --popover: #c0c0c0;
-  --popover-foreground: #000000;
-  --primary: #000080;
-  --primary-foreground: #ffffff;
-  --secondary: #c0c0c0;
-  --secondary-foreground: #000000;
-  --muted: #c0c0c0;
-  --muted-foreground: #000000;
-  --accent: #c0c0c0;
-  --accent-foreground: #000000;
-  --border: #808080;
-  --input: #ffffff;
-  --ring: #000080;
-  
-  --panel-bg: #c0c0c0;
-  --panel-border: #808080;
-  --dirac-bg-1: rgba(0, 0, 128, 0.4);
-  --dirac-bg-2: rgba(0, 128, 128, 0.35);
-  --dirac-bg-3: rgba(0, 128, 0, 0.3);
-  --dirac-bg-base: #008080;
+  --background: #000080;
+  --foreground: #c0c0c0;
+  --card: #1c1c1c;
+  --card-foreground: #c0c0c0;
+  --popover: #1c1c1c;
+  --popover-foreground: #c0c0c0;
+  --primary: #c0c0c0;
+  --primary-foreground: #000000;
+  --secondary: #2a2a2a;
+  --secondary-foreground: #c0c0c0;
+  --muted: #2a2a2a;
+  --muted-foreground: #808080;
+  --accent: #2a2a2a;
+  --accent-foreground: #c0c0c0;
+  --border: #404040;
+  --input: #1c1c1c;
+  --ring: #c0c0c0;
+
+  --panel-bg: #1c1c1c;
+  --panel-border: #404040;
+  --dirac-bg-base: #000080;
 }
 
-.theme-retro95 .dirac-bg {
-  background:
-    radial-gradient(ellipse at 15% 20%, var(--dirac-bg-1) 0%, transparent 55%),
-    radial-gradient(ellipse at 85% 75%, var(--dirac-bg-2) 0%, transparent 55%),
-    radial-gradient(ellipse at 50% 50%, var(--dirac-bg-3) 0%, transparent 60%),
-    var(--dirac-bg-base);
+/* Win95 light: Bliss wallpaper; Win95 dark: navy solid */
+.theme-retro95:not(.dark) .dirac-bg {
+  background-image: url('/bliss.svg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.theme-retro95.dark .dirac-bg {
+  background: #000080;
 }
 
 .theme-retro95 .dirac-panel {
@@ -1149,59 +900,6 @@ button.btn-touch {
   }
 }
 
-/* ========================================
-   BOTTOM NAVIGATION (MOBILE)
-   ======================================== */
-
-.bottom-nav {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 50;
-  background: var(--background);
-  border-top: 1px solid var(--border);
-  padding: 8px 12px;
-  padding-bottom: max(8px, env(safe-area-inset-bottom));
-  display: flex;
-  justify-content: space-around;
-  align-items: center;
-  gap: 4px;
-}
-
-.bottom-nav-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 12px;
-  min-width: 64px;
-  min-height: 44px;
-  border-radius: 8px;
-  color: var(--muted-foreground);
-  text-decoration: none;
-  transition: all 0.15s ease;
-  gap: 2px;
-}
-
-.bottom-nav-item:active {
-  background: var(--accent);
-}
-
-.bottom-nav-item.active {
-  color: var(--foreground);
-  background: var(--accent);
-}
-
-.bottom-nav-item span {
-  font-size: 10px;
-  font-weight: 500;
-}
-
-.bottom-nav-item svg {
-  width: 20px;
-  height: 20px;
-}
 
 /* ========================================
    MOBILE LAYOUT ADJUSTMENTS
@@ -1251,10 +949,6 @@ button.btn-touch {
   padding-right: 12px;
 }
 
-/* Safe area for bottom nav */
-.with-bottom-nav {
-  padding-bottom: calc(60px + env(safe-area-inset-bottom));
-}
 
 /* ========================================
    RESPONSIVE FONT SIZES
