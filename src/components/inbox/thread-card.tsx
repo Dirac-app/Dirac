@@ -167,6 +167,11 @@ export function ThreadCard({
                 : "hover:bg-accent/25",
           )}
         >
+          {/* Orange left-edge accent on selected thread */}
+          {isSelected && !isBulkSelected && (
+            <span className="absolute inset-y-0 left-0 w-[2px] rounded-r-full bg-orange-500 dark:bg-orange-400" />
+          )}
+
           {/* Avatar */}
           <div className="relative mt-1 shrink-0">
             {isBulkSelected ? (
@@ -194,8 +199,8 @@ export function ThreadCard({
             {/* Row 1: sender + category + status dot + message count | time + star */}
             <div className="flex items-center gap-1.5 min-w-0">
               <span className={cn(
-                "truncate text-[13px] leading-5 shrink min-w-0",
-                thread.isUnread ? "font-semibold text-foreground" : "font-medium text-muted-foreground",
+                "font-instrument-serif truncate text-[14px] leading-5 shrink min-w-0",
+                thread.isUnread ? "font-semibold text-foreground" : "font-normal text-muted-foreground",
               )}>
                 {sender}
               </span>
@@ -244,8 +249,8 @@ export function ThreadCard({
 
             {/* Row 2: subject */}
             <p className={cn(
-              "text-[13.5px] leading-normal line-clamp-1",
-              thread.isUnread ? "font-medium text-foreground" : "font-normal text-foreground/70",
+              "font-instrument-serif text-[14.5px] leading-snug line-clamp-1",
+              thread.isUnread ? "font-semibold text-foreground" : "font-normal text-foreground/65",
             )}>
               {thread.subject}
             </p>

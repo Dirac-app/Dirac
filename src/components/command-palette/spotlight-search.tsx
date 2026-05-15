@@ -492,8 +492,8 @@ export function SpotlightSearch() {
                         <div className="flex items-center gap-1.5">
                           <p
                             className={cn(
-                              "truncate text-sm",
-                              t.isUnread ? "font-semibold" : "font-medium",
+                              "font-instrument-serif truncate text-[14px]",
+                              t.isUnread ? "font-semibold" : "font-normal",
                             )}
                           >
                             {t.subject}

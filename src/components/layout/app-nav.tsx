@@ -141,12 +141,12 @@ export function AppNav() {
 
         {/* Right actions */}
         <div className="flex items-center gap-0.5">
-          {/* Morning briefing */}
+          {/* Morning briefing — always orange, it's the one action that starts your day */}
           <Tooltip delayDuration={0}>
             <TooltipTrigger asChild>
               <button
                 onClick={() => window.dispatchEvent(new CustomEvent("dirac:open-morning-briefing"))}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground touch-target"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-orange-500 dark:text-orange-400 transition-colors hover:bg-orange-500/10 touch-target"
               >
                 <Sunrise className="h-4 w-4" strokeWidth={1.75} />
               </button>

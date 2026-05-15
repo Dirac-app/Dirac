@@ -6,6 +6,7 @@
 
 import { z } from "zod";
 import { fetchWithTimeout } from "./fetch-timeout";
+import { decodeHtmlEntities } from "./utils";
 
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
 
@@ -501,7 +502,7 @@ export async function getThreadMetadata(
   return {
     id: data.id,
     subject: subject || "(no subject)",
-    snippet: firstMsg?.snippet ?? "",
+    snippet: decodeHtmlEntities(firstMsg?.snippet ?? ""),
     isUnread,
     isStarred,
     messageCount: messages.length,
@@ -549,7 +550,7 @@ export async function listSentMessages(
         threadId: msg.threadId,
         to: parseAddresses(getHeader(msg.payload.headers, "To")),
         subject: getHeader(msg.payload.headers, "Subject") || "(no subject)",
-        snippet: msg.snippet ?? "",
+        snippet: decodeHtmlEntities(msg.snippet ?? ""),
         sentAt: new Date(Number(msg.internalDate)).toISOString(),
       };
     },
@@ -670,7 +671,7 @@ export async function listDrafts(
         threadId: msg.threadId,
         to: parseAddresses(getHeader(msg.payload.headers, "To")),
         subject: getHeader(msg.payload.headers, "Subject") || "(no subject)",
-        snippet: msg.snippet ?? "",
+        snippet: decodeHtmlEntities(msg.snippet ?? ""),
         updatedAt: new Date(Number(msg.internalDate)).toISOString(),
       };
     },

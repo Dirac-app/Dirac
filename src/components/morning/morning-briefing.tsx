@@ -272,46 +272,55 @@ function PlanCardContent({
   onDismiss: () => void;
   onPlanChange: (val: string) => void;
 }) {
-  // Per-state color tokens used throughout the card
-  const state = plan.urgent
-    ? {
-        topBar:     "bg-rose-500",
-        pinClass:   "text-rose-400",
-        chipBg:     "bg-rose-500/20",
-        chipText:   "text-rose-300",
-        chipLabel:  "URGENT",
-        cardBg:     "#261f1f",
-        insetBg:    "#1e1816",
-      }
-    : plan.triage === "needs_reply"
-    ? {
-        topBar:     "bg-sky-500",
-        pinClass:   "text-sky-400",
-        chipBg:     "bg-sky-500/15",
-        chipText:   "text-sky-300",
-        chipLabel:  "REPLY NEEDED",
-        cardBg:     "#1a2026",
-        insetBg:    "#161b20",
-      }
-    : plan.triage === "waiting_on"
-    ? {
-        topBar:     "bg-indigo-400",
-        pinClass:   "text-indigo-400",
-        chipBg:     "bg-indigo-500/15",
-        chipText:   "text-indigo-300",
-        chipLabel:  "WAITING ON",
-        cardBg:     "#1e1f28",
-        insetBg:    "#191a22",
-      }
-    : {
-        topBar:     "bg-white/10",
-        pinClass:   "text-white/25",
-        chipBg:     "",
-        chipText:   "",
-        chipLabel:  null,
-        cardBg:     "#252119",
-        insetBg:    "#1e1c15",
+  // Derive chip label: triage is more informative than bare "URGENT";
+  // only fall back to URGENT when there's no triage status.
+  const chipInfo = (() => {
+    if (plan.triage === "needs_reply") {
+      return {
+        chipBg:    plan.urgent ? "bg-rose-500/20" : "bg-sky-500/15",
+        chipText:  plan.urgent ? "text-rose-300"  : "text-sky-300",
+        chipLabel: "REPLY NEEDED",
+        pinClass:  plan.urgent ? "text-rose-400"  : "text-sky-400",
+        cardBg:    plan.urgent ? "#261f1f" : "#1a2026",
+        insetBg:   plan.urgent ? "#1e1816" : "#161b20",
       };
+    }
+    if (plan.triage === "waiting_on") {
+      return {
+        chipBg:    plan.urgent ? "bg-rose-500/15" : "bg-indigo-500/15",
+        chipText:  plan.urgent ? "text-rose-300"  : "text-indigo-300",
+        chipLabel: "WAITING ON",
+        pinClass:  plan.urgent ? "text-rose-400"  : "text-indigo-400",
+        cardBg:    plan.urgent ? "#261f1f" : "#1e1f28",
+        insetBg:   plan.urgent ? "#1e1816" : "#191a22",
+      };
+    }
+    if (plan.urgent) {
+      return {
+        chipBg:    "bg-rose-500/20",
+        chipText:  "text-rose-300",
+        chipLabel: "URGENT",
+        pinClass:  "text-rose-400",
+        cardBg:    "#261f1f",
+        insetBg:   "#1e1816",
+      };
+    }
+    // Informational / FYI threads
+    return {
+      chipBg:    "",
+      chipText:  "",
+      chipLabel: plan.category === "customer"  ? "CUSTOMER"
+               : plan.category === "investor"  ? "INVESTOR"
+               : plan.category === "outreach"  ? "OUTREACH"
+               : plan.commitmentCount > 0      ? "ACTION DUE"
+               : null,
+      pinClass:  "text-white/25",
+      cardBg:    "#252119",
+      insetBg:   "#1e1c15",
+    };
+  })();
+
+  const state = { ...chipInfo };
 
   return (
     <motion.div
@@ -322,9 +331,6 @@ function PlanCardContent({
       className="relative rounded-lg border border-white/8 overflow-hidden"
       style={{ background: state.cardBg }}
     >
-      {/* Colored top-edge accent bar */}
-      <div className={cn("absolute top-0 left-0 right-0 h-[3px]", state.topBar)} />
-
       {/* Pin — top-right, colored by state */}
       <div className="absolute top-2.5 right-3 z-10">
         <Pin
@@ -365,10 +371,10 @@ function PlanCardContent({
           </button>
         </div>
 
-        {/* Row 3: category + commitment chips */}
+        {/* Row 3: category + commitment chips (skip category if it's already the chipLabel) */}
         {(plan.category || plan.commitmentCount > 0) && (
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {plan.category && (
+            {plan.category && state.chipLabel !== plan.category?.toUpperCase() && (
               <span className={cn("rounded-sm px-1.5 py-0.5 font-mono text-[9px] font-semibold tracking-[0.12em]", FOUNDER_CATEGORY_COLORS[plan.category])}>
                 {FOUNDER_CATEGORY_LABELS[plan.category].toUpperCase()}
               </span>
@@ -446,7 +452,13 @@ function PlanCardContent({
                 className="flex h-7 items-center gap-1.5 rounded px-3 text-[11px] font-bold tracking-wide bg-orange-600 hover:bg-orange-500 text-white transition-colors"
               >
                 <Check className="h-3 w-3" />
-                Accept plan
+                {plan.triage === "needs_reply"
+                  ? "Draft reply"
+                  : plan.triage === "waiting_on"
+                  ? "Check & nudge"
+                  : plan.urgent
+                  ? "Review now"
+                  : "Start with AI"}
               </button>
               <button
                 onClick={onOpenWithAi}
