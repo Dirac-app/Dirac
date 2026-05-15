@@ -211,7 +211,7 @@ export function ThreadView() {
                 {isDiscord && (
                   <MessageSquare className="h-4 w-4 shrink-0 text-indigo-500" />
                 )}
-                <h2 className="font-instrument-serif truncate text-[18px] font-semibold leading-snug text-foreground">
+                <h2 className="truncate text-base font-semibold text-foreground">
                   {thread.subject}
                 </h2>
               </div>

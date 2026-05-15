@@ -161,17 +161,12 @@ export function ThreadCard({
           className={cn(
             "group relative flex w-full items-start gap-3 border-b border-border/40 px-4 md:px-5 py-3 md:py-3 touch-target text-left transition-all duration-150",
             isBulkSelected
-              ? "bg-primary/6"
+              ? "bg-primary/8"
               : isSelected
-                ? "bg-accent/50"
+                ? "bg-accent/50 thread-selected"
                 : "hover:bg-accent/25",
           )}
         >
-          {/* Orange left-edge accent on selected thread */}
-          {isSelected && !isBulkSelected && (
-            <span className="absolute inset-y-0 left-0 w-[2px] rounded-r-full bg-orange-500 dark:bg-orange-400" />
-          )}
-
           {/* Avatar */}
           <div className="relative mt-1 shrink-0">
             {isBulkSelected ? (
@@ -199,8 +194,8 @@ export function ThreadCard({
             {/* Row 1: sender + category + status dot + message count | time + star */}
             <div className="flex items-center gap-1.5 min-w-0">
               <span className={cn(
-                "font-instrument-serif truncate text-[14px] leading-5 shrink min-w-0",
-                thread.isUnread ? "font-semibold text-foreground" : "font-normal text-muted-foreground",
+                "truncate text-[13px] leading-5 shrink min-w-0",
+                thread.isUnread ? "font-semibold text-foreground" : "font-medium text-muted-foreground",
               )}>
                 {sender}
               </span>
@@ -249,8 +244,8 @@ export function ThreadCard({
 
             {/* Row 2: subject */}
             <p className={cn(
-              "font-instrument-serif text-[14.5px] leading-snug line-clamp-1",
-              thread.isUnread ? "font-semibold text-foreground" : "font-normal text-foreground/65",
+              "text-[13.5px] leading-normal line-clamp-1",
+              thread.isUnread ? "font-medium text-foreground" : "font-normal text-foreground/70",
             )}>
               {thread.subject}
             </p>

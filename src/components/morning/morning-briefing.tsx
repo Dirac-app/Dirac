@@ -221,7 +221,7 @@ function PlanCardSkeleton({ index }: { index: number }) {
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: index * 0.07 }}
-      className="relative rounded-lg border border-white/8 bg-[#252119] px-4 py-4 animate-pulse overflow-hidden"
+      className="relative rounded-lg border border-white/8 bg-black px-4 py-4 animate-pulse overflow-hidden"
     >
       {/* ghost pin */}
       <div className="absolute top-2.5 right-3 h-5 w-5 rounded-full bg-white/6" />
@@ -281,8 +281,8 @@ function PlanCardContent({
         chipText:  plan.urgent ? "text-rose-300"  : "text-sky-300",
         chipLabel: "REPLY NEEDED",
         pinClass:  plan.urgent ? "text-rose-400"  : "text-sky-400",
-        cardBg:    plan.urgent ? "#261f1f" : "#1a2026",
-        insetBg:   plan.urgent ? "#1e1816" : "#161b20",
+        cardBg:    "#000000",
+        insetBg:   "#0a0a0a",
       };
     }
     if (plan.triage === "waiting_on") {
@@ -291,8 +291,8 @@ function PlanCardContent({
         chipText:  plan.urgent ? "text-rose-300"  : "text-indigo-300",
         chipLabel: "WAITING ON",
         pinClass:  plan.urgent ? "text-rose-400"  : "text-indigo-400",
-        cardBg:    plan.urgent ? "#261f1f" : "#1e1f28",
-        insetBg:   plan.urgent ? "#1e1816" : "#191a22",
+        cardBg:    "#000000",
+        insetBg:   "#0a0a0a",
       };
     }
     if (plan.urgent) {
@@ -301,8 +301,8 @@ function PlanCardContent({
         chipText:  "text-rose-300",
         chipLabel: "URGENT",
         pinClass:  "text-rose-400",
-        cardBg:    "#261f1f",
-        insetBg:   "#1e1816",
+        cardBg:    "#000000",
+        insetBg:   "#0a0a0a",
       };
     }
     // Informational / FYI threads
@@ -315,8 +315,8 @@ function PlanCardContent({
                : plan.commitmentCount > 0      ? "ACTION DUE"
                : null,
       pinClass:  "text-white/25",
-      cardBg:    "#252119",
-      insetBg:   "#1e1c15",
+      cardBg:    "#000000",
+      insetBg:   "#0a0a0a",
     };
   })();
 
@@ -857,7 +857,7 @@ export function MorningBriefing() {
       <Dialog open={open} onOpenChange={(v) => { if (!v) minimize(); }}>
         <DialogContent
           className="max-w-3xl gap-0 overflow-hidden p-0 border-white/10"
-          style={{ background: "#1a1714" }}
+          style={{ background: "#000000" }}
           showCloseButton={false}
         >
           {/* Paper grain texture overlay */}
@@ -993,7 +993,7 @@ export function MorningBriefing() {
             exit={{ opacity: 0, scale: 0.85, y: 12 }}
             transition={{ type: "spring", stiffness: 380, damping: 26 }}
             onClick={reopenFromMinimized}
-            className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full border border-white/12 bg-[#1a1714]/95 px-4 py-2.5 shadow-lg backdrop-blur-sm text-[13px] font-medium text-white/80 hover:bg-[#222018] transition-colors"
+            className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full border border-white/12 bg-black/95 px-4 py-2.5 shadow-lg backdrop-blur-sm text-[13px] font-medium text-white/80 hover:bg-white/6 transition-colors"
             style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontStyle: "italic" }}
           >
             <Sparkles className="h-3.5 w-3.5 text-orange-400/70" />
