@@ -449,7 +449,7 @@ function PlanCardContent({
             <>
               <button
                 onClick={onAccept}
-                className="flex h-7 items-center gap-1.5 rounded px-3 text-[11px] font-bold tracking-wide bg-orange-600 hover:bg-orange-500 text-white transition-colors"
+                className="flex h-7 items-center gap-1.5 rounded px-3 text-[11px] font-semibold tracking-wide bg-orange-900/60 hover:bg-orange-900/80 text-orange-200 border border-orange-700/40 transition-colors"
               >
                 <Check className="h-3 w-3" />
                 {plan.triage === "needs_reply"
@@ -857,7 +857,7 @@ export function MorningBriefing() {
       <Dialog open={open} onOpenChange={(v) => { if (!v) minimize(); }}>
         <DialogContent
           className="max-w-3xl gap-0 overflow-hidden p-0 border-white/10"
-          style={{ background: "#000000" }}
+          style={{ background: "#1a1714" }}
           showCloseButton={false}
         >
           {/* Paper grain texture overlay */}
@@ -993,7 +993,7 @@ export function MorningBriefing() {
             exit={{ opacity: 0, scale: 0.85, y: 12 }}
             transition={{ type: "spring", stiffness: 380, damping: 26 }}
             onClick={reopenFromMinimized}
-            className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full border border-white/12 bg-black/95 px-4 py-2.5 shadow-lg backdrop-blur-sm text-[13px] font-medium text-white/80 hover:bg-white/6 transition-colors"
+            className="fixed bottom-6 left-6 z-50 flex items-center gap-2 rounded-full border border-white/12 bg-black/95 px-4 py-2.5 shadow-lg backdrop-blur-sm text-[13px] font-medium text-white/80 hover:bg-white/6 transition-colors"
             style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontStyle: "italic" }}
           >
             <Sparkles className="h-3.5 w-3.5 text-orange-400/70" />

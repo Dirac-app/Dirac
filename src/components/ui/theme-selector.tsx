@@ -32,7 +32,7 @@ const APP_THEMES: {
     description: "Clean & classic",
     colorScheme: "default",
     mode: "dark",
-    preview: { bg: "#1a1a1e", panel: "#141414", text: "#f8f8fa", accent: "#a5b4fc" },
+    preview: { bg: "#1a1a1e", panel: "#000000", text: "#f8f8fa", accent: "#a5b4fc" },
   },
   {
     id: "win95-light",

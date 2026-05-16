@@ -7,7 +7,6 @@ import {
   Inbox,
   Activity,
   Settings,
-  Sparkles,
   Keyboard,
   Sunrise,
   Menu,
@@ -133,9 +132,6 @@ export function AppNav() {
 
         {/* Logo */}
         <div className="flex items-center gap-2 mr-auto">
-          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <Sparkles className="h-3.5 w-3.5" />
-          </div>
           <span className="text-sm font-semibold text-foreground tracking-tight">Dirac</span>
         </div>
 
@@ -172,7 +168,7 @@ export function AppNav() {
           {/* Compose */}
           <button
             onClick={handleCompose}
-            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 touch-target"
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent/50 touch-target"
           >
             <PenSquare className="h-3.5 w-3.5" strokeWidth={2} />
             Compose
@@ -182,15 +178,10 @@ export function AppNav() {
 
       {/* Mobile header */}
       <header className="dirac-panel flex md:hidden h-12 items-center justify-between px-3">
-        <div className="flex items-center gap-2">
-          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <Sparkles className="h-3.5 w-3.5" />
-          </div>
-          <span className="text-sm font-semibold text-foreground tracking-tight">Dirac</span>
-        </div>
+        <span className="text-sm font-semibold text-foreground tracking-tight">Dirac</span>
         <button
           onClick={handleCompose}
-          className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 touch-target"
+          className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent/50 touch-target"
         >
           <PenSquare className="h-3.5 w-3.5" strokeWidth={2} />
           Compose

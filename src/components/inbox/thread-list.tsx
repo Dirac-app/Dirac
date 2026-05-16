@@ -179,9 +179,10 @@ export function ThreadList() {
     } catch {}
   }, []);
 
-  const visibleTabs = categoryTabs
-    .filter(t => t.visible)
-    .sort((a, b) => a.order - b.order);
+  const visibleTabs = [
+    { id: "all", label: "All", visible: true, order: -1 },
+    ...categoryTabs.filter(t => t.visible).sort((a, b) => a.order - b.order),
+  ];
 
   const matchesTab = useCallback((t: DiracThread) => {
     if (activeTab === "all") return true;

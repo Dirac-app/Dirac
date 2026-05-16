@@ -140,19 +140,72 @@
 
 /* Dirac app background — orange gradient radiating from left and right sides */
 .dirac-bg {
+  position: relative;
   background:
-    radial-gradient(ellipse at 0% 50%, rgba(251, 146, 60, 0.28) 0%, transparent 52%),
-    radial-gradient(ellipse at 100% 50%, rgba(249, 115, 22, 0.22) 0%, transparent 52%),
-    radial-gradient(ellipse at 50% 100%, rgba(253, 186, 116, 0.15) 0%, transparent 48%),
+    radial-gradient(ellipse at 0% 50%, rgba(251, 146, 60, 0.34) 0%, transparent 52%),
+    radial-gradient(ellipse at 100% 50%, rgba(249, 115, 22, 0.27) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 100%, rgba(253, 186, 116, 0.18) 0%, transparent 48%),
     #f5f0eb;
+}
+
+/* Animated ripple orbs — left */
+.dirac-bg::before {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  z-index: 0;
+  left: -12%;
+  top: 20%;
+  width: 50%;
+  height: 60%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(251, 146, 60, 0.32) 0%, transparent 70%);
+  filter: blur(48px);
+  animation: dirac-ripple-left 7s ease-in-out infinite;
+}
+
+/* Animated ripple orbs — right */
+.dirac-bg::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  z-index: 0;
+  right: -12%;
+  top: 20%;
+  width: 50%;
+  height: 60%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(249, 115, 22, 0.26) 0%, transparent 70%);
+  filter: blur(48px);
+  animation: dirac-ripple-right 9s ease-in-out infinite;
 }
 
 .dark .dirac-bg {
   background:
-    radial-gradient(ellipse at 0% 50%, rgba(249, 115, 22, 0.10) 0%, transparent 52%),
-    radial-gradient(ellipse at 100% 50%, rgba(234, 108, 0, 0.08) 0%, transparent 52%),
-    radial-gradient(ellipse at 50% 100%, rgba(251, 146, 60, 0.05) 0%, transparent 48%),
+    radial-gradient(ellipse at 0% 50%, rgba(249, 115, 22, 0.12) 0%, transparent 52%),
+    radial-gradient(ellipse at 100% 50%, rgba(234, 108, 0, 0.10) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 100%, rgba(251, 146, 60, 0.06) 0%, transparent 48%),
     #1a1a1e;
+}
+
+.dark .dirac-bg::before {
+  background: radial-gradient(circle, rgba(249, 115, 22, 0.13) 0%, transparent 70%);
+}
+
+.dark .dirac-bg::after {
+  background: radial-gradient(circle, rgba(234, 108, 0, 0.10) 0%, transparent 70%);
+}
+
+@keyframes dirac-ripple-left {
+  0%, 100% { transform: scale(1) translateY(0%);   opacity: 0.80; }
+  30%       { transform: scale(1.14) translateY(-4%); opacity: 1.00; }
+  65%       { transform: scale(0.92) translateY(5%);  opacity: 0.65; }
+}
+
+@keyframes dirac-ripple-right {
+  0%, 100% { transform: scale(1) translateY(0%);   opacity: 0.75; }
+  35%       { transform: scale(0.90) translateY(5%);  opacity: 0.60; }
+  70%       { transform: scale(1.12) translateY(-3%); opacity: 0.95; }
 }
 
 /* Floating card panels — uses theme CSS vars for holistic color integration */
@@ -166,7 +219,7 @@
 }
 
 .dark .dirac-panel {
-  background: var(--panel-bg, #141414);
+  background: var(--panel-bg, #000000);
   border-color: var(--panel-border, rgba(255, 255, 255, 0.06));
   box-shadow:
     0 1px 3px rgba(0, 0, 0, 0.3),
