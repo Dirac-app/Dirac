@@ -348,7 +348,7 @@ export function ThreadList() {
   return (
     <div className="flex h-full w-full flex-col">
       {/* ── Search bar ── */}
-      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+      <div data-thread-list-search className="flex h-[49px] items-center gap-2 border-b border-border px-3">
         <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
         <input
           type="text"
@@ -371,10 +371,11 @@ export function ThreadList() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
+              data-active={activeTab === tab.id ? "true" : undefined}
               className={cn(
                 "shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors",
                 activeTab === tab.id
-                  ? "bg-accent text-accent-foreground"
+                  ? "tab-active bg-accent text-accent-foreground"
                   : "text-muted-foreground hover:bg-accent/50"
               )}
             >

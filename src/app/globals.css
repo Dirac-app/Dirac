@@ -9,6 +9,7 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-display), 'Merriweather Sans', ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, monospace;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -120,6 +121,13 @@
 }
 
 @layer base {
+  /* Hard-zero root elements so the * rule below never shows stray borders. */
+  html, body {
+    border: none !important;
+    outline: none !important;
+    margin: 0;
+    padding: 0;
+  }
   * {
     @apply border-border outline-ring/50;
   }
@@ -136,6 +144,32 @@
   optgroup {
     @apply text-foreground;
   }
+}
+
+/* ── Orange gradient fills ───────────────────────────────────────────────────
+   Applied to large solid-orange surfaces so they're easier on the eye.
+   Small accents (text, dots, borders, badges) are intentionally left flat.
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* Primary-filled buttons */
+[data-slot="button"][data-variant="default"] {
+  background: linear-gradient(155deg, #fb923c 0%, #ea6c0a 100%);
+}
+[data-slot="button"][data-variant="default"]:hover:not(:disabled) {
+  background: linear-gradient(155deg, #f97316 0%, #c2500e 100%);
+}
+
+/* User chat bubble in AI sidebar */
+.ai-bubble-user {
+  background: linear-gradient(155deg, #fb923c 0%, #ea6c0a 100%);
+}
+
+/* Compose button when filled orange (light theme) */
+.theme-light-email .compose-btn {
+  background: linear-gradient(155deg, #fb923c 0%, #ea6c0a 100%);
+}
+.theme-light-email .compose-btn:hover {
+  background: linear-gradient(155deg, #f97316 0%, #c2500e 100%);
 }
 
 /* Dirac app background — orange gradient radiating from left and right sides */
@@ -208,22 +242,18 @@
   70%       { transform: scale(1.12) translateY(-3%); opacity: 0.95; }
 }
 
-/* Floating card panels — uses theme CSS vars for holistic color integration */
+/* Flat section panels — no radius, no shadow; column/row dividers handled by parent divide-* utilities */
 .dirac-panel {
   background: var(--panel-bg, #ffffff);
-  border-radius: 12px;
-  border: 1px solid var(--panel-border, transparent);
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.04),
-    0 4px 12px rgba(0, 0, 0, 0.03);
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
 }
 
 .dark .dirac-panel {
   background: var(--panel-bg, #000000);
-  border-color: var(--panel-border, rgba(255, 255, 255, 0.06));
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.3),
-    0 4px 12px rgba(0, 0, 0, 0.2);
+  border: none;
+  box-shadow: none;
 }
 
 /* Selected thread — 2px pumpkin left accent bar */
@@ -275,6 +305,345 @@
 /* ========================
    Color Scheme Themes
    ======================== */
+
+/* ══════════════════════════════════════════════════════════════════════════
+   DARK EMAIL CLIENT THEME — Resend-inspired
+   Pure black, white text, orange accents only. Zero warmth.
+═══════════════════════════════════════════════════════════════════════════ */
+
+.theme-dark-email {
+  /* Core tokens */
+  --background:            #000000;
+  --foreground:            #ffffff;
+  --card:                  #0d0d0d;
+  --card-foreground:       #ffffff;
+  --popover:               #141414;
+  --popover-foreground:    #ffffff;
+  /* Orange brand as primary */
+  --primary:               #f97316;
+  --primary-foreground:    #000000;
+  --secondary:             #111111;
+  --secondary-foreground:  rgba(255,255,255,0.70);
+  --muted:                 #0d0d0d;
+  --muted-foreground:      rgba(255,255,255,0.38);
+  --accent:                #161616;
+  --accent-foreground:     #ffffff;
+  --destructive:           #ef4444;
+  /* Borders: very fine white hairlines; orange for focus/ring */
+  --border:                rgba(255,255,255,0.07);
+  --input:                 rgba(255,255,255,0.06);
+  --ring:                  rgba(249,115,22,0.50);
+  /* Panel surfaces */
+  --panel-bg:              #0d0d0d;
+  --panel-border:          rgba(255,255,255,0.06);
+  /* Sidebar */
+  --sidebar:               #0d0d0d;
+  --sidebar-foreground:    #ffffff;
+  --sidebar-primary:       #f97316;
+  --sidebar-primary-foreground: #000000;
+  --sidebar-accent:        #161616;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border:        rgba(255,255,255,0.06);
+  --sidebar-ring:          rgba(249,115,22,0.45);
+}
+
+/* Background: pure black with a very faint orange radial pulse (not the warm gradient) */
+.theme-dark-email.dirac-bg {
+  background: #000000;
+}
+
+.theme-dark-email.dirac-bg::before {
+  background: radial-gradient(circle, rgba(249,115,22,0.07) 0%, transparent 70%);
+}
+
+.theme-dark-email.dirac-bg::after {
+  background: radial-gradient(circle, rgba(249,115,22,0.05) 0%, transparent 70%);
+}
+
+/* Ensure the wrapper background is always black regardless of next-themes mode */
+.theme-dark-email,
+.dark .theme-dark-email {
+  background: #000000;
+  color: #ffffff;
+}
+
+/* Thread selected: crisp 2px orange left bar */
+.theme-dark-email .thread-selected {
+  box-shadow: inset 2px 0 0 0 #f97316;
+}
+
+/* Thread rows: tighter padding, no min-height forcing */
+.theme-dark-email [data-thread-card] {
+  padding-top: 9px;
+  padding-bottom: 9px;
+  min-height: 0;
+}
+
+/* Thread hover: barely-there lift */
+.theme-dark-email [data-thread-card]:hover:not([class*="bg-accent"]):not([class*="bg-primary"]) {
+  background-color: rgba(255,255,255,0.03);
+}
+
+/* Active category tab: white filled pill (Resend-style) */
+.theme-dark-email .tab-active {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+
+/* Compose button: white pill primary CTA */
+.theme-dark-email .compose-btn {
+  background-color: #ffffff;
+  color: #000000;
+  border-color: transparent;
+  font-weight: 600;
+}
+.theme-dark-email .compose-btn:hover {
+  background-color: #e8e8e8;
+}
+
+/* Triage status badges: precise, minimal pills */
+.theme-dark-email [data-badge="reply-needed"],
+.theme-dark-email [data-badge="needs-reply"] {
+  background-color: rgba(249,115,22,0.14) !important;
+  color: #fb923c !important;
+}
+.theme-dark-email [data-badge="waiting-on"] {
+  background-color: rgba(255,255,255,0.07) !important;
+  color: rgba(255,255,255,0.50) !important;
+}
+.theme-dark-email [data-badge="urgent"] {
+  background-color: rgba(239,68,68,0.14) !important;
+  color: #f87171 !important;
+}
+.theme-dark-email [data-badge="done"] {
+  background-color: rgba(255,255,255,0.06) !important;
+  color: rgba(255,255,255,0.35) !important;
+}
+.theme-dark-email [data-badge="snoozed"] {
+  background-color: rgba(251,191,36,0.12) !important;
+  color: #fbbf24 !important;
+}
+
+/* AI sidebar: no orbs or glow in dark theme */
+.theme-dark-email .ai-orb-1,
+.theme-dark-email .ai-orb-2,
+.theme-dark-email .ai-orb-3 { display: none; }
+
+.theme-dark-email .ai-panel-glow {
+  border-color: var(--panel-border);
+  animation: none;
+}
+
+/* Scrollbar: barely visible */
+.theme-dark-email * {
+  scrollbar-color: rgba(255,255,255,0.08) transparent;
+}
+
+/* Morning Brief dialog: default warm dark background */
+.morning-brief-dialog {
+  background: #1a1714;
+}
+
+/* Dark email: pure black */
+.theme-dark-email .morning-brief-dialog {
+  background: #000000;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Light Email Client Theme
+   White base · lavender/orange gradient · panel elevation
+   ═══════════════════════════════════════════════════════ */
+.theme-light-email {
+  /* Core tokens */
+  --background:            #f2f0f7;
+  --foreground:            #17161d;
+  --card:                  #ffffff;
+  --card-foreground:       #17161d;
+  --popover:               #ffffff;
+  --popover-foreground:    #17161d;
+  /* Orange brand accent */
+  --primary:               #f97316;
+  --primary-foreground:    #ffffff;
+  --secondary:             #ede9f7;
+  --secondary-foreground:  #3d3a47;
+  --muted:                 #f0edf9;
+  --muted-foreground:      #8b8794;
+  --accent:                #fdf0e8;
+  --accent-foreground:     #9a3a00;
+  --destructive:           #dc2626;
+  /* Borders: very light */
+  --border:                rgba(0,0,0,0.09);
+  --input:                 rgba(0,0,0,0.07);
+  --ring:                  rgba(249,115,22,0.45);
+  /* Panel surfaces */
+  --panel-bg:              #ffffff;
+  /* Sidebar */
+  --sidebar:               #ffffff;
+  --sidebar-foreground:    #17161d;
+  --sidebar-primary:       #f97316;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent:        #fdf0e8;
+  --sidebar-accent-foreground: #9a3a00;
+  --sidebar-border:        rgba(0,0,0,0.08);
+  --sidebar-ring:          rgba(249,115,22,0.40);
+}
+
+/* Background: soft static lavender-left / orange-right gradient */
+.theme-light-email.dirac-bg {
+  background:
+    radial-gradient(ellipse 70% 80% at 0% 0%,   rgba(180,160,240,0.28) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 70% at 100% 100%, rgba(253,186,116,0.28) 0%, transparent 60%),
+    radial-gradient(ellipse 80% 60% at 50% 100%, rgba(249,115,22,0.10) 0%, transparent 55%),
+    #f2f0f7;
+}
+
+/* Suppress animated orbs — keep it static, calm */
+.theme-light-email.dirac-bg::before,
+.theme-light-email.dirac-bg::after {
+  display: none;
+}
+
+/* Nav: full-width, white, subtle bottom shadow; no panel radius.
+   position + z-index keeps the slide-out dropdown above the floating panels. */
+.theme-light-email header.dirac-panel {
+  position: relative;
+  z-index: 30;
+  background: rgba(255,255,255,0.92) !important;
+  backdrop-filter: blur(12px);
+  border-radius: 0 !important;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.07) !important;
+  border: none !important;
+}
+
+/* Main content panels: floating cards */
+.theme-light-email main .dirac-panel {
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,0.07) !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05), 0 6px 20px rgba(0,0,0,0.06) !important;
+  overflow: hidden;
+}
+
+/* Force light mode colors */
+.theme-light-email {
+  background: #f2f0f7;
+  color: #17161d;
+}
+
+/* Thread list search bar: soft light background */
+.theme-light-email [data-thread-list-search] {
+  background: rgba(0,0,0,0.02);
+}
+
+/* Thread rows */
+.theme-light-email [data-thread-card] {
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+
+.theme-light-email [data-thread-card]:hover:not([class*="bg-accent"]):not([class*="bg-primary"]) {
+  background-color: rgba(237,233,247,0.45);
+}
+
+/* Selected thread: orange 2px left bar + faint lavender bg */
+.theme-light-email .thread-selected {
+  box-shadow: inset 3px 0 0 0 #f97316;
+  background-color: rgba(249,115,22,0.04) !important;
+}
+
+/* Active category tab: orange-filled pill */
+.theme-light-email .tab-active {
+  background-color: #f97316 !important;
+  color: #ffffff !important;
+}
+
+/* Compose button: orange filled primary CTA (gradient defined globally above) */
+.theme-light-email .compose-btn {
+  color: #ffffff;
+  border-color: transparent;
+  font-weight: 600;
+}
+
+/* Triage badges: light backgrounds */
+.theme-light-email [data-badge="reply-needed"],
+.theme-light-email [data-badge="needs-reply"] {
+  background-color: rgba(249,115,22,0.12) !important;
+  color: #c2410c !important;
+}
+.theme-light-email [data-badge="waiting-on"] {
+  background-color: rgba(0,0,0,0.06) !important;
+  color: #8b8794 !important;
+}
+.theme-light-email [data-badge="urgent"] {
+  background-color: rgba(220,38,38,0.10) !important;
+  color: #b91c1c !important;
+}
+.theme-light-email [data-badge="done"] {
+  background-color: rgba(0,0,0,0.05) !important;
+  color: #a0a0a8 !important;
+}
+.theme-light-email [data-badge="snoozed"] {
+  background-color: rgba(245,158,11,0.12) !important;
+  color: #92400e !important;
+}
+
+/* AI sidebar: pure white, no gradient or glow */
+.theme-light-email .ai-panel-glow {
+  background: #ffffff !important;
+  border-left-color: rgba(0,0,0,0.07) !important;
+  animation: none;
+}
+
+/* AI sidebar header sub-divider */
+.theme-light-email .ai-glow-header {
+  border-bottom-color: rgba(0,0,0,0.07) !important;
+  background: transparent;
+}
+
+/* No orbs in light theme */
+.theme-light-email .ai-orb-1,
+.theme-light-email .ai-orb-2,
+.theme-light-email .ai-orb-3 { display: none; }
+
+/* Scrollbar: barely visible light */
+.theme-light-email * {
+  scrollbar-color: rgba(0,0,0,0.12) transparent;
+}
+
+/* Heading font: Merriweather Sans for display titles */
+.theme-light-email h1,
+.theme-light-email h2,
+.theme-light-email h3 {
+  font-family: var(--font-display), ui-sans-serif, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* Morning Brief: calm white base, orange accents */
+.theme-light-email .morning-brief-dialog {
+  background: #f5f3ef !important;
+  border-color: rgba(0,0,0,0.10) !important;
+}
+/* Recolor the fixed dark text tokens inside the dialog for light mode */
+.theme-light-email .morning-brief-dialog h2 {
+  color: #17161d !important;
+  font-family: var(--font-display), ui-sans-serif, sans-serif !important;
+  font-style: normal !important;
+}
+.theme-light-email .morning-brief-dialog p,
+.theme-light-email .morning-brief-dialog span,
+.theme-light-email .morning-brief-dialog button {
+  color: inherit;
+}
+.theme-light-email .morning-brief-dialog [class*="text-white"] {
+  color: #3d3a47 !important;
+}
+.theme-light-email .morning-brief-dialog [class*="border-white"] {
+  border-color: rgba(0,0,0,0.09) !important;
+}
+.theme-light-email .morning-brief-dialog [class*="bg-white"] {
+  background-color: #ffffff !important;
+}
 
 /* Windows 95 Retro Theme */
 .theme-retro95 {
@@ -397,7 +766,7 @@
 }
 
 .density-compact .dirac-panel {
-  border-radius: 8px;
+  border-radius: 0;
 }
 
 .density-compact button,
@@ -439,7 +808,7 @@
 }
 
 .density-spacious .dirac-panel {
-  border-radius: 16px;
+  border-radius: 0;
 }
 
 .density-spacious button,

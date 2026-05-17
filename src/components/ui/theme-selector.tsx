@@ -7,8 +7,8 @@ import { useTheme } from "next-themes";
 import type { ColorScheme, Density } from "@/lib/theme";
 
 // A unified "app theme" bundles color scheme + dark/light together so the user
-// only ever picks from 4 options and never touches a separate toggle.
-export type AppTheme = "default-light" | "default-dark" | "win95-light" | "win95-dark";
+// only ever picks from a curated list and never touches a separate toggle.
+export type AppTheme = "default-light" | "default-dark" | "win95-light" | "win95-dark" | "dark-email" | "light-email";
 
 const APP_THEMES: {
   id: AppTheme;
@@ -16,14 +16,17 @@ const APP_THEMES: {
   description: string;
   colorScheme: ColorScheme;
   mode: "light" | "dark";
+  hidden?: boolean; // hidden from UI but kept for backwards-compat
   preview: { bg: string; panel: string; text: string; accent: string };
 }[] = [
+  // ── Hidden legacy themes (preserved in code, not shown in UI) ──
   {
     id: "default-light",
     label: "Default Light",
     description: "Clean & classic",
     colorScheme: "default",
     mode: "light",
+    hidden: true,
     preview: { bg: "#f5f0eb", panel: "#ffffff", text: "#1a1a2e", accent: "#6366f1" },
   },
   {
@@ -32,6 +35,7 @@ const APP_THEMES: {
     description: "Clean & classic",
     colorScheme: "default",
     mode: "dark",
+    hidden: true,
     preview: { bg: "#1a1a1e", panel: "#000000", text: "#f8f8fa", accent: "#a5b4fc" },
   },
   {
@@ -40,6 +44,7 @@ const APP_THEMES: {
     description: "Retro light",
     colorScheme: "retro95",
     mode: "light",
+    hidden: true,
     preview: { bg: "#008080", panel: "#c0c0c0", text: "#000000", accent: "#000080" },
   },
   {
@@ -48,7 +53,25 @@ const APP_THEMES: {
     description: "Retro dark",
     colorScheme: "retro95",
     mode: "dark",
+    hidden: true,
     preview: { bg: "#000080", panel: "#1c1c1c", text: "#c0c0c0", accent: "#c0c0c0" },
+  },
+  // ── Active themes ──
+  {
+    id: "dark-email",
+    label: "Dark",
+    description: "Precise & technical",
+    colorScheme: "dark-email",
+    mode: "dark",
+    preview: { bg: "#000000", panel: "#0d0d0d", text: "#ffffff", accent: "#f97316" },
+  },
+  {
+    id: "light-email",
+    label: "Light",
+    description: "Spacious & warm",
+    colorScheme: "light-email",
+    mode: "light",
+    preview: { bg: "#f0eef9", panel: "#ffffff", text: "#1a1a1a", accent: "#f97316" },
   },
 ];
 
@@ -69,7 +92,11 @@ export function ThemeSelector({ colorScheme, density, onColorSchemeChange, onDen
   const { theme, setTheme } = useTheme();
 
   const activeAppTheme: AppTheme =
-    colorScheme === "retro95"
+    colorScheme === "dark-email"
+      ? "dark-email"
+      : colorScheme === "light-email"
+      ? "light-email"
+      : colorScheme === "retro95"
       ? theme === "dark" ? "win95-dark" : "win95-light"
       : theme === "dark" ? "default-dark" : "default-light";
 
@@ -79,12 +106,14 @@ export function ThemeSelector({ colorScheme, density, onColorSchemeChange, onDen
     setTheme(t.mode);
   };
 
+  const visibleThemes = APP_THEMES.filter(t => !t.hidden);
+
   return (
     <div className="space-y-6">
       <div>
         <span className="text-sm font-medium mb-3 block">Theme</span>
         <div className="grid grid-cols-2 gap-2">
-          {APP_THEMES.map((t) => {
+          {visibleThemes.map((t) => {
             const isActive = activeAppTheme === t.id;
             return (
               <button
@@ -100,10 +129,11 @@ export function ThemeSelector({ colorScheme, density, onColorSchemeChange, onDen
                   className="w-full h-10 rounded overflow-hidden flex items-end gap-1 p-1"
                   style={{ background: t.preview.bg }}
                 >
-                  <div
-                    className="flex-1 h-6 rounded-sm"
+                  <div className="flex-1 h-6 rounded-sm flex flex-col justify-end overflow-hidden"
                     style={{ background: t.preview.panel }}
-                  />
+                  >
+                    <div className="h-[2px] w-full opacity-80" style={{ background: t.preview.accent }} />
+                  </div>
                   <div
                     className="w-2 h-full rounded-sm opacity-70"
                     style={{ background: t.preview.accent }}

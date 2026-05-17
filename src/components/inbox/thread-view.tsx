@@ -193,8 +193,8 @@ export function ThreadView() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Thread header */}
-      <div className="border-b border-border px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
+      <div className="flex h-[49px] items-center border-b border-border px-4">
+        <div className="flex flex-1 items-center justify-between gap-3 min-w-0">
           <div className="flex items-center gap-3 min-w-0">
             {/* Back button */}
             <button
@@ -206,18 +206,16 @@ export function ThreadView() {
               Inbox
             </button>
             <div className="h-4 w-px bg-border shrink-0" />
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                {isDiscord && (
-                  <MessageSquare className="h-4 w-4 shrink-0 text-indigo-500" />
-                )}
-                <h2 className="truncate text-base font-semibold text-foreground">
-                  {thread.subject}
-                </h2>
-              </div>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {thread.participants.map((p) => p.name).join(", ")}
-              </p>
+            <div className="flex min-w-0 items-center gap-2">
+              {isDiscord && (
+                <MessageSquare className="h-4 w-4 shrink-0 text-indigo-500" />
+              )}
+              <h2 className="truncate text-sm font-semibold text-foreground">
+                {thread.subject}
+              </h2>
+              <span className="hidden shrink-0 text-xs text-muted-foreground xl:block">
+                · {thread.participants.map((p) => p.name).join(", ")}
+              </span>
             </div>
           </div>
 

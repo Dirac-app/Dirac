@@ -856,8 +856,7 @@ export function MorningBriefing() {
     <>
       <Dialog open={open} onOpenChange={(v) => { if (!v) minimize(); }}>
         <DialogContent
-          className="max-w-3xl gap-0 overflow-hidden p-0 border-white/10"
-          style={{ background: "#1a1714" }}
+          className="morning-brief-dialog max-w-3xl gap-0 overflow-hidden p-0 border-white/10"
           showCloseButton={false}
         >
           {/* Paper grain texture overlay */}

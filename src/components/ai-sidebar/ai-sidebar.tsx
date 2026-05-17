@@ -1659,7 +1659,7 @@ export function AiSidebar() {
           {/* Right: send */}
           <Button
             size="sm"
-            className="h-7 w-7 p-0 ai-send-glow"
+            className="h-8 w-8 rounded-full p-0 ai-send-glow shrink-0"
             onClick={handleSend}
             disabled={!input.trim() || isStreaming}
           >
@@ -1820,7 +1820,7 @@ function ChatBubble({
           </div>
         ) : (
           <div className="relative ml-8">
-            <div className="rounded-lg bg-primary px-3 py-2 text-[13px] leading-relaxed text-primary-foreground">
+            <div className="ai-bubble-user rounded-lg bg-primary px-3 py-2 text-[13px] leading-relaxed text-primary-foreground">
               <div className="whitespace-pre-wrap">{msg.content}</div>
             </div>
             {!isStreaming && (

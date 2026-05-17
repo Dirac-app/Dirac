@@ -168,7 +168,7 @@ export function AppNav() {
           {/* Compose */}
           <button
             onClick={handleCompose}
-            className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent/50 touch-target"
+            className="compose-btn flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent/50 touch-target"
           >
             <PenSquare className="h-3.5 w-3.5" strokeWidth={2} />
             Compose
@@ -181,7 +181,7 @@ export function AppNav() {
         <span className="text-sm font-semibold text-foreground tracking-tight">Dirac</span>
         <button
           onClick={handleCompose}
-          className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent/50 touch-target"
+          className="compose-btn flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent/50 touch-target"
         >
           <PenSquare className="h-3.5 w-3.5" strokeWidth={2} />
           Compose

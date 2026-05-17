@@ -158,6 +158,7 @@ export function ThreadCard({
       <ContextMenuTrigger asChild>
         <button
           onClick={onSelect}
+          data-thread-card
           className={cn(
             "group relative flex w-full items-start gap-3 border-b border-border/40 px-4 md:px-5 py-3 md:py-3 touch-target text-left transition-all duration-150",
             isBulkSelected
@@ -261,6 +262,7 @@ export function ThreadCard({
                 {allBadges.slice(0, 4).map((b, i) => (
                   <span
                     key={i}
+                    data-badge={b.kind === "status" ? b.label.toLowerCase().replace(/\s+/g, "-") : undefined}
                     className={cn(
                       "inline-flex items-center gap-0.5 rounded px-1.5 py-px text-[10px] font-medium leading-snug whitespace-nowrap",
                       b.color,

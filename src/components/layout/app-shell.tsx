@@ -39,7 +39,7 @@ function ThemedAppShell({ children }: { children: ReactNode }) {
 
   if (!mounted) {
     return (
-      <div className="dirac-bg flex h-screen w-screen flex-col gap-2 md:gap-3 overflow-hidden p-2 md:p-4">
+      <div className="dirac-bg flex h-screen w-screen flex-col overflow-hidden divide-y divide-border">
         <div className="flex-1" />
       </div>
     );
@@ -53,11 +53,17 @@ function ThemedAppShell({ children }: { children: ReactNode }) {
     setComposeMinimized(false);
   };
 
+  const isPanelLayout = config.colorScheme === "light-email";
+
   return (
-    <div className={`dirac-bg flex h-screen w-screen flex-col gap-2 md:gap-3 overflow-hidden p-2 md:p-4 ${colorSchemeClass} ${densityClass}`}>
+    <div className={`dirac-bg flex h-screen w-screen flex-col overflow-hidden ${isPanelLayout ? 'gap-0' : 'divide-y divide-border'} ${colorSchemeClass} ${densityClass}`}>
       <AppNav />
       {/* Mobile: single column layout, Desktop: horizontal layout */}
-      <main className={`flex flex-1 items-stretch gap-2 md:gap-3 overflow-hidden min-h-0 ${isMobile ? 'flex-col' : ''}`}>
+      <main className={`flex flex-1 items-stretch overflow-hidden min-h-0 ${
+          isPanelLayout
+          ? isMobile ? 'flex-col gap-3 p-3' : 'gap-3 p-3'
+          : isMobile ? 'flex-col divide-y divide-border' : 'divide-x divide-border'
+      }`}>
         {children}
       </main>
       

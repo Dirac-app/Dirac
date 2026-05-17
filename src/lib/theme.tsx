@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
+import { useTheme } from "next-themes";
 
 export type Theme = "light" | "dark" | "system";
 
-export type ColorScheme = "default" | "retro95";
+export type ColorScheme = "default" | "retro95" | "dark-email" | "light-email";
 
 export type Density = "compact" | "comfortable" | "spacious";
 
@@ -44,8 +45,18 @@ const ThemeConfigContext = React.createContext<ThemeConfigContextValue | null>(n
 export function ThemeConfigProvider({ children }: { children: React.ReactNode }) {
   const [config, setConfig] = React.useState<ThemeConfig>(() => {
     const stored = getStoredConfig();
-    return stored ?? { colorScheme: "default", density: "comfortable" };
+    return stored ?? { colorScheme: "dark-email", density: "comfortable" };
   });
+
+  // Enforce the correct next-themes mode for schemes that require it
+  const { setTheme } = useTheme();
+  React.useEffect(() => {
+    if (ALWAYS_DARK_SCHEMES.includes(config.colorScheme)) {
+      setTheme("dark");
+    } else if (ALWAYS_LIGHT_SCHEMES.includes(config.colorScheme)) {
+      setTheme("light");
+    }
+  }, [config.colorScheme, setTheme]);
 
   const setColorScheme = React.useCallback((colorScheme: ColorScheme) => {
     setConfig((prev) => {
@@ -67,7 +78,7 @@ export function ThemeConfigProvider({ children }: { children: React.ReactNode })
     config,
     setColorScheme,
     setDensity,
-    colorSchemes: ["default", "retro95"],
+    colorSchemes: ["default", "retro95", "dark-email", "light-email"],
     densities: ["compact", "comfortable", "spacious"],
   }), [config, setColorScheme, setDensity]);
 
@@ -90,6 +101,12 @@ export function getColorSchemeClass(scheme: ColorScheme): string {
   if (scheme === "default") return "";
   return `theme-${scheme}`;
 }
+
+/** Schemes that always force dark mode regardless of next-themes setting. */
+export const ALWAYS_DARK_SCHEMES: ColorScheme[] = ["dark-email"];
+
+/** Schemes that always force light mode regardless of next-themes setting. */
+export const ALWAYS_LIGHT_SCHEMES: ColorScheme[] = ["light-email"];
 
 export function getDensityClass(density: Density): string {
   return `density-${density}`;

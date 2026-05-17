@@ -1,10 +1,16 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Merriweather_Sans } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({
   variable: "--font-sans",
   subsets: ["latin"],
+});
+
+const merriweatherSans = Merriweather_Sans({
+  variable: "--font-display",
+  subsets: ["latin"],
+  weight: ["400", "600", "700", "800"],
 });
 
 export const viewport: Viewport = {
@@ -48,7 +54,7 @@ export default function RootLayout({
       <head>
         <link rel="manifest" href="/manifest.json" />
       </head>
-      <body className={`${inter.variable} font-sans antialiased`} suppressHydrationWarning>{children}</body>
+      <body className={`${inter.variable} ${merriweatherSans.variable} font-sans antialiased`} suppressHydrationWarning>{children}</body>
     </html>
   );
 }
