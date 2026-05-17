@@ -861,7 +861,7 @@ export function QuickActions({
 
               {/* Options */}
               {!draftLoading && draftOptions.length > 0 && (
-                <div className="space-y-2">
+                <div className="max-h-[60vh] overflow-y-auto space-y-2">
                   {draftOptions.map((option, idx) => {
                     const isEditing = editingId === option.id;
                     const isSending = sending === option.id;

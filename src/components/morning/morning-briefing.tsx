@@ -447,9 +447,9 @@ function PlanCardContent({
         <div className="mt-2.5 flex items-center gap-2">
           {plan.needsAction !== false && (
             <>
-              <button
+              <Button
+                size="xs"
                 onClick={onAccept}
-                className="flex h-7 items-center gap-1.5 rounded px-3 text-[11px] font-semibold tracking-wide bg-orange-900/60 hover:bg-orange-900/80 text-orange-200 border border-orange-700/40 transition-colors"
               >
                 <Check className="h-3 w-3" />
                 {plan.triage === "needs_reply"
@@ -459,11 +459,11 @@ function PlanCardContent({
                   : plan.urgent
                   ? "Review now"
                   : "Start with AI"}
-              </button>
+              </Button>
               <button
                 onClick={onOpenWithAi}
                 title="Open with AI"
-                className="flex h-7 w-7 items-center justify-center rounded border border-white/10 text-white/30 transition-colors hover:text-white/65 hover:bg-white/6"
+                className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 text-white/30 transition-colors hover:text-white/65 hover:bg-white/6"
               >
                 <Sparkles className="h-3 w-3" />
               </button>

@@ -1499,10 +1499,12 @@ export function AiSidebar() {
       </ScrollArea>
 
       {/* ─── Input area ──────────────────────────────────── */}
-      <div className="border-t border-border ai-glow-input">
+      <div className="ai-glow-input p-3">
+        {/* Floating card */}
+        <div className="rounded-xl border border-border bg-background shadow-md">
         {/* Context chips */}
         {hasContext && (
-          <div className="flex flex-wrap gap-1 px-3 pt-2">
+          <div className="flex flex-wrap gap-1 px-3 pt-2.5">
             {aiContext.map((ctx) => {
               const isViewing = ctx.id === selectedThreadId;
               return (
@@ -1537,7 +1539,7 @@ export function AiSidebar() {
         )}
 
         {/* Textarea */}
-        <div className="px-3 pt-2">
+        <div className="px-3 pt-2.5">
           <textarea
             ref={textareaRef}
             value={input}
@@ -1562,7 +1564,7 @@ export function AiSidebar() {
         </div>
 
         {/* Toolbar row */}
-        <div className="flex items-center justify-between px-3 pb-2.5 pt-1.5">
+        <div className="flex items-center justify-between px-2.5 pb-2.5 pt-1.5">
           {/* Left: context controls */}
           <div className="relative flex items-center gap-1" ref={pickerRef}>
             <Button
@@ -1670,6 +1672,7 @@ export function AiSidebar() {
             )}
           </Button>
         </div>
+        </div>{/* end floating card */}
       </div>
     </div>
   );

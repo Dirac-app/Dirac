@@ -86,38 +86,39 @@
 }
 
 .dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
+  /* Neutral dark — no blue hue so portalled dialogs/popovers match the app */
+  --background:            #111111;
+  --foreground:            #f0f0f0;
+  --card:                  #1a1a1a;
+  --card-foreground:       #f0f0f0;
+  --popover:               #1a1a1a;
+  --popover-foreground:    #f0f0f0;
   /* Pumpkin orange brand accent — slightly lighter for dark bg */
-  --primary: oklch(0.72 0.19 47);
-  --primary-foreground: oklch(0.12 0 0);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.65 0.18 46);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.208 0.042 265.755);
-  --sidebar-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-primary: oklch(0.72 0.19 47);
-  --sidebar-primary-foreground: oklch(0.12 0 0);
-  --sidebar-accent: oklch(0.279 0.041 260.031);
-  --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.65 0.18 46);
+  --primary:               oklch(0.72 0.19 47);
+  --primary-foreground:    #0a0a0a;
+  --secondary:             #222222;
+  --secondary-foreground:  #f0f0f0;
+  --muted:                 #222222;
+  --muted-foreground:      #888888;
+  --accent:                #222222;
+  --accent-foreground:     #f0f0f0;
+  --destructive:           oklch(0.704 0.191 22.216);
+  --border:                rgba(255,255,255,0.10);
+  --input:                 rgba(255,255,255,0.12);
+  --ring:                  oklch(0.65 0.18 46);
+  --chart-1:               oklch(0.488 0.243 264.376);
+  --chart-2:               oklch(0.696 0.17 162.48);
+  --chart-3:               oklch(0.769 0.188 70.08);
+  --chart-4:               oklch(0.627 0.265 303.9);
+  --chart-5:               oklch(0.645 0.246 16.439);
+  --sidebar:               #1a1a1a;
+  --sidebar-foreground:    #f0f0f0;
+  --sidebar-primary:       oklch(0.72 0.19 47);
+  --sidebar-primary-foreground: #0a0a0a;
+  --sidebar-accent:        #222222;
+  --sidebar-accent-foreground: #f0f0f0;
+  --sidebar-border:        rgba(255,255,255,0.10);
+  --sidebar-ring:          oklch(0.65 0.18 46);
 }
 
 @layer base {
@@ -265,6 +266,60 @@
   box-shadow: inset 3px 0 0 0 rgba(251, 146, 60, 0.65);
 }
 
+/* ── Thread card dividers: studio glow line ──────────────────────────────
+   Replaces the flat border-b with a gradient rule that's brighter in the
+   centre and phases out to transparent on both sides. The box-shadow adds
+   a soft vertical bloom to make the middle feel slightly thicker/lit. */
+[data-thread-card] {
+  border-bottom: none !important;
+}
+[data-thread-card]::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent   0%,
+    rgba(0,0,0,0.05) 12%,
+    rgba(0,0,0,0.13) 38%,
+    rgba(0,0,0,0.18) 50%,
+    rgba(0,0,0,0.13) 62%,
+    rgba(0,0,0,0.05) 88%,
+    transparent   100%
+  );
+}
+
+/* Dark mode: white glow with a soft vertical bloom */
+.dark [data-thread-card]::after {
+  background: linear-gradient(
+    90deg,
+    transparent         0%,
+    rgba(255,255,255,0.04) 12%,
+    rgba(255,255,255,0.18) 38%,
+    rgba(255,255,255,0.28) 50%,
+    rgba(255,255,255,0.18) 62%,
+    rgba(255,255,255,0.04) 88%,
+    transparent         100%
+  );
+  box-shadow: 0 0 6px 1px rgba(255,255,255,0.07);
+}
+
+/* Light email: slightly deeper, no glow needed */
+.theme-light-email [data-thread-card]::after {
+  background: linear-gradient(
+    90deg,
+    transparent     0%,
+    rgba(0,0,0,0.04) 15%,
+    rgba(0,0,0,0.10) 50%,
+    rgba(0,0,0,0.04) 85%,
+    transparent     100%
+  );
+  box-shadow: none;
+}
+
 /* Thin, visible scrollbar for all scrollable containers */
 * {
   scrollbar-width: thin;
@@ -330,12 +385,12 @@
   --accent-foreground:     #ffffff;
   --destructive:           #ef4444;
   /* Borders: very fine white hairlines; orange for focus/ring */
-  --border:                rgba(255,255,255,0.07);
-  --input:                 rgba(255,255,255,0.06);
+  --border:                rgba(255,255,255,0.13);
+  --input:                 rgba(255,255,255,0.09);
   --ring:                  rgba(249,115,22,0.50);
   /* Panel surfaces */
   --panel-bg:              #0d0d0d;
-  --panel-border:          rgba(255,255,255,0.06);
+  --panel-border:          rgba(255,255,255,0.13);
   /* Sidebar */
   --sidebar:               #0d0d0d;
   --sidebar-foreground:    #ffffff;
@@ -434,19 +489,33 @@
   animation: none;
 }
 
+/* Section dividers: stronger than general borders so columns are clearly separated */
+.theme-dark-email main > * + * {
+  border-left-color: rgba(255,255,255,0.22) !important;
+}
+.theme-dark-email.dirac-bg > * + * {
+  border-top-color: rgba(255,255,255,0.22) !important;
+}
+
 /* Scrollbar: barely visible */
 .theme-dark-email * {
   scrollbar-color: rgba(255,255,255,0.08) transparent;
 }
 
-/* Morning Brief dialog: default warm dark background */
+/* Morning Brief dialog: default dark */
 .morning-brief-dialog {
-  background: #1a1714;
+  background: #0a0a0a;
 }
 
 /* Dark email: pure black */
 .theme-dark-email .morning-brief-dialog {
   background: #000000;
+}
+
+/* Light email: pure white */
+.theme-light-email .morning-brief-dialog {
+  background: #ffffff !important;
+  border-color: rgba(0,0,0,0.10) !important;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -932,25 +1001,22 @@
   box-shadow: 0 1px 8px -2px rgba(249, 115, 22, 0.20);
 }
 
+/* Wrapper padding — no top border any more, the inner card has its own border */
 .ai-glow-input {
-  box-shadow: inset 0 1px 4px -1px rgba(249, 115, 22, 0.08);
-  transition: box-shadow 0.3s ease;
+  /* no-op: border handled by the floating card inside */
 }
 
-.ai-glow-input:focus-within {
-  box-shadow:
-    inset 0 1px 4px -1px rgba(249, 115, 22, 0.12),
-    0 0 12px -4px rgba(249, 115, 22, 0.18);
+/* The inner floating card picks up focus glow */
+.ai-glow-input .rounded-xl {
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
-
-.dark .ai-glow-input {
-  box-shadow: inset 0 1px 4px -1px rgba(249, 115, 22, 0.05);
+.ai-glow-input .rounded-xl:focus-within {
+  box-shadow: 0 0 0 2px rgba(249,115,22,0.25), 0 4px 16px rgba(0,0,0,0.12);
+  border-color: rgba(249,115,22,0.40);
 }
-
-.dark .ai-glow-input:focus-within {
-  box-shadow:
-    inset 0 1px 4px -1px rgba(249, 115, 22, 0.10),
-    0 0 12px -4px rgba(249, 115, 22, 0.15);
+.dark .ai-glow-input .rounded-xl:focus-within {
+  box-shadow: 0 0 0 2px rgba(249,115,22,0.30), 0 4px 20px rgba(0,0,0,0.40);
+  border-color: rgba(249,115,22,0.45);
 }
 
 .ai-glow-card {
