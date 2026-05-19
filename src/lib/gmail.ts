@@ -237,10 +237,20 @@ function validateGmailResponse<T>(data: unknown, schema: z.ZodType<T>): T {
 
 // ─── Public API ─────────────────────────────────────────
 
+// Network errors that are safe to retry (transient connection issues)
+const RETRYABLE_CODES = new Set(["ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "ENOTFOUND", "UND_ERR_SOCKET"]);
+
+function isRetryableNetworkError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const code = (err as NodeJS.ErrnoException).code ?? "";
+  return RETRYABLE_CODES.has(code) || err.message === "fetch failed";
+}
+
 /**
  * Low-level Gmail fetch with:
  *  - fetchWithTimeout (30 s default)
- *  - Exponential backoff on 429 (up to 3 retries: 1 s, 2 s, 4 s)
+ *  - Exponential backoff on 429 and transient network errors (ECONNRESET etc.)
+ *    up to 3 retries: 1 s, 2 s, 4 s.
  *    Honours Retry-After header when present.
  *  - Zod validation of responses
  */
@@ -254,13 +264,24 @@ async function gmailFetch(
   let delay = 1000;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const res = await fetchWithTimeout(`${GMAIL_BASE}${path}`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      ...options,
-    });
+    let res: Response;
+    try {
+      res = await fetchWithTimeout(`${GMAIL_BASE}${path}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        ...options,
+      });
+    } catch (err) {
+      if (isRetryableNetworkError(err) && attempt < MAX_RETRIES) {
+        console.warn(`[gmailFetch] transient network error (attempt ${attempt + 1}): ${(err as Error).message}`);
+        await new Promise(r => setTimeout(r, delay));
+        delay *= 2;
+        continue;
+      }
+      throw err;
+    }
 
     if (res.status === 429 && attempt < MAX_RETRIES) {
       // Honour the Retry-After header if provided (value is in seconds)
@@ -288,8 +309,8 @@ async function gmailFetch(
     return jsonData;
   }
 
-  // Exhausted retries — surface the rate-limit error
-  throw new Error("Gmail API 429: rate limit exceeded after retries");
+  // Exhausted retries
+  throw new Error("Gmail API: max retries exceeded");
 }
 
 /**
@@ -418,18 +439,24 @@ export async function sendReply(
 
 /**
  * List inbox threads (IDs + snippets). Returns up to `maxResults` threads.
+ * Supports optional Gmail search query and page token for pagination.
  */
 export async function listThreads(
   accessToken: string,
   maxResults = 25,
-): Promise<{ id: string; snippet: string }[]> {
+  q?: string,
+  pageToken?: string,
+): Promise<{ threads: { id: string; snippet: string }[]; nextPageToken?: string }> {
+  let url = `/threads?maxResults=${maxResults}&labelIds=INBOX`;
+  if (q) url += `&q=${encodeURIComponent(q)}`;
+  if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
   const data = await gmailFetch(
     accessToken,
-    `/threads?maxResults=${maxResults}&labelIds=INBOX`,
+    url,
     undefined,
     GmailThreadListResponseSchema,
   );
-  return data.threads ?? [];
+  return { threads: data.threads ?? [], nextPageToken: data.nextPageToken };
 }
 
 /**
@@ -452,6 +479,15 @@ export async function getThread(
  * Fetch thread metadata for list display.
  * Uses format=metadata to avoid downloading full bodies.
  */
+const GMAIL_CATEGORY_LABELS = [
+  "CATEGORY_UPDATES",
+  "CATEGORY_PROMOTIONS",
+  "CATEGORY_SOCIAL",
+  "CATEGORY_FORUMS",
+  "CATEGORY_PERSONAL",
+] as const;
+export type GmailCategory = typeof GMAIL_CATEGORY_LABELS[number] | null;
+
 export async function getThreadMetadata(
   accessToken: string,
   threadId: string,
@@ -464,6 +500,7 @@ export async function getThreadMetadata(
   messageCount: number;
   lastMessageAt: string;
   participants: { name: string; email: string }[];
+  gmailCategory: GmailCategory;
 }> {
   const data = await gmailFetch(
     accessToken,
@@ -482,6 +519,11 @@ export async function getThreadMetadata(
 
   const isUnread = messages.some((m: GmailMessage) => m.labelIds?.includes("UNREAD"));
   const isStarred = messages.some((m: GmailMessage) => m.labelIds?.includes("STARRED"));
+
+  // Gmail category is on the most recent message's labels
+  const allLabelIds = messages.flatMap((m: GmailMessage) => m.labelIds ?? []);
+  const gmailCategory: GmailCategory =
+    GMAIL_CATEGORY_LABELS.find(cat => allLabelIds.includes(cat)) ?? null;
 
   // Collect unique participants across all messages
   const participantMap = new Map<string, { name: string; email: string }>();
@@ -508,6 +550,7 @@ export async function getThreadMetadata(
     messageCount: messages.length,
     lastMessageAt,
     participants: Array.from(participantMap.values()),
+    gmailCategory,
   };
 }
 

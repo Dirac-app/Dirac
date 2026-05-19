@@ -27,7 +27,7 @@ async function batchConcurrent<T, R>(
   return results;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await auth();
 
   if (!session?.accessToken || !session.gmailConnected) {
@@ -37,8 +37,18 @@ export async function GET() {
     );
   }
 
+  const { searchParams } = new URL(request.url);
+  const maxResults = Math.min(Number(searchParams.get("maxResults") ?? "25"), 50);
+  const q = searchParams.get("q") ?? undefined;
+  const pageToken = searchParams.get("pageToken") ?? undefined;
+
   try {
-    const threadStubs = await listThreads(session.accessToken, 25);
+    const { threads: threadStubs, nextPageToken } = await listThreads(
+      session.accessToken,
+      maxResults,
+      q,
+      pageToken,
+    );
 
     // Fetch metadata with max 5 concurrent requests to stay under Gmail rate limits
     const threadMetadata = await batchConcurrent(
@@ -61,16 +71,16 @@ export async function GET() {
       status: "INBOX" as const,
       tags: [],
       isPinned: false,
+      gmailCategory: t.gmailCategory,
     }));
 
-    return NextResponse.json({ threads });
+    return NextResponse.json({ threads, nextPageToken });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error("[/api/gmail/threads] fetch error:", detail);
     return NextResponse.json(
       {
         error: "Failed to fetch Gmail threads",
-        // Include detail in dev so it's visible in the browser console
         ...(process.env.NODE_ENV !== "production" && { detail }),
       },
       { status: 500 },

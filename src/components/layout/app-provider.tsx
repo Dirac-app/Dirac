@@ -114,6 +114,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [outlookThreads, setOutlookThreads] = useState<DiracThread[]>([]);
   const [discordThreads, setDiscordThreads] = useState<DiracThread[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(false);
+  const [loadingMoreThreads, setLoadingMoreThreads] = useState(false);
+  const [gmailNextPageToken, setGmailNextPageToken] = useState<string | undefined>(undefined);
 
   // Starred IDs (persisted in localStorage, seeded from Gmail STARRED label)
   const [starredIds, setStarredIds] = useState<Set<string>>(new Set());
@@ -1032,6 +1034,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           .then((data) => {
             const threads: DiracThread[] = data.threads ?? [];
             setGmailThreads(threads);
+            setGmailNextPageToken(data.nextPageToken ?? undefined);
 
             // Seed starred from Gmail's STARRED label (merge, don't overwrite)
             const gmailStarred = threads
@@ -1111,6 +1114,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     fetchThreads();
   }, [fetchThreads]);
+
+  const loadMoreThreads = useCallback(async () => {
+    if (!session?.gmailConnected || !gmailNextPageToken || loadingMoreThreads) return;
+    setLoadingMoreThreads(true);
+    try {
+      const res = await fetch(`/api/gmail/threads?pageToken=${encodeURIComponent(gmailNextPageToken)}&maxResults=25`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const newThreads: DiracThread[] = data.threads ?? [];
+      setGmailThreads(prev => {
+        const existingIds = new Set(prev.map(t => t.id));
+        const deduped = newThreads.filter(t => !existingIds.has(t.id));
+        return [...prev, ...deduped];
+      });
+      setGmailNextPageToken(data.nextPageToken ?? undefined);
+    } catch (err) {
+      console.error("Load more threads error:", err);
+    } finally {
+      setLoadingMoreThreads(false);
+    }
+  }, [session?.gmailConnected, gmailNextPageToken, loadingMoreThreads]);
 
   // ─── Triage classification ─────────────────────────────
   const runTriageForThreads = useCallback(
@@ -1307,6 +1331,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setInboxFilter,
       threads,
       threadsLoading,
+      loadMoreThreads,
+      loadingMoreThreads,
+      hasMoreThreads: !!gmailNextPageToken,
       messages,
       messagesLoading,
       refreshThreads: fetchThreads,
@@ -1391,6 +1418,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       inboxFilter,
       threads,
       threadsLoading,
+      loadMoreThreads,
+      loadingMoreThreads,
+      gmailNextPageToken,
       messages,
       messagesLoading,
       fetchThreads,

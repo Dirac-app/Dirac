@@ -76,6 +76,9 @@ export interface ThreadsContextValue {
   threads: DiracThread[];
   threadsLoading: boolean;
   refreshThreads: () => void;
+  loadMoreThreads: () => void;
+  loadingMoreThreads: boolean;
+  hasMoreThreads: boolean;
   // Messages
   messages: DiracMessage[];
   messagesLoading: boolean;
@@ -157,6 +160,9 @@ export interface AppState {
   messages: DiracMessage[];
   messagesLoading: boolean;
   refreshThreads: () => void;
+  loadMoreThreads: () => void;
+  loadingMoreThreads: boolean;
+  hasMoreThreads: boolean;
   // Compose panel
   composeOpen: boolean;
   setComposeOpen: (open: boolean) => void;

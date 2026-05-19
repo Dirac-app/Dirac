@@ -87,7 +87,7 @@
 
 .dark {
   /* Neutral dark — no blue hue so portalled dialogs/popovers match the app */
-  --background:            #111111;
+  --background:            #000000;
   --foreground:            #f0f0f0;
   --card:                  #1a1a1a;
   --card-foreground:       #f0f0f0;
@@ -389,7 +389,7 @@
   --input:                 rgba(255,255,255,0.09);
   --ring:                  rgba(249,115,22,0.50);
   /* Panel surfaces */
-  --panel-bg:              #0d0d0d;
+  --panel-bg:              #000000;
   --panel-border:          rgba(255,255,255,0.13);
   /* Sidebar */
   --sidebar:               #0d0d0d;
@@ -485,8 +485,22 @@
 .theme-dark-email .ai-orb-3 { display: none; }
 
 .theme-dark-email .ai-panel-glow {
-  border-color: var(--panel-border);
+  border-left: none !important;
+  position: relative;
   animation: none;
+}
+/* Vertical separator starts at the bottom of the header row (49px)
+   so it meets — not crosses — the horizontal header border. */
+.theme-dark-email .ai-panel-glow::before {
+  content: '';
+  position: absolute;
+  top: 49px;
+  left: 0;
+  bottom: 0;
+  width: 0.5px;
+  background: rgba(255,255,255,0.14);
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* Section dividers: stronger than general borders so columns are clearly separated */
@@ -1009,6 +1023,11 @@
 /* The inner floating card picks up focus glow */
 .ai-glow-input .rounded-xl {
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+/* Dark mode: chat card is a lighter neutral grey so it lifts off the black page */
+.dark .ai-glow-input .rounded-xl {
+  background: #1c1c1c;
 }
 .ai-glow-input .rounded-xl:focus-within {
   box-shadow: 0 0 0 2px rgba(249,115,22,0.25), 0 4px 16px rgba(0,0,0,0.12);

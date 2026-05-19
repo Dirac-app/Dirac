@@ -10,6 +10,7 @@ import {
   Archive,
   MailOpen,
   Trash2,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAppState } from "@/lib/store";
@@ -113,7 +114,8 @@ function BulkToolbar({
 
 type VirtualItem = 
   | { type: "header"; section: "new" | "extra" | "all"; label: string; count: number; collapsed: boolean; onToggle: () => void; accent?: string }
-  | { type: "thread"; thread: DiracThread; index: number };
+  | { type: "thread"; thread: DiracThread; index: number }
+  | { type: "load-more" };
 
 // ─── Main ThreadList ─────────────────────────────────────
 
@@ -140,6 +142,9 @@ export function ThreadList() {
   const {
     threads,
     threadsLoading,
+    loadMoreThreads,
+    loadingMoreThreads,
+    hasMoreThreads,
     selectedThreadId,
     setSelectedThreadId,
     triageMap,
@@ -290,12 +295,12 @@ export function ThreadList() {
       }
     });
 
-    // "All other" section
+    // "Previously seen" section (read threads)
     if (allOtherThreads.length > 0) {
       items.push({
         type: "header",
         section: "all",
-        label: "All other",
+        label: "Previously seen",
         count: allOtherThreads.length,
         collapsed: allCollapsed,
         onToggle: () => setAllCollapsed(!allCollapsed),
@@ -305,6 +310,11 @@ export function ThreadList() {
       }
     }
 
+    // Load more row (only when not collapsed + more pages available)
+    if (!allCollapsed && hasMoreThreads) {
+      items.push({ type: "load-more" });
+    }
+
     return items;
   }, [newForYou, newCollapsed, extraSectionThreads, extraCollapsed, allOtherThreads, allCollapsed]);
 
@@ -312,12 +322,12 @@ export function ThreadList() {
     count: flatList.length,
     getScrollElement: () => parentRef.current,
     estimateSize: (i) => {
-      // Section headers are short; thread cards are taller
       const item = flatList[i];
-      return item?.type === "header" ? 38 : 80;
+      if (item?.type === "header") return 38;
+      if (item?.type === "load-more") return 52;
+      return 80;
     },
     overscan: 5,
-    // Measure actual rendered heights so items never overlap or leave gaps
     measureElement: (el) => el.getBoundingClientRect().height,
   });
 
@@ -442,6 +452,36 @@ export function ThreadList() {
                       onToggle={item.onToggle}
                       accent={item.accent}
                     />
+                  </div>
+                );
+              }
+
+              if (item.type === "load-more") {
+                return (
+                  <div
+                    key="load-more"
+                    data-index={virtualItem.index}
+                    ref={rowVirtualizer.measureElement}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      transform: `translateY(${virtualItem.start}px)`,
+                    }}
+                  >
+                    <div className="flex items-center justify-center py-3 px-5">
+                      <button
+                        onClick={loadMoreThreads}
+                        disabled={loadingMoreThreads}
+                        className="flex items-center gap-2 rounded-lg border border-border/60 px-4 py-2 text-xs font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors disabled:opacity-50"
+                      >
+                        {loadingMoreThreads
+                          ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading…</>
+                          : "Load older emails"
+                        }
+                      </button>
+                    </div>
                   </div>
                 );
               }

@@ -133,6 +133,7 @@ export interface DiracThread {
   tags: string[];
   urgencyScore?: number;
   isPinned: boolean;
+  gmailCategory?: string | null;
 }
 
 export interface DiracMessage {
