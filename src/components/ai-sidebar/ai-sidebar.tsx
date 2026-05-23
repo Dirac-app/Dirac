@@ -61,6 +61,7 @@ import {
 import type { TopicTag } from "@/lib/types";
 import {
   parseAiContent,
+  PENDING_BLOCK_LABELS,
   type McqQuestion,
   type ComposeData,
   type ActionItem,
@@ -1917,6 +1918,22 @@ function ChatBubble({
               items={seg.results}
               onViewThread={onViewThread}
             />
+          );
+        }
+
+        if (seg.type === "pending") {
+          const label =
+            PENDING_BLOCK_LABELS[seg.pendingType ?? "mcq"] ?? "Working…";
+          return (
+            <div
+              key={segIdx}
+              className="mr-2 rounded-lg border border-border/40 bg-muted/40 px-3 py-2.5"
+            >
+              <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                {label}
+              </div>
+            </div>
           );
         }
 
