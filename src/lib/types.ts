@@ -209,23 +209,27 @@ export const TOPIC_TAG_LABELS: Record<TopicTag, string> = {
   personal: "personal",
 };
 
+/** Muted chip for all topic tags — keeps inbox rows calm; color reserved for status pills */
+export const TOPIC_TAG_CHIP_CLASS =
+  "text-foreground/50 bg-foreground/[0.06] dark:text-foreground/45 dark:bg-white/[0.07]";
+
 export const TOPIC_TAG_COLORS: Record<TopicTag, string> = {
-  billing: "text-emerald-700 dark:text-emerald-400 bg-emerald-500/10",
-  security: "text-red-700 dark:text-red-400 bg-red-500/10",
-  onboarding: "text-sky-700 dark:text-sky-400 bg-sky-500/10",
-  support: "text-orange-700 dark:text-orange-400 bg-orange-500/10",
-  feedback: "text-violet-700 dark:text-violet-400 bg-violet-500/10",
-  meeting: "text-blue-700 dark:text-blue-400 bg-blue-500/10",
-  legal: "text-slate-700 dark:text-slate-400 bg-slate-500/10",
-  hiring: "text-teal-700 dark:text-teal-400 bg-teal-500/10",
-  fundraising: "text-purple-700 dark:text-purple-400 bg-purple-500/10",
-  shipping: "text-amber-700 dark:text-amber-400 bg-amber-500/10",
-  marketing: "text-pink-700 dark:text-pink-400 bg-pink-500/10",
-  ci_cd: "text-cyan-700 dark:text-cyan-400 bg-cyan-500/10",
-  monitoring: "text-rose-700 dark:text-rose-400 bg-rose-500/10",
-  access: "text-indigo-700 dark:text-indigo-400 bg-indigo-500/10",
-  announcement: "text-fuchsia-700 dark:text-fuchsia-400 bg-fuchsia-500/10",
-  intro: "text-lime-700 dark:text-lime-400 bg-lime-500/10",
-  follow_up: "text-yellow-700 dark:text-yellow-400 bg-yellow-500/10",
-  personal: "text-gray-600 dark:text-gray-400 bg-gray-500/10",
+  billing: TOPIC_TAG_CHIP_CLASS,
+  security: TOPIC_TAG_CHIP_CLASS,
+  onboarding: TOPIC_TAG_CHIP_CLASS,
+  support: TOPIC_TAG_CHIP_CLASS,
+  feedback: TOPIC_TAG_CHIP_CLASS,
+  meeting: TOPIC_TAG_CHIP_CLASS,
+  legal: TOPIC_TAG_CHIP_CLASS,
+  hiring: TOPIC_TAG_CHIP_CLASS,
+  fundraising: TOPIC_TAG_CHIP_CLASS,
+  shipping: TOPIC_TAG_CHIP_CLASS,
+  marketing: TOPIC_TAG_CHIP_CLASS,
+  ci_cd: TOPIC_TAG_CHIP_CLASS,
+  monitoring: TOPIC_TAG_CHIP_CLASS,
+  access: TOPIC_TAG_CHIP_CLASS,
+  announcement: TOPIC_TAG_CHIP_CLASS,
+  intro: TOPIC_TAG_CHIP_CLASS,
+  follow_up: TOPIC_TAG_CHIP_CLASS,
+  personal: TOPIC_TAG_CHIP_CLASS,
 };
