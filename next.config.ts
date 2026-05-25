@@ -5,6 +5,8 @@ const nextConfig: NextConfig = {
   // next build uses webpack by default (Turbopack is opt-in via --turbopack flag),
   // so webpack generates the middleware NFT files that standalone output needs.
   output: "standalone",
+  // Hide the Next.js route indicator badge in dev (bottom-left on localhost).
+  devIndicators: false,
 };
 
 export default nextConfig;

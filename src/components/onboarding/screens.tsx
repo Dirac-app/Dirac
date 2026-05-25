@@ -40,7 +40,7 @@ import type {
   EmailVolume,
   EmailUseCase,
 } from "@/lib/onboarding";
-import type { DiracThread } from "@/lib/types";
+import type { DiracThread, FounderCategory, TriageCategory } from "@/lib/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Demo-thread utilities
@@ -50,41 +50,117 @@ import type { DiracThread } from "@/lib/types";
 // ─────────────────────────────────────────────────────────────────────────────
 
 const NOISE_SUBJECT_PATTERNS = [
-  "unsubscribe", "newsletter", "weekly digest", "monthly digest",
+  "unsubscribe", "newsletter", "weekly digest", "monthly digest", "daily digest",
   "digest", "notification", "alert", "noreply", "no-reply",
   "automated", "do not reply", "donotreply", "your account",
-  "verify", "confirm your", "password reset", "receipt",
+  "verify", "confirm your", "password reset", "receipt", "invoice",
+  "order confirmation", "shipping confirmation", "welcome to", "thanks for trying",
+  "all aboard", "getting started", "security alert", "sign-in attempt",
+  "build failed", "deploy", "deployment", "referral credit", "view in browser",
+  "manage your preferences", "promo", "limited time", "% off",
 ];
-const NOISE_SENDER_PREFIXES = [
+
+const NOISE_SENDER_LOCALPARTS = [
   "noreply", "no-reply", "notifications", "newsletter", "mailer",
-  "donotreply", "do-not-reply", "support+", "alert",
+  "donotreply", "do-not-reply", "support", "alert", "hello", "info",
+  "updates", "news", "team", "billing", "accounts", "account", "postmaster",
 ];
+
+/** Human sender categories — good signal when triage isn't ready yet */
+const HUMAN_CATEGORIES: FounderCategory[] = [
+  "investor", "customer", "team", "outreach", "recruiter", "pr_media", "vendor", "personal",
+];
+
+const REPLY_WORTHY_PATTERN =
+  /\b(re:|fwd:|fw:|follow[- ]?up|question|request|wondering|thoughts|asking|meet(ing)?|sync|call|catch[- ]?up|schedule|zoom|calendar|proposal|intro|interview|offer|term sheet|update on|checking in)\b/i;
 
 function isNoise(thread: DiracThread): boolean {
   const sub = thread.subject.toLowerCase();
-  if (NOISE_SUBJECT_PATTERNS.some((p) => sub.includes(p))) return true;
-  const sender = (thread.participants[0]?.email ?? "").toLowerCase();
-  if (NOISE_SENDER_PREFIXES.some((p) => sender.startsWith(p))) return true;
+  const snip = (thread.snippet ?? "").toLowerCase();
+  const combined = `${sub} ${snip}`;
+  if (NOISE_SUBJECT_PATTERNS.some((p) => combined.includes(p))) return true;
+
+  const email = (thread.participants[0]?.email ?? "").toLowerCase();
+  const local = email.split("@")[0] ?? "";
+  if (NOISE_SENDER_LOCALPARTS.some((p) => local === p || local.startsWith(`${p}+`) || local.startsWith(`${p}.`))) {
+    return true;
+  }
   return false;
 }
 
-function scoreThread(thread: DiracThread): number {
-  if (isNoise(thread)) return -100;
+/** True only for threads that deserve a human reply in the onboarding demo */
+function needsResponse(
+  thread: DiracThread,
+  triage?: TriageCategory,
+  category?: FounderCategory,
+): boolean {
+  if (isNoise(thread)) return false;
+  if (thread.status === "DONE") return false;
+  if (category === "automated") return false;
+  if (triage === "automated" || triage === "fyi") return false;
+  // Waiting on them — not a "draft a reply" moment
+  if (triage === "waiting_on" && !thread.isUrgent) return false;
+
+  if (thread.isUrgent) return true;
+  if (triage === "needs_reply") return true;
+
+  const combined = `${thread.subject} ${thread.snippet ?? ""}`;
+
+  // Before AI labels land, require obvious human reply signals (not "unread = demo")
+  if (!triage && !category) {
+    if (!/\?/.test(combined) && !REPLY_WORTHY_PATTERN.test(combined)) return false;
+    if (thread.messageCount < 2 && !REPLY_WORTHY_PATTERN.test(combined)) return false;
+    return true;
+  }
+
+  if (category && HUMAN_CATEGORIES.includes(category)) {
+    if (/\?/.test(combined)) return true;
+    if (REPLY_WORTHY_PATTERN.test(combined)) return true;
+    if (thread.messageCount >= 2 && thread.isUnread) return true;
+  }
+
+  return false;
+}
+
+function scoreThread(
+  thread: DiracThread,
+  triage?: TriageCategory,
+  category?: FounderCategory,
+): number {
+  if (!needsResponse(thread, triage, category)) return -100;
+
   let s = 0;
+  if (triage === "needs_reply") s += 55;
+  if (thread.isUrgent) s += 45;
+  if (category === "customer") s += 22;
+  if (category === "investor") s += 20;
+  if (category === "team") s += 16;
+  if (category === "outreach") s += 12;
   if (thread.isUnread) s += 10;
-  if (thread.isUrgent) s += 8;
-  if (thread.isStarred) s += 5;
-  if (thread.messageCount >= 2) s += 4;
-  if (thread.messageCount >= 4) s += 2;
-  if (thread.status === "DONE") s -= 6;
+  if (thread.isStarred) s += 6;
+  if (thread.messageCount >= 2) s += 5;
+  if (thread.messageCount >= 4) s += 3;
+
+  const combined = `${thread.subject} ${thread.snippet ?? ""}`;
+  if (REPLY_WORTHY_PATTERN.test(combined)) s += 8;
+  if (/\?/.test(combined)) s += 6;
+
   const len = thread.subject.length;
-  if (len >= 10 && len <= 80) s += 3;
+  if (len >= 12 && len <= 80) s += 3;
+
   return s;
 }
 
-export function pickBestDemoThread(threads: DiracThread[]): DiracThread | null {
+export function pickBestDemoThread(
+  threads: DiracThread[],
+  triageMap: Record<string, TriageCategory> = {},
+  categoryMap: Record<string, FounderCategory> = {},
+): DiracThread | null {
   const ranked = [...threads]
-    .map((t) => ({ t, score: scoreThread(t) }))
+    .map((t) => ({
+      t,
+      score: scoreThread(t, triageMap[t.id], categoryMap[t.id]),
+    }))
     .filter(({ score }) => score > 0)
     .sort((a, b) => b.score - a.score);
   return ranked[0]?.t ?? null;
@@ -138,7 +214,7 @@ function buildDemoFromThread(thread: DiracThread): DemoData {
   const isMeeting = /\b(meet|meeting|sync|call|catch[- ]up|coffee|lunch|chat|schedule|zoom|calendar)\b/.test(sub + " " + snip);
   const isQuestion = /[?]|follow[- ]?up|question|request|wondering|thought|asking/.test(sub + " " + snip);
 
-  const cardPlan = `${firstName} sent "${subjectShort}". Dirac flagged it as worth your time — here's the suggested reply.`;
+  const cardPlan = `${firstName} is waiting on your reply about "${subjectShort}". Here's the draft Dirac suggests.`;
 
   if (isMeeting) {
     return {
@@ -784,12 +860,16 @@ export function Screen9Syncing({ goNext }: ScreenProps) {
 // Pulls the user's actual threads via app state. If <2 threads exist, falls
 // back to two demo cards labeled as such — honest, not deceptive.
 export function Screen10MorningBrief(_props: ScreenProps) {
-  const { threads } = useAppState();
+  const { threads, triageMap, categoryMap } = useAppState();
 
-  // Pick up to 3 high-quality, human threads for the brief preview
+  // Only threads that actually need a reply — no newsletters / automated mail
   const realCards = threads
-    .filter((t) => !isNoise(t) && t.isUnread)
-    .sort((a, b) => scoreThread(b) - scoreThread(a))
+    .filter((t) => needsResponse(t, triageMap[t.id], categoryMap[t.id]))
+    .sort(
+      (a, b) =>
+        scoreThread(b, triageMap[b.id], categoryMap[b.id]) -
+        scoreThread(a, triageMap[a.id], categoryMap[a.id]),
+    )
     .slice(0, 3)
     .map((t) => ({
       subject: t.subject,
@@ -851,13 +931,13 @@ export function Screen10MorningBrief(_props: ScreenProps) {
 // We don't really send anything — that happens for real once they're in the
 // app. The point is the FEELING of "click → AI takes over."
 export function Screen11AcceptPlan({ goNext }: ScreenProps) {
-  const { threads } = useAppState();
+  const { threads, triageMap, categoryMap } = useAppState();
   const [accepted, setAccepted] = useState(false);
   const [typedChars, setTypedChars] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
 
-  // Pick the most compelling real thread; fall back to synthetic Lisa demo
-  const bestThread = pickBestDemoThread(threads);
+  // Reply-worthy thread only; fall back to synthetic Lisa demo if inbox is all noise
+  const bestThread = pickBestDemoThread(threads, triageMap, categoryMap);
   const demo: DemoData = bestThread
     ? buildDemoFromThread(bestThread)
     : FALLBACK_DEMO;

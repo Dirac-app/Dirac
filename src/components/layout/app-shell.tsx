@@ -90,14 +90,14 @@ export function AppShell({ children }: { children: ReactNode }) {
             <KeyboardShortcutsProvider />
             <TooltipProvider delayDuration={0}>
               <ThemedAppShell>{children}</ThemedAppShell>
+              <SpotlightSearch />
+              <ComposePanel />
+              <MorningBriefing />
+              <SetAsideBar />
+              <ViewAllOverlay />
+              <KeyboardShortcutsHelp />
+              <OnboardingController />
             </TooltipProvider>
-            <SpotlightSearch />
-            <ComposePanel />
-            <MorningBriefing />
-            <SetAsideBar />
-            <ViewAllOverlay />
-            <KeyboardShortcutsHelp />
-            <OnboardingController />
           </AppProvider>
           </ThemeConfigProvider>
         </QueryProvider>
