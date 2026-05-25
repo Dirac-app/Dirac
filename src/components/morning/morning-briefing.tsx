@@ -33,6 +33,14 @@ import {
   type TriageCategory,
   type DiracThread,
 } from "@/lib/types";
+import {
+  clearPendingBrief,
+  loadPendingStore,
+  removePendingThread,
+  savePendingBrief,
+  type PendingBriefStore,
+  type StoredPendingCard,
+} from "@/lib/morning-brief-pending";
 
 const MORNING_BRIEF_VERSION = "v2";
 const MORNING_BRIEF_SETTINGS_KEY = "dirac_morning_brief_settings";
@@ -167,73 +175,6 @@ function recordShownBriefing(
 }
 
 // ── Pending brief queue — same cards until dismissed or dealt with ─────────
-
-const BRIEF_PENDING_KEY = "dirac_brief_pending";
-
-interface StoredPendingCard {
-  threadId: string;
-  aiSummary?: string;
-  aiPlan?: string;
-  needsAction?: boolean;
-}
-
-interface PendingBriefStore {
-  cards: StoredPendingCard[];
-  savedAt: string;
-}
-
-function loadPendingStore(): PendingBriefStore | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(BRIEF_PENDING_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as PendingBriefStore;
-    if (!Array.isArray(parsed?.cards) || parsed.cards.length === 0) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-function savePendingBrief(plans: MorningPlanCard[]) {
-  if (typeof window === "undefined" || plans.length === 0) return;
-  try {
-    const store: PendingBriefStore = {
-      savedAt: new Date().toISOString(),
-      cards: plans.map((p) => ({
-        threadId: p.threadId,
-        aiSummary: p.aiSummary,
-        aiPlan: p.aiPlan,
-        needsAction: p.needsAction,
-      })),
-    };
-    window.localStorage.setItem(BRIEF_PENDING_KEY, JSON.stringify(store));
-  } catch {}
-}
-
-function removePendingThread(threadId: string) {
-  if (typeof window === "undefined") return;
-  try {
-    const store = loadPendingStore();
-    if (!store) return;
-    const cards = store.cards.filter((c) => c.threadId !== threadId);
-    if (cards.length === 0) {
-      window.localStorage.removeItem(BRIEF_PENDING_KEY);
-    } else {
-      window.localStorage.setItem(
-        BRIEF_PENDING_KEY,
-        JSON.stringify({ ...store, cards }),
-      );
-    }
-  } catch {}
-}
-
-function clearPendingBrief() {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(BRIEF_PENDING_KEY);
-  } catch {}
-}
 
 function isThreadDealtWith(
   thread: DiracThread,
@@ -668,6 +609,7 @@ export function MorningBriefing() {
   const [settings, setSettings] = useState<MorningBriefSettings>(DEFAULT_SETTINGS);
   const [dismissedThreads, setDismissedThreads] = useState<Record<string, string>>({});
   const [shownHistory, setShownHistory] = useState<Record<string, ShownRecord>>({});
+  const [pendingRevision, setPendingRevision] = useState(0);
   const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipNextShimmer = useRef(false);
   const hasAutoOpened = useRef<string | null>(null); // stores the date shown, handles overnight tabs
@@ -676,7 +618,7 @@ export function MorningBriefing() {
   const pendingThreadIds = useMemo(() => {
     const store = loadPendingStore();
     return new Set(store?.cards.map((c) => c.threadId) ?? []);
-  }, [dismissedThreads, plans.length]);
+  }, [dismissedThreads, pendingRevision]);
 
   const hydratedPending = useMemo(() => {
     const store = loadPendingStore();
@@ -700,6 +642,44 @@ export function MorningBriefing() {
     snoozedThreads,
     dismissedThreads,
     pendingThreadIds,
+    pendingRevision,
+  ]);
+
+  useEffect(() => {
+    const onPendingChanged = () => setPendingRevision((v) => v + 1);
+    window.addEventListener("dirac:morning-brief-pending-changed", onPendingChanged);
+    return () =>
+      window.removeEventListener("dirac:morning-brief-pending-changed", onPendingChanged);
+  }, []);
+
+  // Refresh visible cards when threads are added via inbox context menu.
+  useEffect(() => {
+    if (pendingRevision === 0) return;
+    const store = loadPendingStore();
+    if (!store) return;
+    const next = hydratePendingPlans(
+      store,
+      threads,
+      triageMap,
+      categoryMap,
+      commitments,
+      doneThreads,
+      snoozedThreads,
+      dismissedThreads,
+    );
+    if (!open && !minimized) return;
+    setPlans(next);
+  }, [
+    pendingRevision,
+    open,
+    minimized,
+    threads,
+    triageMap,
+    categoryMap,
+    commitments,
+    doneThreads,
+    snoozedThreads,
+    dismissedThreads,
   ]);
 
   const candidates = useMemo(() => {

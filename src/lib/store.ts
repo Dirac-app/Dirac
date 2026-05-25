@@ -241,6 +241,10 @@ export interface AppState {
   addToSetAside: (ids: string[]) => void;
   removeFromSetAside: (id: string) => void;
   clearSetAside: () => void;
+  // Morning brief (manual queue)
+  morningBriefPendingIds: string[];
+  addToMorningBrief: (ids: string[]) => void;
+  isInMorningBrief: (threadId: string) => boolean;
   // View all overlay
   viewAllThreadIds: string[];
   viewAllOpen: boolean;

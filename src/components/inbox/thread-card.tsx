@@ -14,6 +14,7 @@ import {
   MailX,
   BrainCircuit,
   Layers,
+  Sunrise,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAppState } from "@/lib/store";
@@ -89,6 +90,8 @@ export function ThreadCard({
     markDone,
     archiveThread,
     addToSetAside,
+    addToMorningBrief,
+    isInMorningBrief,
     trashThread,
     setAiSidebarOpen,
     addToAiContext,
@@ -317,6 +320,22 @@ export function ThreadCard({
         <ContextMenuItem onClick={() => { addToSetAside(targets.map(t => t.id)); clearSelection(); }}>
           <Layers className="h-4 w-4" />
           {hasBulk ? `Set ${targets.length} aside` : "Set aside"}
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={() => {
+            addToMorningBrief(targets.map((t) => t.id));
+            clearSelection();
+          }}
+          disabled={targets.every((t) => isInMorningBrief(t.id))}
+        >
+          <Sunrise className="h-4 w-4" />
+          {hasBulk
+            ? targets.every((t) => isInMorningBrief(t.id))
+              ? "All in morning brief"
+              : `Add ${targets.length} to morning brief`
+            : isInMorningBrief(thread.id)
+              ? "In morning brief"
+              : "Add to morning brief"}
         </ContextMenuItem>
         <ContextMenuItem onClick={() => { targets.forEach(t => archiveThread(t.id)); clearSelection(); }}>
           <Archive className="h-4 w-4" />
