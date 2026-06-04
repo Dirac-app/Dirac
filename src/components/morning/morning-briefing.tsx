@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format, formatDistanceToNow, getHours } from "date-fns";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -34,12 +34,17 @@ import {
   type DiracThread,
 } from "@/lib/types";
 import {
-  clearPendingBrief,
   loadPendingStore,
-  removePendingThread,
   savePendingBrief,
-  type PendingBriefStore,
+  removePendingThread,
+  clearPendingBrief,
+  mergeEnrichmentIntoSnapshot,
+  hasValidBriefEnrichment,
+  saveEnrichmentCache,
   type StoredPendingCard,
+  type PendingBriefStore,
+  type PendingPlanSnapshot,
+  MORNING_BRIEF_PENDING_CHANGED,
 } from "@/lib/morning-brief-pending";
 
 const MORNING_BRIEF_VERSION = "v2";
@@ -174,27 +179,18 @@ function recordShownBriefing(
   } catch {}
 }
 
-// ── Pending brief queue — same cards until dismissed or dealt with ─────────
-
-function isThreadDealtWith(
-  thread: DiracThread,
-  triage: TriageCategory | undefined,
-  commitmentCount: number,
-  doneThreads: Set<string>,
+/** Only explicit lifecycle actions remove a thread from the pending brief queue. */
+function isExcludedFromPendingBrief(
+  threadId: string,
   dismissedThreads: Record<string, string>,
+  doneThreads: Set<string>,
   snoozedThreads: { threadId: string }[],
 ): boolean {
   const today = todayKey();
-  if (doneThreads.has(thread.id)) return true;
-  if (snoozedThreads.some((s) => s.threadId === thread.id)) return true;
-  const suppressedUntil = dismissedThreads[thread.id];
+  if (doneThreads.has(threadId)) return true;
+  if (snoozedThreads.some((s) => s.threadId === threadId)) return true;
+  const suppressedUntil = dismissedThreads[threadId];
   if (suppressedUntil && suppressedUntil >= today) return true;
-  // Read in inbox with nothing left that needs attention → treated as handled.
-  if (!thread.isUnread) {
-    const actionable =
-      thread.isUrgent || triage === "needs_reply" || commitmentCount > 0;
-    if (!actionable) return true;
-  }
   return false;
 }
 
@@ -246,7 +242,7 @@ function buildPlanCardFromThread(
   commitmentCount: number,
   enrichment?: Pick<StoredPendingCard, "aiSummary" | "aiPlan" | "needsAction">,
 ): MorningPlanCard {
-  return {
+  const base: MorningPlanCard = {
     threadId: thread.id,
     platform: thread.platform,
     subject: thread.subject,
@@ -262,6 +258,13 @@ function buildPlanCardFromThread(
     urgent: thread.isUrgent,
     commitmentCount,
     ageLabel: formatDistanceToNow(new Date(thread.lastMessageAt), { addSuffix: true }),
+  };
+  const merged = mergeEnrichmentIntoSnapshot(thread.id, base);
+  return {
+    ...base,
+    aiSummary: merged.aiSummary ?? base.aiSummary,
+    aiPlan: merged.aiPlan ?? base.aiPlan,
+    needsAction: merged.needsAction ?? base.needsAction,
   };
 }
 
@@ -282,24 +285,87 @@ function hydratePendingPlans(
     if (!thread) continue;
     const triage = triageMap[thread.id];
     const category = categoryMap[thread.id];
-    const commitmentCount = commitments.filter((c) => c.threadId === thread.id).length;
     if (
-      isThreadDealtWith(
-        thread,
-        triage,
-        commitmentCount,
-        doneThreads,
+      isExcludedFromPendingBrief(
+        thread.id,
         dismissedThreads,
+        doneThreads,
         snoozedThreads,
       )
     ) {
       continue;
     }
+    const commitmentCount = commitments.filter((c) => c.threadId === thread.id).length;
+    const enrichment = mergeEnrichmentIntoSnapshot(stored.threadId, {
+      threadId: stored.threadId,
+      aiSummary: stored.aiSummary,
+      aiPlan: stored.aiPlan,
+      needsAction: stored.needsAction,
+    });
     plans.push(
-      buildPlanCardFromThread(thread, triage, category, commitmentCount, stored),
+      buildPlanCardFromThread(thread, triage, category, commitmentCount, enrichment),
     );
   }
   return plans;
+}
+
+function syncPendingStoreAfterHydrate(
+  store: PendingBriefStore,
+  hydrated: MorningPlanCard[],
+  threads: DiracThread[],
+  dismissedThreads: Record<string, string>,
+  doneThreads: Set<string>,
+  snoozedThreads: { threadId: string }[],
+) {
+  const hydratedById = new Map(hydrated.map((p) => [p.threadId, p]));
+  const kept: PendingPlanSnapshot[] = [];
+
+  for (const stored of store.cards) {
+    if (
+      isExcludedFromPendingBrief(
+        stored.threadId,
+        dismissedThreads,
+        doneThreads,
+        snoozedThreads,
+      )
+    ) {
+      continue;
+    }
+    const thread = threads.find((t) => t.id === stored.threadId);
+    if (!thread) {
+      // Inbox still loading — keep queued IDs until threads arrive.
+      if (threads.length === 0) {
+        kept.push(stored);
+      }
+      continue;
+    }
+    const h = hydratedById.get(stored.threadId);
+    kept.push(
+      mergeEnrichmentIntoSnapshot(stored.threadId, {
+        threadId: stored.threadId,
+        aiSummary: h?.aiSummary ?? stored.aiSummary,
+        aiPlan: h?.aiPlan ?? stored.aiPlan,
+        needsAction: h?.needsAction ?? stored.needsAction,
+      }),
+    );
+  }
+
+  if (kept.length === 0) {
+    clearPendingBrief();
+  } else {
+    savePendingBrief(kept, { notify: false });
+  }
+}
+
+function resolveBriefPlansForOpen(
+  hydratedPending: MorningPlanCard[],
+  candidates: MorningPlanCard[],
+): MorningPlanCard[] {
+  const store = loadPendingStore();
+  if (store && store.cards.length > 0) {
+    return hydratedPending;
+  }
+  return candidates;
 }
 
 // ── Shimmer skeleton for a single plan card ────────────────────────────────
@@ -487,15 +553,24 @@ function PlanCardContent({
           className="mt-3 rounded border border-white/6 px-3 py-2.5 space-y-2"
           style={{ background: state.insetBg }}
         >
-          {/* Summary — primary reading content, high-ish contrast */}
-          {plan.aiSummary ? (
-            <p className="text-[12.5px] leading-[1.65] text-white/78">{plan.aiSummary}</p>
-          ) : (
-            <div className="space-y-1.5 animate-pulse py-0.5">
-              <div className="h-2.5 w-full rounded bg-white/10" />
-              <div className="h-2.5 w-3/4 rounded bg-white/7" />
-            </div>
-          )}
+          {/* Summary — AI when available, heuristic while loading / as fallback */}
+          {(() => {
+            const summaryText = plan.aiSummary?.trim() || (!plan.planLoading ? plan.summary : "");
+            if (summaryText) {
+              return (
+                <p className="text-[12.5px] leading-[1.65] text-white/78">{summaryText}</p>
+              );
+            }
+            if (plan.planLoading) {
+              return (
+                <div className="space-y-1.5 animate-pulse py-0.5">
+                  <div className="h-2.5 w-full rounded bg-white/10" />
+                  <div className="h-2.5 w-3/4 rounded bg-white/7" />
+                </div>
+              );
+            }
+            return null;
+          })()}
 
           {/* Divider + plan */}
           <div className="pt-2 border-t border-white/8">
@@ -609,16 +684,23 @@ export function MorningBriefing() {
   const [settings, setSettings] = useState<MorningBriefSettings>(DEFAULT_SETTINGS);
   const [dismissedThreads, setDismissedThreads] = useState<Record<string, string>>({});
   const [shownHistory, setShownHistory] = useState<Record<string, ShownRecord>>({});
-  const [pendingRevision, setPendingRevision] = useState(0);
   const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipNextShimmer = useRef(false);
   const hasAutoOpened = useRef<string | null>(null); // stores the date shown, handles overnight tabs
   const enrichAbort = useRef<AbortController | null>(null);
+  const [pendingRevision, setPendingRevision] = useState(0);
+
+  useEffect(() => {
+    const onPendingChanged = () => setPendingRevision((n) => n + 1);
+    window.addEventListener(MORNING_BRIEF_PENDING_CHANGED, onPendingChanged);
+    return () =>
+      window.removeEventListener(MORNING_BRIEF_PENDING_CHANGED, onPendingChanged);
+  }, []);
 
   const pendingThreadIds = useMemo(() => {
     const store = loadPendingStore();
     return new Set(store?.cards.map((c) => c.threadId) ?? []);
-  }, [dismissedThreads, pendingRevision]);
+  }, [dismissedThreads, plans.length, pendingRevision]);
 
   const hydratedPending = useMemo(() => {
     const store = loadPendingStore();
@@ -642,44 +724,6 @@ export function MorningBriefing() {
     snoozedThreads,
     dismissedThreads,
     pendingThreadIds,
-    pendingRevision,
-  ]);
-
-  useEffect(() => {
-    const onPendingChanged = () => setPendingRevision((v) => v + 1);
-    window.addEventListener("dirac:morning-brief-pending-changed", onPendingChanged);
-    return () =>
-      window.removeEventListener("dirac:morning-brief-pending-changed", onPendingChanged);
-  }, []);
-
-  // Refresh visible cards when threads are added via inbox context menu.
-  useEffect(() => {
-    if (pendingRevision === 0) return;
-    const store = loadPendingStore();
-    if (!store) return;
-    const next = hydratePendingPlans(
-      store,
-      threads,
-      triageMap,
-      categoryMap,
-      commitments,
-      doneThreads,
-      snoozedThreads,
-      dismissedThreads,
-    );
-    if (!open && !minimized) return;
-    setPlans(next);
-  }, [
-    pendingRevision,
-    open,
-    minimized,
-    threads,
-    triageMap,
-    categoryMap,
-    commitments,
-    doneThreads,
-    snoozedThreads,
-    dismissedThreads,
   ]);
 
   const candidates = useMemo(() => {
@@ -801,20 +845,30 @@ export function MorningBriefing() {
     };
   }, [open]);
 
-  // ─── AI enrichment: fetch per-card summaries + needsAction ───────────────
-  // Fires once per modal open (not on re-open from minimized since aiSummary already set)
+  // Cards still missing AI copy (not in localStorage cache).
+  const enrichmentKey = useMemo(
+    () =>
+      plans
+        .map((p) => `${p.threadId}:${hasValidBriefEnrichment(p) ? "1" : "0"}`)
+        .join("|"),
+    [plans],
+  );
+
+  // ─── AI enrichment: only for cards without cached summary + plan ─────────
   useEffect(() => {
     if (!open) {
       enrichAbort.current?.abort();
       return;
     }
-    // Skip if all plans already have AI enrichment (re-opened from minimized)
-    if (plans.length === 0 || plans.every((p) => p.aiSummary !== undefined && p.aiPlan !== undefined)) return;
+    if (plans.length === 0) return;
+
+    const needsEnrichment = plans.filter((p) => !hasValidBriefEnrichment(p));
+    if (needsEnrichment.length === 0) return;
 
     const controller = new AbortController();
     enrichAbort.current = controller;
 
-    const snapshot = plans.map((p) => ({
+    const snapshot = needsEnrichment.map((p) => ({
       threadId: p.threadId,
       platform: p.platform,
       subject: p.subject,
@@ -827,10 +881,10 @@ export function MorningBriefing() {
       ageLabel: p.ageLabel,
     }));
 
-    // Flag all cards without an AI plan yet as loading, so the UI can skeleton
-    // the plan text instead of showing the generic heuristic fallback.
     setPlans((prev) =>
-      prev.map((p) => (p.aiPlan !== undefined ? p : { ...p, planLoading: true })),
+      prev.map((p) =>
+        hasValidBriefEnrichment(p) ? p : { ...p, planLoading: true },
+      ),
     );
 
     (async () => {
@@ -850,59 +904,140 @@ export function MorningBriefing() {
           setPlans((prev) => prev.map((p) => ({ ...p, planLoading: false })));
           return;
         }
-        setPlans((prev) =>
-          prev.map((p) => {
-            const ai = (
-              data.cards as {
-                threadId: string;
-                summary: string;
-                needsAction: boolean;
-                plan?: string;
-              }[]
-            ).find((c) => c.threadId === p.threadId);
+        const aiById = new Map(
+          (
+            data.cards as {
+              threadId: string;
+              summary: string;
+              needsAction: boolean;
+              plan?: string;
+            }[]
+          ).map((c) => [c.threadId, c]),
+        );
+
+        setPlans((prev) => {
+          const next = prev.map((p) => {
+            const ai = aiById.get(p.threadId);
             if (!ai) return { ...p, planLoading: false };
+            const aiPlan = ai.plan?.trim() || p.aiPlan || p.plan;
+            const aiSummary = ai.summary?.trim() || p.aiSummary;
+            if (!aiSummary?.trim() || !aiPlan?.trim()) {
+              return { ...p, planLoading: false };
+            }
             return {
               ...p,
-              aiSummary: ai.summary,
+              aiSummary,
               needsAction: ai.needsAction,
-              aiPlan: ai.plan?.trim() || p.plan,
+              aiPlan,
               planLoading: false,
             };
-          }),
-        );
+          });
+          saveEnrichmentCache(next);
+          savePendingBrief(next, { notify: false });
+          return next;
+        });
       } catch {
-        // Silently fall back to heuristic plan/summary
         setPlans((prev) => prev.map((p) => ({ ...p, planLoading: false })));
       }
     })();
 
     return () => controller.abort();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, enrichmentKey, plans.length]);
 
-  // Keep pending queue in sync with current cards (incl. AI enrichment + edits).
+  // Keep pending queue + enrichment cache in sync with visible cards.
   useEffect(() => {
-    if (plans.length === 0) {
-      if (loadPendingStore()) clearPendingBrief();
-      return;
-    }
-    savePendingBrief(plans);
+    if (plans.length === 0) return;
+    saveEnrichmentCache(plans);
+    savePendingBrief(plans, { notify: false });
   }, [plans]);
+
+  // Prune/sync localStorage when hydrated pending changes (silent — no notify).
+  useEffect(() => {
+    const store = loadPendingStore();
+    if (!store?.cards.length) return;
+    syncPendingStoreAfterHydrate(
+      store,
+      hydratedPending,
+      threads,
+      dismissedThreads,
+      doneThreads,
+      snoozedThreads,
+    );
+  }, [hydratedPending, threads, dismissedThreads, doneThreads, snoozedThreads]);
+
+  // Refresh visible cards when inbox catches up (e.g. after manual add).
+  useEffect(() => {
+    if (!open && !minimized) return;
+    if (hydratedPending.length === 0) return;
+    setPlans((prev) => {
+      const prevIds = prev
+        .map((p) => p.threadId)
+        .sort()
+        .join(",");
+      const nextIds = hydratedPending
+        .map((p) => p.threadId)
+        .sort()
+        .join(",");
+      return prevIds === nextIds ? prev : hydratedPending;
+    });
+  }, [open, minimized, hydratedPending]);
+
+  const openBriefSession = useCallback(
+    (opts?: { recordShownForNew?: boolean }) => {
+      const store = loadPendingStore();
+      const pending = store
+        ? hydratePendingPlans(
+            store,
+            threads,
+            triageMap,
+            categoryMap,
+            commitments,
+            doneThreads,
+            snoozedThreads,
+            dismissedThreads,
+          )
+        : [];
+
+      if (store && store.cards.length > 0) {
+        syncPendingStoreAfterHydrate(
+          store,
+          pending,
+          threads,
+          dismissedThreads,
+          doneThreads,
+          snoozedThreads,
+        );
+      }
+
+      const toShow = resolveBriefPlansForOpen(pending, candidates);
+
+      if (!store?.cards.length && candidates.length > 0) {
+        savePendingBrief(candidates);
+        if (opts?.recordShownForNew) {
+          const byId = new Map(threads.map((t) => [t.id, t]));
+          recordShownBriefing(candidates, byId);
+          setShownHistory(loadShownHistory());
+        }
+      }
+
+      setPlans(toShow);
+      setOpen(true);
+    },
+    [
+      threads,
+      triageMap,
+      categoryMap,
+      commitments,
+      doneThreads,
+      snoozedThreads,
+      dismissedThreads,
+      candidates,
+    ],
+  );
 
   useEffect(() => {
     function handleOpen() {
-      const toShow = hydratedPending.length > 0 ? hydratedPending : candidates;
-      if (hydratedPending.length === 0 && candidates.length > 0) {
-        const byId = new Map(threads.map((t) => [t.id, t]));
-        recordShownBriefing(candidates, byId);
-        setShownHistory(loadShownHistory());
-      } else if (hydratedPending.length > 0) {
-        savePendingBrief(hydratedPending);
-      } else if (loadPendingStore()) {
-        clearPendingBrief();
-      }
-      setPlans(toShow);
-      setOpen(true);
+      openBriefSession({ recordShownForNew: true });
     }
     function handleStorage() {
       setSettings(loadMorningSettings());
@@ -913,7 +1048,7 @@ export function MorningBriefing() {
       window.removeEventListener("dirac:open-morning-briefing", handleOpen);
       window.removeEventListener("storage", handleStorage);
     };
-  }, [candidates, threads, hydratedPending]);
+  }, [openBriefSession]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -937,31 +1072,21 @@ export function MorningBriefing() {
     const seen = window.localStorage.getItem(getMorningStorageKey());
     if (seen) return;
 
-    const toShow = hydratedPending.length > 0 ? hydratedPending : candidates;
-    if (toShow.length > 0) {
-      hasAutoOpened.current = today;
-      // Write the key immediately — modal opening = briefed for today.
-      // This means refresh or SPA navigation won't re-trigger it.
-      window.localStorage.setItem(getMorningStorageKey(), "1");
-      if (hydratedPending.length === 0 && candidates.length > 0) {
-        const byId = new Map(threads.map((t) => [t.id, t]));
-        recordShownBriefing(candidates, byId);
-        setShownHistory(loadShownHistory());
-      } else if (hydratedPending.length > 0) {
-        savePendingBrief(hydratedPending);
-      }
-      setPlans(toShow);
-      setOpen(true);
-    }
+    const hasPending = (loadPendingStore()?.cards.length ?? 0) > 0;
+    if (!hasPending && candidates.length === 0) return;
+
+    hasAutoOpened.current = today;
+    window.localStorage.setItem(getMorningStorageKey(), "1");
+    openBriefSession({ recordShownForNew: !hasPending });
   }, [
     pathname,
     settings,
     threadsLoading,
     triageLoading,
     categoryLoading,
-    threads,
-    candidates,
-    hydratedPending,
+    threads.length,
+    candidates.length,
+    openBriefSession,
   ]);
 
   const minimize = () => {
@@ -1189,7 +1314,7 @@ export function MorningBriefing() {
             exit={{ opacity: 0, scale: 0.85, y: 12 }}
             transition={{ type: "spring", stiffness: 380, damping: 26 }}
             onClick={reopenFromMinimized}
-            className="fixed bottom-6 left-6 z-50 flex items-center gap-2 rounded-full border border-white/12 bg-black/95 px-4 py-2.5 shadow-lg backdrop-blur-sm text-[13px] font-medium text-white/80 hover:bg-white/6 transition-colors"
+            className="fixed bottom-6 left-6 z-50 flex items-center gap-2 border border-white/12 bg-black/95 px-4 py-2.5 shadow-lg backdrop-blur-sm text-[13px] font-medium text-white/80 hover:bg-white/6 transition-colors"
             style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontStyle: "italic" }}
           >
             <Sparkles className="h-3.5 w-3.5 text-orange-400/70" />

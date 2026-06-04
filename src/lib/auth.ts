@@ -26,15 +26,23 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
   callbacks: {
     async jwt({ token, account, profile }) {
-      if (account && profile) {
-        token.dbUserId = (profile.email as string) ?? (token.email as string) ?? "";
-        return {
+      if (account) {
+        const profileEmail = typeof profile?.email === "string" ? profile.email : undefined;
+        token.dbUserId = profileEmail ?? (token.email as string) ?? "";
+        const next = {
           ...token,
           accessToken: account.access_token,
           refreshToken: account.refresh_token,
           expiresAt: account.expires_at ?? 0,
           provider: account.provider,
         };
+        const googleIdToken =
+          (account as { id_token?: string; idToken?: string }).id_token ??
+          (account as { id_token?: string; idToken?: string }).idToken;
+        if (account.provider === "google" && googleIdToken) {
+          next.googleIdToken = googleIdToken;
+        }
+        return next;
       }
 
       const expiresAt = (token.expiresAt as number) ?? 0;

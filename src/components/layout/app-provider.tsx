@@ -7,14 +7,11 @@ import {
   useMemo,
   type ReactNode,
 } from "react";
-import { useSession } from "next-auth/react";
+import { signIn, useSession } from "next-auth/react";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { AppContext, type AppState, type AiContextItem, type ToneProfile, type Clip } from "@/lib/store";
 import { useToast } from "@/components/ui/toast";
 import { useUndoSystem, type UndoableActionType, getUndoLabel } from "@/lib/undo";
-import {
-  addThreadsToMorningBrief,
-  getPendingThreadIds,
-} from "@/lib/morning-brief-pending";
 import type {
   DiracThread,
   DiracMessage,
@@ -75,8 +72,21 @@ function saveStarred(ids: Set<string>) {
 // ─── Provider ───────────────────────────────────────────
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const { data: session } = useSession();
+  const { data: session, status: nextAuthStatus } = useSession();
   const { toast } = useToast();
+
+  // Supabase-only session (older sign-up): link Gmail via one NextAuth Google sign-in
+  useEffect(() => {
+    if (nextAuthStatus !== "unauthenticated") return;
+
+    const supabase = createSupabaseBrowserClient();
+    void supabase.auth.getSession().then(({ data: { session: supabaseSession } }) => {
+      if (!supabaseSession) return;
+      void signIn("google", {
+        callbackUrl: `/auth/complete?next=${encodeURIComponent("/signup")}`,
+      });
+    });
+  }, [nextAuthStatus]);
 
   // Undo system for thread actions
   const {
@@ -288,57 +298,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSetAsideThreadIds(prev => prev.filter(t => t !== id));
   }, []);
   const clearSetAside = useCallback(() => setSetAsideThreadIds([]), []);
-
-  // ─── Morning brief pending queue ─────────────────────
-  const [morningBriefPendingIds, setMorningBriefPendingIds] = useState<string[]>([]);
-  const refreshMorningBriefPending = useCallback(() => {
-    setMorningBriefPendingIds([...getPendingThreadIds()]);
-  }, []);
-
-  useEffect(() => {
-    refreshMorningBriefPending();
-    const onChanged = () => refreshMorningBriefPending();
-    window.addEventListener("dirac:morning-brief-pending-changed", onChanged);
-    return () => window.removeEventListener("dirac:morning-brief-pending-changed", onChanged);
-  }, [refreshMorningBriefPending]);
-
-  const addToMorningBrief = useCallback(
-    (ids: string[]) => {
-      if (ids.length === 0) return;
-      const eligible = ids.filter((id) => {
-        if (doneThreadIds.has(id)) return false;
-        if (snoozedThreads.some((s) => s.threadId === id)) return false;
-        return threads.some((t) => t.id === id);
-      });
-      if (eligible.length === 0) {
-        toast({
-          title: "Can't add to morning brief",
-          description: "Thread is done, snoozed, or unavailable.",
-          variant: "error",
-        });
-        return;
-      }
-      const added = addThreadsToMorningBrief(eligible);
-      refreshMorningBriefPending();
-      if (added > 0) {
-        toast({
-          title: added === 1 ? "Added to morning brief" : `Added ${added} to morning brief`,
-          variant: "success",
-        });
-      } else {
-        toast({
-          title: "Already in morning brief",
-          description: "These threads are already queued for your next brief.",
-        });
-      }
-    },
-    [threads, doneThreadIds, snoozedThreads, toast, refreshMorningBriefPending],
-  );
-
-  const isInMorningBrief = useCallback(
-    (threadId: string) => morningBriefPendingIds.includes(threadId),
-    [morningBriefPendingIds],
-  );
 
   // ─── View all overlay ─────────────────────────────────
   const [viewAllThreadIds, setViewAllThreadIds] = useState<string[]>([]);
@@ -1453,9 +1412,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addToSetAside,
       removeFromSetAside,
       clearSetAside,
-      morningBriefPendingIds,
-      addToMorningBrief,
-      isInMorningBrief,
       viewAllThreadIds,
       viewAllOpen,
       openViewAll,
@@ -1534,9 +1490,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addToSetAside,
       removeFromSetAside,
       clearSetAside,
-      morningBriefPendingIds,
-      addToMorningBrief,
-      isInMorningBrief,
       viewAllThreadIds,
       viewAllOpen,
       openViewAll,

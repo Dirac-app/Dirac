@@ -57,8 +57,12 @@ import {
   FOUNDER_CATEGORY_COLORS,
   TOPIC_TAG_LABELS,
   TOPIC_TAG_COLORS,
+  type DiracThread,
+  type TopicTag,
+  type TriageCategory,
+  type FounderCategory,
+  type Commitment,
 } from "@/lib/types";
-import type { TopicTag } from "@/lib/types";
 import {
   parseAiContent,
   PENDING_BLOCK_LABELS,
@@ -73,8 +77,90 @@ interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   context?: string[];
+  /** Thread IDs included in the API context for this turn — used to send drafts later. */
+  contextThreadIds?: string[];
   segments?: ParsedSegment[];
   mcqAnswered?: boolean;
+}
+
+function parseThreadHintFromText(text: string): { subject?: string; sender?: string } {
+  const briefing = text.match(/thread\s+"([^"]+)"\s*\(([^)]+)\)/i);
+  if (briefing) return { subject: briefing[1].trim(), sender: briefing[2].trim() };
+  const plan = text.match(/for\s+"([^"]+)"\s+from\s+([^:.]+)/i);
+  if (plan) return { subject: plan[1].trim(), sender: plan[2].trim() };
+  return {};
+}
+
+function matchThreadByHint(
+  threads: DiracThread[],
+  hint: { subject?: string; sender?: string },
+): DiracThread | null {
+  if (!hint.subject && !hint.sender) return null;
+  const subjectLower = hint.subject?.toLowerCase();
+  const senderLower = hint.sender?.toLowerCase();
+
+  const matches = threads.filter((t) => {
+    if (t.platform === "DISCORD") return false;
+    const subjMatch =
+      !subjectLower ||
+      t.subject.toLowerCase().includes(subjectLower) ||
+      subjectLower.includes(t.subject.toLowerCase());
+    const senderMatch =
+      !senderLower ||
+      t.participants.some(
+        (p) =>
+          p.name.toLowerCase().includes(senderLower) ||
+          p.email.toLowerCase().includes(senderLower) ||
+          senderLower.includes(p.name.toLowerCase()),
+      );
+    return subjMatch && senderMatch;
+  });
+
+  if (matches.length === 0) return null;
+  if (matches.length === 1) return matches[0];
+  if (subjectLower) {
+    const exact = matches.find((t) => t.subject.toLowerCase() === subjectLower);
+    if (exact) return exact;
+  }
+  return matches[0];
+}
+
+function matchThreadByGreeting(
+  threads: DiracThread[],
+  draftContent: string,
+): DiracThread | null {
+  const m = draftContent.match(/^\s*(?:hey|hi|hello|dear)\s+([a-z][a-z\-']{1,30})/i);
+  if (!m) return null;
+  const name = m[1].toLowerCase();
+  const matches = threads.filter(
+    (t) =>
+      t.platform !== "DISCORD" &&
+      t.participants.some((p) => {
+        const first = p.name?.split(/\s+/)[0]?.toLowerCase();
+        const local = p.email?.split("@")[0]?.toLowerCase();
+        return first === name || local === name;
+      }),
+  );
+  return matches.length >= 1 ? matches[0] : null;
+}
+
+function matchThreadFromUserText(
+  threads: DiracThread[],
+  text: string,
+): DiracThread | null {
+  const lower = text.toLowerCase();
+  const matches = threads.filter(
+    (t) =>
+      t.platform !== "DISCORD" &&
+      t.subject.length > 4 &&
+      lower.includes(t.subject.toLowerCase()),
+  );
+  if (matches.length === 1) return matches[0];
+  if (matches.length > 1) {
+    const exact = matches.find((t) => lower.includes(`"${t.subject.toLowerCase()}"`));
+    if (exact) return exact;
+  }
+  return null;
 }
 
 // ─── Chat session (history) ─────────────────────────────
@@ -367,128 +453,6 @@ export function AiSidebar() {
     resizeTextarea();
   }, [input, resizeTextarea]);
 
-  // ─── Pick up pending AI query from spotlight ───────────
-  useEffect(() => {
-    if (!pendingAiQuery || !aiSidebarOpen || isStreamingRef.current) return;
-
-    const query = pendingAiQuery;
-    setPendingAiQuery(null);
-
-    // Build thread summaries with category/triage metadata for batch intelligence
-    const threadSummaries = threads.slice(0, 20).map((t) => ({
-      threadId: t.id,
-      subject: t.subject,
-      messages: [
-        {
-          from: t.participants[0]?.name ?? "Unknown",
-          body: t.snippet,
-          sentAt: t.lastMessageAt,
-        },
-      ],
-      category: categoryMap[t.id],
-      triage: triageMap[t.id],
-      lastMessageAt: t.lastMessageAt,
-    }));
-
-    const userMsg: ChatMessage = {
-      role: "user",
-      content: query,
-    };
-
-    setChatMessages((prev) => {
-      const next = [...prev, userMsg, { role: "assistant" as const, content: "", segments: [] }];
-      const insertIdx = next.length - 1;
-
-      // History = everything before the user msg we're about to send. `prev`
-      // already represents that exact snapshot (next minus the two we just
-      // appended), so we use it directly — no ref dance needed here.
-      const history = prev
-        .filter((m) => m.content && m.content.trim().length > 0)
-        .map((m) => ({ role: m.role, content: m.content }));
-
-      // Fire the streaming request
-      (async () => {
-        isStreamingRef.current = true;
-        setIsStreaming(true);
-        try {
-          const res = await fetch("/api/ai/chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              message: query,
-              history: history.length > 0 ? history : undefined,
-              context: threadSummaries.length > 0 ? threadSummaries : undefined,
-              inboxContext: buildInboxOverview(),
-              contactDirectory: buildContactDirectory(),
-              recentSends: [...buildPendingSends(), ...loadRecentSends()],
-              toneProfile: toneProfile ?? undefined,
-              preset: localStorage.getItem("dirac-ai-preset") || undefined,
-              userMemory: serializeMemoryForPrompt(userMemoryRef.current) ?? undefined,
-            }),
-          });
-
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({ error: "AI request failed" }));
-            setChatMessages((prev2) => {
-              const updated = [...prev2];
-              updated[insertIdx] = {
-                role: "assistant",
-                content: err.error || "Something went wrong.",
-                segments: [{ type: "text", content: err.error || "Something went wrong." }],
-              };
-              return updated;
-            });
-            return;
-          }
-
-          const reader = res.body?.getReader();
-          if (!reader) return;
-          const decoder = new TextDecoder();
-          let accumulated = "";
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            accumulated += decoder.decode(value, { stream: true });
-            const current = accumulated;
-            setChatMessages((prev2) => {
-              const updated = [...prev2];
-              updated[insertIdx] = {
-                role: "assistant",
-                content: current,
-                segments: parseAiContent(current),
-              };
-              return updated;
-            });
-          }
-          setChatMessages((prev2) => {
-            const updated = [...prev2];
-            updated[insertIdx] = {
-              role: "assistant",
-              content: accumulated,
-              segments: parseAiContent(accumulated),
-            };
-            return updated;
-          });
-        } catch {
-          setChatMessages((prev2) => {
-            const updated = [...prev2];
-            updated[insertIdx] = {
-              role: "assistant",
-              content: "Failed to reach AI.",
-              segments: [{ type: "text", content: "Failed to reach AI." }],
-            };
-            return updated;
-          });
-        } finally {
-          isStreamingRef.current = false;
-          setIsStreaming(false);
-        }
-      })();
-
-      return next;
-    });
-  }, [pendingAiQuery, aiSidebarOpen, threads, toneProfile, setPendingAiQuery, categoryMap, triageMap]);
-
   // ─── In-flight sends (5-8s pending window) ──────────────────────────────
   // recentSends in localStorage only covers committed sends. Within the undo
   // window the AI would otherwise be blind to "I just kicked off a send" and
@@ -652,59 +616,223 @@ export function AiSidebar() {
   }, [threads, triageMap, categoryMap, topicMap]);
 
   // ─── Build context payload ────────────────────────────
-  const buildContextPayload = async () => {
-    const contextPayload = aiContext.map((ctx) => {
-      const thread = threads.find((t) => t.id === ctx.id);
-      return {
-        threadId: ctx.id,
-        subject: ctx.label,
-        messages: thread
-          ? thread.participants.map((p) => ({
-              from: p.name,
-              body: "",
-              sentAt: thread.lastMessageAt,
-            }))
-          : [],
-        category: thread ? categoryMap[thread.id] : undefined,
-        triage: thread ? triageMap[thread.id] : undefined,
-        lastMessageAt: thread?.lastMessageAt,
-      };
-    });
+  const buildContextPayloadForThreadIds = useCallback(
+    async (ids: string[]) => {
+      const contextPayload = ids.map((id) => {
+        const thread = threads.find((t) => t.id === id);
+        const subject = thread?.subject ?? id;
+        return {
+          threadId: id,
+          subject,
+          messages: thread
+            ? thread.participants.map((p) => ({
+                from: p.name,
+                body: "",
+                sentAt: thread.lastMessageAt,
+              }))
+            : [],
+          category: thread ? categoryMap[thread.id] : undefined,
+          triage: thread ? triageMap[thread.id] : undefined,
+          lastMessageAt: thread?.lastMessageAt,
+        };
+      });
 
-    return Promise.all(
-      contextPayload.map(async (ctx) => {
+      return Promise.all(
+        contextPayload.map(async (ctx) => {
+          try {
+            const thread = threads.find((t) => t.id === ctx.threadId);
+            const platform = thread?.platform;
+            const url =
+              platform === "DISCORD"
+                ? `/api/discord/threads/${ctx.threadId}`
+                : platform === "OUTLOOK"
+                  ? `/api/outlook/threads/${ctx.threadId}`
+                  : `/api/gmail/threads/${ctx.threadId}`;
+            const res = await fetch(url);
+            if (!res.ok) return ctx;
+            const data = await res.json();
+            return {
+              threadId: ctx.threadId,
+              subject: ctx.subject,
+              messages: (data.messages ?? []).map(
+                (m: { fromName: string; bodyText: string; sentAt: string }) => ({
+                  from: m.fromName,
+                  body: m.bodyText,
+                  sentAt: m.sentAt,
+                }),
+              ),
+              category: ctx.category,
+              triage: ctx.triage,
+              lastMessageAt: ctx.lastMessageAt,
+            };
+          } catch {
+            return ctx;
+          }
+        }),
+      );
+    },
+    [threads, categoryMap, triageMap],
+  );
+
+  const buildContextPayload = useCallback(async () => {
+    return buildContextPayloadForThreadIds(aiContext.map((ctx) => ctx.id));
+  }, [aiContext, buildContextPayloadForThreadIds]);
+
+  const buildContextForQuery = useCallback(
+    async (query: string) => {
+      if (aiContext.length > 0) {
+        const payload = await buildContextPayload();
+        return { payload, threadIds: payload.map((p) => p.threadId) };
+      }
+      const hint = parseThreadHintFromText(query);
+      const matched =
+        matchThreadByHint(threads, hint) ?? matchThreadFromUserText(threads, query);
+      if (matched) {
+        const payload = await buildContextPayloadForThreadIds([matched.id]);
+        return { payload, threadIds: [matched.id] };
+      }
+      return { payload: [], threadIds: [] as string[] };
+    },
+    [aiContext, buildContextPayload, buildContextPayloadForThreadIds, threads],
+  );
+
+  const buildContextForPrompt = useCallback(
+    async (prompt: string) => {
+      const fromContext = await buildContextPayload();
+      if (fromContext.length > 0) {
+        return fromContext;
+      }
+      const hint = parseThreadHintFromText(prompt);
+      const matched =
+        matchThreadByHint(threads, hint) ?? matchThreadFromUserText(threads, prompt);
+      if (matched) {
+        return buildContextPayloadForThreadIds([matched.id]);
+      }
+      return fromContext;
+    },
+    [buildContextPayload, buildContextPayloadForThreadIds, threads],
+  );
+
+  // ─── Pick up pending AI query from spotlight ───────────
+  useEffect(() => {
+    if (!pendingAiQuery || !aiSidebarOpen || isStreamingRef.current) return;
+
+    const query = pendingAiQuery;
+    setPendingAiQuery(null);
+
+    const userMsg: ChatMessage = {
+      role: "user",
+      content: query,
+    };
+
+    setChatMessages((prev) => {
+      const next = [...prev, userMsg, { role: "assistant" as const, content: "", segments: [] }];
+      const insertIdx = next.length - 1;
+
+      const history = prev
+        .filter((m) => m.content && m.content.trim().length > 0)
+        .map((m) => ({ role: m.role, content: m.content }));
+
+      (async () => {
+        isStreamingRef.current = true;
+        setIsStreaming(true);
         try {
-          const thread = threads.find((t) => t.id === ctx.threadId);
-          const platform = thread?.platform;
-          const url =
-            platform === "DISCORD"
-              ? `/api/discord/threads/${ctx.threadId}`
-              : platform === "OUTLOOK"
-                ? `/api/outlook/threads/${ctx.threadId}`
-                : `/api/gmail/threads/${ctx.threadId}`;
-          const res = await fetch(url);
-          if (!res.ok) return ctx;
-          const data = await res.json();
-          return {
-            threadId: ctx.threadId,
-            subject: ctx.subject,
-            messages: (data.messages ?? []).map(
-              (m: { fromName: string; bodyText: string; sentAt: string }) => ({
-                from: m.fromName,
-                body: m.bodyText,
-                sentAt: m.sentAt,
-              }),
-            ),
-            category: ctx.category,
-            triage: ctx.triage,
-            lastMessageAt: ctx.lastMessageAt,
-          };
+          const { payload: fullContext, threadIds: contextThreadIds } =
+            await buildContextForQuery(query);
+          const threadIdsField =
+            contextThreadIds.length > 0 ? { contextThreadIds } : {};
+
+          if (contextThreadIds.length > 0) {
+            setChatMessages((prev2) => {
+              const updated = [...prev2];
+              const userIdx = insertIdx - 1;
+              if (updated[userIdx]?.role === "user") {
+                updated[userIdx] = { ...updated[userIdx], contextThreadIds };
+              }
+              return updated;
+            });
+          }
+
+          const res = await fetch("/api/ai/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              message: query,
+              history: history.length > 0 ? history : undefined,
+              context: fullContext.length > 0 ? fullContext : undefined,
+              inboxContext: buildInboxOverview(),
+              contactDirectory: buildContactDirectory(),
+              recentSends: [...buildPendingSends(), ...loadRecentSends()],
+              toneProfile: toneProfile ?? undefined,
+              preset: localStorage.getItem("dirac-ai-preset") || undefined,
+              userMemory: serializeMemoryForPrompt(userMemoryRef.current) ?? undefined,
+            }),
+          });
+
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "AI request failed" }));
+            setChatMessages((prev2) => {
+              const updated = [...prev2];
+              updated[insertIdx] = {
+                role: "assistant",
+                content: err.error || "Something went wrong.",
+                segments: [{ type: "text", content: err.error || "Something went wrong." }],
+                ...threadIdsField,
+              };
+              return updated;
+            });
+            return;
+          }
+
+          const reader = res.body?.getReader();
+          if (!reader) return;
+          const decoder = new TextDecoder();
+          let accumulated = "";
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            accumulated += decoder.decode(value, { stream: true });
+            const current = accumulated;
+            setChatMessages((prev2) => {
+              const updated = [...prev2];
+              updated[insertIdx] = {
+                role: "assistant",
+                content: current,
+                segments: parseAiContent(current),
+                ...threadIdsField,
+              };
+              return updated;
+            });
+          }
+          setChatMessages((prev2) => {
+            const updated = [...prev2];
+            updated[insertIdx] = {
+              role: "assistant",
+              content: accumulated,
+              segments: parseAiContent(accumulated),
+              ...threadIdsField,
+            };
+            return updated;
+          });
         } catch {
-          return ctx;
+          setChatMessages((prev2) => {
+            const updated = [...prev2];
+            updated[insertIdx] = {
+              role: "assistant",
+              content: "Failed to reach AI.",
+              segments: [{ type: "text", content: "Failed to reach AI." }],
+            };
+            return updated;
+          });
+        } finally {
+          isStreamingRef.current = false;
+          setIsStreaming(false);
         }
-      }),
-    );
-  };
+      })();
+
+      return next;
+    });
+  }, [pendingAiQuery, aiSidebarOpen, buildContextForQuery, toneProfile, setPendingAiQuery]);
 
   // ─── Stream AI response ───────────────────────────────
   const streamAiResponse = async (
@@ -713,6 +841,20 @@ export function AiSidebar() {
     insertIdx: number,
   ) => {
     setIsStreaming(true);
+    const contextThreadIds = fullContext.map((c) => c.threadId);
+    const threadIdsField =
+      contextThreadIds.length > 0 ? { contextThreadIds } : {};
+
+    if (contextThreadIds.length > 0) {
+      setChatMessages((prev) => {
+        const updated = [...prev];
+        const userIdx = insertIdx - 1;
+        if (updated[userIdx]?.role === "user") {
+          updated[userIdx] = { ...updated[userIdx], contextThreadIds };
+        }
+        return updated;
+      });
+    }
 
     try {
       // History = everything BEFORE the current user message. The user msg
@@ -745,6 +887,7 @@ export function AiSidebar() {
             role: "assistant",
             content: err.error || "Something went wrong. Check your API key in Settings.",
             segments: [{ type: "text", content: err.error || "Something went wrong." }],
+            ...threadIdsField,
           };
           return updated;
         });
@@ -768,6 +911,7 @@ export function AiSidebar() {
             role: "assistant",
             content: current,
             segments: parseAiContent(current),
+            ...threadIdsField,
           };
           return updated;
         });
@@ -780,6 +924,7 @@ export function AiSidebar() {
           role: "assistant",
           content: accumulated,
           segments: parseAiContent(accumulated),
+          ...threadIdsField,
         };
         return updated;
       });
@@ -790,6 +935,7 @@ export function AiSidebar() {
           role: "assistant",
           content: "Failed to reach AI. Check your connection and API key.",
           segments: [{ type: "text", content: "Failed to reach AI. Check your connection and API key." }],
+          ...threadIdsField,
         };
         return updated;
       });
@@ -816,7 +962,7 @@ export function AiSidebar() {
       textareaRef.current.style.height = "auto";
     }
 
-    const fullContext = await buildContextPayload();
+    const fullContext = await buildContextForPrompt(prompt);
 
     const insertIdx = chatMessages.length + 1; // after user msg
     setChatMessages((prev) => [
@@ -856,7 +1002,7 @@ export function AiSidebar() {
       { role: "assistant", content: "", segments: [] },
     ]);
 
-    const fullContext = await buildContextPayload();
+    const fullContext = await buildContextForPrompt(trimmed);
     const insertIdx = msgIdx + 1; // position of the new assistant placeholder
 
     await streamAiResponse(trimmed, fullContext, insertIdx);
@@ -969,19 +1115,146 @@ export function AiSidebar() {
     setTimeout(() => setCopiedDraft(null), 2000);
   };
 
+  // Resolve which thread a sidebar draft belongs to — from the turn that produced it.
+  const draftReplyRecipient = useCallback(
+    (thread: DiracThread) => {
+      const userEmail = session?.user?.email?.toLowerCase();
+      return (
+        thread.participants.find(
+          (p) => p.email && (!userEmail || p.email.toLowerCase() !== userEmail),
+        ) ?? thread.participants[0]
+      );
+    },
+    [session?.user?.email],
+  );
+
+  const resolveDraftTargetForDraft = useCallback(
+    (msgIdx: number, segIdx: number, draftContent: string): DiracThread | null => {
+      const tryId = (id: string) => {
+        const t = threads.find((x) => x.id === id);
+        return t && t.platform !== "DISCORD" ? t : null;
+      };
+
+      const assistantMsg = chatMessages[msgIdx];
+      const userMsg = chatMessages[msgIdx - 1];
+      const turnThreadIds = [
+        ...(assistantMsg?.contextThreadIds ?? []),
+        ...(userMsg?.role === "user" ? (userMsg.contextThreadIds ?? []) : []),
+      ];
+      const uniqueTurnIds = [...new Set(turnThreadIds)];
+
+      if (uniqueTurnIds.length === 1) {
+        const t = tryId(uniqueTurnIds[0]);
+        if (t) return t;
+      }
+
+      const userText = userMsg?.role === "user" ? userMsg.content : "";
+      const hint = parseThreadHintFromText(userText);
+      const hintMatch = matchThreadByHint(threads, hint);
+      if (hintMatch) return hintMatch;
+
+      const textMatch = matchThreadFromUserText(threads, userText);
+      if (textMatch) return textMatch;
+
+      if (userMsg?.context?.length) {
+        for (const label of userMsg.context) {
+          const t = threads.find(
+            (x) => x.platform !== "DISCORD" && x.subject === label,
+          );
+          if (t) return t;
+        }
+      }
+
+      if (uniqueTurnIds.length > 1 && hint.subject) {
+        for (const id of uniqueTurnIds) {
+          const t = threads.find((x) => x.id === id);
+          if (
+            t &&
+            t.platform !== "DISCORD" &&
+            t.subject.toLowerCase().includes(hint.subject.toLowerCase())
+          ) {
+            return t;
+          }
+        }
+      }
+
+      const segments = assistantMsg?.segments ?? [];
+      for (let i = segIdx - 1; i >= 0; i--) {
+        if (segments[i].type === "text") {
+          const segHint = parseThreadHintFromText(segments[i].content);
+          const segMatch = matchThreadByHint(threads, segHint);
+          if (segMatch) return segMatch;
+          const subjectLine = segments[i].content.match(/\*\*([^*]+)\*\*/);
+          if (subjectLine) {
+            const subj = subjectLine[1].trim();
+            const t = threads.find(
+              (x) =>
+                x.platform !== "DISCORD" &&
+                (x.subject.toLowerCase() === subj.toLowerCase() ||
+                  x.subject.toLowerCase().includes(subj.toLowerCase())),
+            );
+            if (t) return t;
+          }
+          break;
+        }
+      }
+
+      const greetingMatch = matchThreadByGreeting(threads, draftContent);
+      if (greetingMatch) return greetingMatch;
+
+      for (const id of uniqueTurnIds) {
+        const t = tryId(id);
+        if (t) return t;
+      }
+
+      for (const ctx of aiContext) {
+        const t = tryId(ctx.id);
+        if (t) return t;
+      }
+      if (selectedThreadId) {
+        const t = tryId(selectedThreadId);
+        if (t) return t;
+      }
+
+      return null;
+    },
+    [aiContext, selectedThreadId, threads, chatMessages],
+  );
+
+  const resolveDraftRecipient = useCallback(
+    (msgIdx: number, segIdx: number, draftContent: string) => {
+      const thread = resolveDraftTargetForDraft(msgIdx, segIdx, draftContent);
+      if (!thread) return null;
+      const recipient = draftReplyRecipient(thread);
+      const ctx = aiContext.find((c) => c.id === thread.id);
+      return {
+        label: ctx?.label ?? thread.subject,
+        email: recipient?.email ?? null,
+        name: recipient?.name ?? null,
+      };
+    },
+    [resolveDraftTargetForDraft, draftReplyRecipient, aiContext],
+  );
+
   // ─── Send draft via the appropriate platform ──────────
-  const handleSendDraft = async (text: string) => {
-    // Determine target from the first context thread
-    const targetCtx = aiContext[0];
-    if (!targetCtx) {
-      // No context thread — fall back to copy
-      await handleCopyDraft(text);
+  const handleSendDraft = async (text: string, msgIdx: number, segIdx: number) => {
+    const targetThread = resolveDraftTargetForDraft(msgIdx, segIdx, text);
+    if (!targetThread) {
+      toast({
+        title: "Can't send reply",
+        description: "Couldn't determine which thread this draft belongs to.",
+        variant: "error",
+      });
       return;
     }
 
-    const targetThread = threads.find((t) => t.id === targetCtx.id);
-    if (!targetThread) {
-      await handleCopyDraft(text);
+    const recipient = draftReplyRecipient(targetThread);
+    if (!recipient?.email) {
+      toast({
+        title: "Can't send reply",
+        description: "No recipient found for this thread.",
+        variant: "error",
+      });
       return;
     }
 
@@ -997,39 +1270,51 @@ export function AiSidebar() {
         });
         if (!res.ok) throw new Error("Discord send failed");
       } else if (targetThread.platform === "OUTLOOK") {
-        const lastParticipant = targetThread.participants[0];
         const res = await fetch("/api/outlook/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            to: lastParticipant?.email ?? "",
+            to: recipient.email,
             subject: targetThread.subject,
             body: text,
           }),
         });
-        if (!res.ok) throw new Error("Outlook send failed");
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          throw new Error(errBody.error || `Send failed (${res.status})`);
+        }
       } else {
         // Gmail: reply to the thread
-        const lastParticipant = targetThread.participants[0];
         const res = await fetch("/api/gmail/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             threadId: targetThread.id,
-            to: lastParticipant?.email ?? "",
+            to: recipient.email,
             subject: targetThread.subject,
             body: text,
           }),
         });
-        if (!res.ok) throw new Error("Gmail send failed");
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          throw new Error(errBody.error || `Send failed (${res.status})`);
+        }
       }
 
       setSentDraft(text);
       setTimeout(() => setSentDraft(null), 3000);
+      toast({
+        title: "Reply sent",
+        description: `Delivered to ${recipient.name || recipient.email}`,
+        variant: "success",
+      });
     } catch (err) {
       console.error("Send draft error:", err);
-      // Fall back to copy on failure
-      await handleCopyDraft(text);
+      toast({
+        title: "Send failed",
+        description: err instanceof Error ? err.message : "Could not send this reply.",
+        variant: "error",
+      });
     } finally {
       setSendingDraft(null);
     }
@@ -1463,7 +1748,6 @@ export function AiSidebar() {
                 copiedDraft={copiedDraft}
                 sendingDraft={sendingDraft}
                 sentDraft={sentDraft}
-                hasContext={hasContext}
                 onMcqAnswer={handleMcqAnswer}
                 onMcqQuestionsChange={handleMcqQuestionsChange}
                 onEditUserMessage={handleEditUserMessage}
@@ -1478,18 +1762,7 @@ export function AiSidebar() {
                 composeSends={composeSends}
                 isKnownContact={isKnownContact}
                 isValidEmail={isValidEmail}
-                draftRecipient={(() => {
-                  const ctx = aiContext[0];
-                  if (!ctx) return null;
-                  const t = threads.find((x) => x.id === ctx.id);
-                  if (!t) return { label: ctx.label, email: null, name: null };
-                  const p = t.participants[0];
-                  return {
-                    label: ctx.label,
-                    email: p?.email ?? null,
-                    name: p?.name ?? null,
-                  };
-                })()}
+                resolveDraftRecipient={resolveDraftRecipient}
                 onExecuteActions={handleExecuteActions}
                 onViewThread={handlePreviewThread}
               />
@@ -1689,7 +1962,6 @@ function ChatBubble({
   copiedDraft,
   sendingDraft,
   sentDraft,
-  hasContext,
   onMcqAnswer,
   onMcqQuestionsChange,
   onEditUserMessage,
@@ -1704,7 +1976,7 @@ function ChatBubble({
   composeSends,
   isKnownContact,
   isValidEmail,
-  draftRecipient,
+  resolveDraftRecipient,
   onExecuteActions,
   onViewThread,
 }: {
@@ -1715,12 +1987,11 @@ function ChatBubble({
   copiedDraft: string | null;
   sendingDraft: string | null;
   sentDraft: string | null;
-  hasContext: boolean;
   onMcqAnswer: (msgIdx: number, answers: Record<string, string>) => void;
   onMcqQuestionsChange: (msgIdx: number, segIdx: number, next: McqQuestion[]) => void;
   onEditUserMessage: (msgIdx: number, newContent: string) => void;
   onCopyDraft: (text: string) => void;
-  onSendDraft: (text: string) => void;
+  onSendDraft: (text: string, msgIdx: number, segIdx: number) => void;
   onDraftEdit: (msgIdx: number, segIdx: number, nextBody: string) => void;
   onCompose: (data: ComposeData) => void;
   onSendCompose: (data: ComposeData) => void;
@@ -1730,7 +2001,11 @@ function ChatBubble({
   composeSends: Record<string, ComposeSendState>;
   isKnownContact: (email: string) => boolean;
   isValidEmail: (email: string) => boolean;
-  draftRecipient: { label: string; email: string | null; name: string | null } | null;
+  resolveDraftRecipient: (
+    msgIdx: number,
+    segIdx: number,
+    draftContent: string,
+  ) => { label: string; email: string | null; name: string | null } | null;
   onExecuteActions: (items: ActionItem[]) => void;
   onViewThread: (threadId: string, subject?: string, from?: string) => void;
 }) {
@@ -1873,11 +2148,10 @@ function ChatBubble({
               isCopied={copiedDraft === seg.content}
               isSending={sendingDraft === seg.content}
               isSent={sentDraft === seg.content}
-              hasContext={hasContext}
-              recipient={draftRecipient}
+              recipient={resolveDraftRecipient(msgIdx, segIdx, seg.content)}
               onEdit={(next) => onDraftEdit(msgIdx, segIdx, next)}
               onCopy={() => onCopyDraft(seg.content)}
-              onSend={() => onSendDraft(seg.content)}
+              onSend={() => onSendDraft(seg.content, msgIdx, segIdx)}
             />
           );
         }
@@ -2173,7 +2447,6 @@ function DraftBlock({
   isCopied,
   isSending,
   isSent,
-  hasContext,
   recipient,
   onCopy,
   onSend,
@@ -2183,7 +2456,6 @@ function DraftBlock({
   isCopied: boolean;
   isSending: boolean;
   isSent: boolean;
-  hasContext: boolean;
   recipient: { label: string; email: string | null; name: string | null } | null;
   onCopy: () => void;
   onSend: () => void;
@@ -2409,7 +2681,7 @@ function DraftBlock({
               ) : (
                 <>
                   <Send className="h-3 w-3" />
-                  {hasContext ? "Send" : "Copy"}
+                  Send
                 </>
               )}
             </Button>
@@ -2940,13 +3212,6 @@ function ResultsBlock({
 }
 
 // ─── Sidebar Idle State (insight cards + suggestions) ────
-
-import type {
-  DiracThread,
-  TriageCategory,
-  FounderCategory,
-  Commitment,
-} from "@/lib/types";
 
 function SidebarIdleState({
   threads,

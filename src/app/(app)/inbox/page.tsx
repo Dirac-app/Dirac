@@ -177,9 +177,10 @@ export default function InboxPage() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
+                  id="tour-ai-sidebar"
                   variant="outline"
                   size="icon"
-                  className="absolute bottom-4 right-4 h-10 w-10 rounded-full shadow-sm z-10 hidden lg:flex"
+                  className="absolute bottom-4 right-4 h-10 w-10 shadow-sm z-10 hidden lg:flex"
                   onClick={() => setAiSidebarOpen(true)}
                 >
                   <Sparkles className="h-4 w-4" />

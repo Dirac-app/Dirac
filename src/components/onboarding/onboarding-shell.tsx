@@ -7,29 +7,12 @@ import { cn } from "@/lib/utils";
 import { VisualPlaceholder } from "./visual-placeholder";
 import { ShaderAnimation } from "@/components/ui/shader-lines";
 
-// ─── Onboarding Shell ───────────────────────────────────────────
-//
-// The shell is the canvas every screen renders into. It owns:
-//   1. The match-cut motion of the question panel between L/R/center/full.
-//   2. The visual half (placeholder or real asset) that crossfades.
-//   3. The footer (back / next, progress dots).
-//
-// Each screen passes a `panel` position and a `visualSlot` id; the shell
-// handles all motion. Children components stay declarative — no motion logic
-// leaks into the per-screen files.
-//
-// The trick that makes this feel like a match cut is the shared `layoutId`
-// on the panel container. Framer animates the panel's geometry across
-// screens as if it's the same physical element, so the "card" appears to
-// glide rather than swap.
-
 export type PanelPosition = "left" | "right" | "center" | "full";
 
 export interface ScreenConfig {
   panel: PanelPosition;
-  visualSlot?: string; // id picked by VisualPlaceholder; omit when panel is full
+  visualSlot?: string;
   visualLabel?: string;
-  /** When set, the screen wants no chrome (no nav, no progress) — e.g. a finale */
   immersive?: boolean;
 }
 
@@ -40,8 +23,6 @@ const PANEL_TRANSITION: Transition = {
   mass: 0.9,
 };
 
-// Width/positioning of the panel container, per layout. We animate the
-// container's geometry; the inner card just stretches to fill.
 function panelStyle(position: PanelPosition): React.CSSProperties {
   switch (position) {
     case "left":
@@ -59,8 +40,6 @@ function visualStyle(position: PanelPosition): {
   left: React.CSSProperties | null;
   right: React.CSSProperties | null;
 } {
-  // Panel position determines which half is "free" for visuals. When the
-  // panel is full or center, both visuals fade out.
   switch (position) {
     case "left":
       return { left: null, right: { left: "55%", right: "5%", top: "10%", bottom: "10%" } };
@@ -77,27 +56,18 @@ function visualStyle(position: PanelPosition): {
 }
 
 interface OnboardingShellProps {
-  /** 1-indexed for human-friendly progress display */
   step: number;
   totalSteps: number;
   config: ScreenConfig;
-  /** Title shown in the panel — kept here so we can animate it consistently */
   title?: string;
-  /** Optional sub-eyebrow above the title (phase label) */
   eyebrow?: string;
-  /** Panel body content */
   children: React.ReactNode;
-  /** When true, hides the global back button (e.g. first screen) */
   hideBack?: boolean;
-  /** When true, hides the next button (e.g. screens with their own continue logic) */
   hideNext?: boolean;
-  /** Override next button label */
   nextLabel?: string;
-  /** When false, next is disabled (e.g. required choice not made) */
   nextEnabled?: boolean;
   onBack: () => void;
   onNext: () => void;
-  /** Skip handler — appears in the top-right corner */
   onSkip?: () => void;
 }
 
@@ -120,29 +90,26 @@ export function OnboardingShell({
 
   return (
     <div className="fixed inset-0 z-[100] overflow-hidden bg-black">
-      {/* Shader background — fills full screen behind all panels */}
       <div className="absolute inset-0 opacity-90">
         <ShaderAnimation />
       </div>
-      {/* Subtle dark vignette so panel edges read cleanly against the shader */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/40 pointer-events-none" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/40" />
 
-      {/* Skip — always available, top right, low-key */}
       {onSkip && !config.immersive && (
         <button
+          type="button"
           onClick={onSkip}
-          className="absolute right-6 top-6 z-30 text-xs text-white/40 hover:text-white/80 transition-colors"
+          className="absolute right-6 top-6 z-30 text-xs text-white/40 transition-colors hover:text-white/80"
         >
           Skip setup
         </button>
       )}
 
-      {/* Visual halves — crossfade as the slot changes */}
       <AnimatePresence>
         {visuals.left && config.visualSlot && (
           <motion.div
             key={`vis-left-${config.visualSlot}`}
-            className="absolute pointer-events-none"
+            className="pointer-events-none absolute"
             style={visuals.left}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -155,7 +122,7 @@ export function OnboardingShell({
         {visuals.right && config.visualSlot && (
           <motion.div
             key={`vis-right-${config.visualSlot}`}
-            className="absolute pointer-events-none"
+            className="pointer-events-none absolute"
             style={visuals.right}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -167,7 +134,6 @@ export function OnboardingShell({
         )}
       </AnimatePresence>
 
-      {/* The panel — match-cut motion via layoutId */}
       <motion.div
         layout
         layoutId="onboarding-panel"
@@ -182,7 +148,6 @@ export function OnboardingShell({
             "bg-black/85 backdrop-blur-xl",
           )}
         >
-          {/* Panel header — eyebrow + title */}
           {(eyebrow || title) && (
             <div className="px-8 pt-8 pb-2">
               {eyebrow && (
@@ -210,7 +175,6 @@ export function OnboardingShell({
             </div>
           )}
 
-          {/* Panel body — fades on step change */}
           <div className="flex-1 overflow-y-auto px-8 py-4 text-white/90">
             <AnimatePresence mode="wait">
               <motion.div
@@ -226,7 +190,6 @@ export function OnboardingShell({
             </AnimatePresence>
           </div>
 
-          {/* Footer — progress dots + back/next */}
           {!config.immersive && (
             <div className="flex items-center justify-between gap-4 border-t border-white/10 px-8 py-5">
               <div className="flex items-center gap-1.5">
@@ -249,7 +212,7 @@ export function OnboardingShell({
                     variant="ghost"
                     size="sm"
                     onClick={onBack}
-                    className="h-9 gap-1.5 px-3 text-xs text-white/50 hover:text-white hover:bg-white/10"
+                    className="h-9 gap-1.5 px-3 text-xs text-white/50 hover:bg-white/10 hover:text-white"
                   >
                     <ArrowLeft className="h-3.5 w-3.5" />
                     Back

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useSession, signIn } from "next-auth/react";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   Mail,
   Inbox,
@@ -397,34 +398,47 @@ export function Screen3Persona({ answers, onPatch }: ScreenProps) {
   );
 }
 
-// Screen 4 — Continue with Google (auth)
-//
-// Auth is delegated to the existing NextAuth setup. After sign-in the page
-// re-renders with a session, and we render a "you're in" confirmation that
-// auto-advances. Until then, the button is the entire content.
+// Screen 4 — Sign in + connect Gmail (one OAuth: NextAuth + Supabase via /auth/complete)
 export function Screen4SignIn({ goNext }: ScreenProps) {
   const { data: session, status } = useSession();
   const [signingIn, setSigningIn] = useState(false);
+  const [supabaseReady, setSupabaseReady] = useState(false);
+  const [checkingSupabase, setCheckingSupabase] = useState(true);
 
-  // Once authenticated, hold for a moment so the user sees the success
-  // confirmation, then auto-advance.
   useEffect(() => {
-    if (session?.user?.email) {
-      const t = setTimeout(() => goNext(), 900);
+    let cancelled = false;
+    const supabase = createSupabaseBrowserClient();
+    void supabase.auth.getSession().then(({ data: { session: supabaseSession } }) => {
+      if (!cancelled) {
+        setSupabaseReady(Boolean(supabaseSession));
+        setCheckingSupabase(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.email, session?.gmailConnected]);
+
+  const fullyConnected =
+    Boolean(session?.gmailConnected) && Boolean(session?.user?.email) && supabaseReady;
+
+  useEffect(() => {
+    if (fullyConnected) {
+      const t = setTimeout(() => goNext(), 1100);
       return () => clearTimeout(t);
     }
-  }, [session, goNext]);
+  }, [fullyConnected, goNext]);
 
   const handleSignIn = async () => {
     setSigningIn(true);
-    // OAuth requires a full redirect to Google — redirect: false would
-    // return the URL without navigating, so the flow never starts.
-    // Onboarding progress is in localStorage so the modal resumes on return.
-    await signIn("google");
-    setSigningIn(false); // only reached if signIn throws before redirect
+    const returnTo = encodeURIComponent("/onboarding");
+    await signIn("google", {
+      callbackUrl: `/auth/complete?next=${returnTo}`,
+    });
+    setSigningIn(false);
   };
 
-  if (status === "loading") {
+  if (status === "loading" || checkingSupabase) {
     return (
       <div className="flex h-full items-center justify-center">
         <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -432,30 +446,60 @@ export function Screen4SignIn({ goNext }: ScreenProps) {
     );
   }
 
-  if (session?.user?.email) {
+  if (fullyConnected) {
     return (
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         className="flex h-full flex-col items-center justify-center text-center"
       >
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/10 mb-4">
+        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/10">
           <CheckCircle2 className="h-7 w-7 text-emerald-500" />
         </div>
-        <p className="text-base font-medium text-foreground">
-          Signed in as {session.user.email}
-        </p>
-        <p className="mt-1 text-sm text-muted-foreground">One moment…</p>
+        <p className="text-base font-medium text-foreground">Gmail connected</p>
+        <p className="mt-1 text-sm text-muted-foreground">Loading your threads…</p>
       </motion.div>
     );
   }
 
   return (
-    <div className="flex h-full flex-col justify-center">
+    <div className="flex h-full flex-col">
       <p className="text-[15px] leading-relaxed text-muted-foreground">
-        Use your Google account. We won't post anything or contact anyone on
-        your behalf.
+        One Google sign-in starts your trial and connects Gmail. Here&apos;s what that
+        means.
       </p>
+
+      <div className="mt-5 grid grid-cols-2 gap-3">
+        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.03] p-4">
+          <div className="mb-2.5 flex items-center gap-1.5">
+            <Eye className="h-3.5 w-3.5 text-emerald-600" />
+            <p className="text-[11px] font-medium uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+              What we do
+            </p>
+          </div>
+          <ul className="space-y-1.5 text-[12.5px] leading-snug text-foreground/80">
+            <li>Read threads to build your morning brief</li>
+            <li>Draft replies in your tone</li>
+            <li>Triage urgency and category</li>
+            <li>Send when you click Send</li>
+          </ul>
+        </div>
+
+        <div className="rounded-xl border border-border/60 bg-muted/15 p-4">
+          <div className="mb-2.5 flex items-center gap-1.5">
+            <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
+            <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              What we don&apos;t
+            </p>
+          </div>
+          <ul className="space-y-1.5 text-[12.5px] leading-snug text-foreground/80">
+            <li>Train any model on your email</li>
+            <li>Share data with third parties</li>
+            <li>Send anything without your action</li>
+            <li>Store messages on our servers</li>
+          </ul>
+        </div>
+      </div>
 
       <Button
         size="lg"
@@ -472,113 +516,9 @@ export function Screen4SignIn({ goNext }: ScreenProps) {
       </Button>
 
       <div className="mt-4 flex items-start gap-2 text-[12px] text-muted-foreground/70">
-        <Lock className="h-3 w-3 mt-0.5 shrink-0" />
-        <span>
-          Your account is private to you. Email accounts are connected on the
-          next step — you can disconnect anytime.
-        </span>
+        <Lock className="mt-0.5 h-3 w-3 shrink-0" />
+        <span>Private to you · disconnect anytime in Settings</span>
       </div>
-    </div>
-  );
-}
-
-// Screen 5 — Connect inbox (the OAuth ask)
-//
-// This is the single most important conversion moment. The screen earns the
-// permission by showing exactly what Dirac will and won't do, side by side.
-export function Screen5ConnectInbox({ goNext }: ScreenProps) {
-  const { data: session } = useSession();
-  const isConnected = Boolean(session?.gmailConnected);
-  const [connecting, setConnecting] = useState(false);
-
-  useEffect(() => {
-    if (isConnected) {
-      const t = setTimeout(() => goNext(), 1100);
-      return () => clearTimeout(t);
-    }
-  }, [isConnected, goNext]);
-
-  const handleConnectGmail = async () => {
-    setConnecting(true);
-    // Same as Screen4 — OAuth must redirect. Gmail scopes are already
-    // included in the Google provider config, so after this redirect the
-    // session will have gmailConnected: true and Screen5 auto-advances.
-    await signIn("google");
-    setConnecting(false);
-  };
-
-  if (isConnected) {
-    return (
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="flex h-full flex-col items-center justify-center text-center"
-      >
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/10 mb-4">
-          <CheckCircle2 className="h-7 w-7 text-emerald-500" />
-        </div>
-        <p className="text-base font-medium text-foreground">Inbox connected</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Loading your threads now…
-        </p>
-      </motion.div>
-    );
-  }
-
-  return (
-    <div className="flex h-full flex-col">
-      <p className="text-[15px] leading-relaxed text-muted-foreground">
-        Dirac needs read & send access to make the morning brief and AI sidebar
-        work. Here's exactly what that means.
-      </p>
-
-      <div className="mt-5 grid grid-cols-2 gap-3">
-        {/* What it does */}
-        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.03] p-4">
-          <div className="flex items-center gap-1.5 mb-2.5">
-            <Eye className="h-3.5 w-3.5 text-emerald-600" />
-            <p className="text-[11px] uppercase tracking-wider font-medium text-emerald-700 dark:text-emerald-400">What we do</p>
-          </div>
-          <ul className="space-y-1.5 text-[12.5px] leading-snug text-foreground/80">
-            <li>Read threads to build your morning brief</li>
-            <li>Draft replies in your tone</li>
-            <li>Triage urgency and category</li>
-            <li>Send when you click Send</li>
-          </ul>
-        </div>
-
-        {/* What it never does */}
-        <div className="rounded-xl border border-border/60 bg-muted/15 p-4">
-          <div className="flex items-center gap-1.5 mb-2.5">
-            <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
-            <p className="text-[11px] uppercase tracking-wider font-medium text-muted-foreground">What we don't</p>
-          </div>
-          <ul className="space-y-1.5 text-[12.5px] leading-snug text-foreground/80">
-            <li>Train any model on your email</li>
-            <li>Share data with third parties</li>
-            <li>Send anything without your action</li>
-            <li>Store messages on our servers</li>
-          </ul>
-        </div>
-      </div>
-
-      <Button
-        size="lg"
-        onClick={handleConnectGmail}
-        disabled={connecting}
-        className="mt-6 h-12 w-full gap-3 text-sm font-medium"
-      >
-        {connecting ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <Mail className="h-4 w-4" />
-        )}
-        Connect Gmail
-      </Button>
-
-      <p className="mt-3 text-center text-[11px] text-muted-foreground/60">
-        Outlook also supported · revoke anytime in Settings
-      </p>
     </div>
   );
 }

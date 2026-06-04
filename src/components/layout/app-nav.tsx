@@ -141,8 +141,9 @@ export function AppNav() {
           <Tooltip delayDuration={0}>
             <TooltipTrigger asChild>
               <button
+                id="tour-morning-brief"
                 onClick={() => window.dispatchEvent(new CustomEvent("dirac:open-morning-briefing"))}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-orange-500 transition-colors hover:bg-orange-500/10 hover:text-orange-400 touch-target"
+                className="flex h-8 w-8 items-center justify-center text-[#FF8A3D] transition-colors hover:bg-[#FF8A3D]/10 touch-target"
               >
                 <Sunrise className="h-4 w-4" strokeWidth={1.75} />
               </button>

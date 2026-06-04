@@ -16,6 +16,8 @@ import { cn } from "@/lib/utils";
 import { useAppState } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { AccountsEmptyState, SearchEmptyState } from "@/components/ui/empty-state";
+import { InboxDayOneEmpty } from "@/components/inbox/inbox-day-one-empty";
+import { useSession } from "next-auth/react";
 import { ThreadListSkeleton } from "@/components/ui/skeleton";
 import type { DiracThread } from "@/lib/types";
 import { ThreadCard } from "./thread-card";
@@ -139,6 +141,7 @@ const SECTIONS_LS_KEY = "dirac-inbox-sections";
 const DEFAULT_SECTIONS: ExtraSection[] = ["urgent"];
 
 export function ThreadList() {
+  const { data: session } = useSession();
   const {
     threads,
     threadsLoading,
@@ -412,7 +415,11 @@ export function ThreadList() {
       {threadsLoading ? (
         <ThreadListSkeleton />
       ) : threads.length === 0 ? (
-        <AccountsEmptyState />
+        session?.gmailConnected ? (
+          <InboxDayOneEmpty />
+        ) : (
+          <AccountsEmptyState />
+        )
       ) : flatList.length === 0 ? (
         <SearchEmptyState />
       ) : (

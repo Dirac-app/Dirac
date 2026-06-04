@@ -15,7 +15,7 @@ import { ToastProvider } from "@/components/ui/toast";
 import { MorningBriefing } from "@/components/morning/morning-briefing";
 import { SetAsideBar } from "@/components/set-aside/set-aside-bar";
 import { ViewAllOverlay } from "@/components/inbox/view-all-overlay";
-import { OnboardingController } from "@/components/onboarding/onboarding-controller";
+import { InboxTooltips } from "@/components/onboarding/inbox-tooltips";
 import { ThemeConfigProvider, useThemeConfig, getColorSchemeClass, getDensityClass } from "@/lib/theme";
 import { useEffect, useState } from "react";
 import { PenSquare } from "lucide-react";
@@ -96,7 +96,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <SetAsideBar />
               <ViewAllOverlay />
               <KeyboardShortcutsHelp />
-              <OnboardingController />
+              <InboxTooltips />
             </TooltipProvider>
           </AppProvider>
           </ThemeConfigProvider>

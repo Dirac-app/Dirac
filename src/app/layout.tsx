@@ -25,13 +25,13 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Dirac — Cursor for Messages",
+  title: "Dirac — Your intelligent Inbox",
   description:
     "A unified inbox with AI built in. Triage, understand, and respond to Gmail, Outlook, and Discord — fast.",
   metadataBase: new URL("https://dirac.app"),
   manifest: "/manifest.json",
   openGraph: {
-    title: "Dirac — Cursor for Messages",
+    title: "Dirac — Your intelligent Inbox",
     description: "A unified inbox with AI built in.",
     url: "https://dirac.app",
     siteName: "Dirac",

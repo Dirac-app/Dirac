@@ -1,7 +1,7 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   MessageSquare,
   Star,
@@ -16,6 +16,12 @@ import {
   Layers,
   Sunrise,
 } from "lucide-react";
+import {
+  addThreadsToMorningBrief,
+  isInMorningBriefPending,
+  MORNING_BRIEF_PENDING_CHANGED,
+} from "@/lib/morning-brief-pending";
+import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { useAppState } from "@/lib/store";
 import {
@@ -90,8 +96,6 @@ export function ThreadCard({
     markDone,
     archiveThread,
     addToSetAside,
-    addToMorningBrief,
-    isInMorningBrief,
     trashThread,
     setAiSidebarOpen,
     addToAiContext,
@@ -101,12 +105,44 @@ export function ThreadCard({
     doneThreads,
     clearSelection,
   } = useAppState();
+  const { toast } = useToast();
+  const [pendingRevision, setPendingRevision] = useState(0);
+
+  useEffect(() => {
+    const onPendingChanged = () => setPendingRevision((n) => n + 1);
+    window.addEventListener(MORNING_BRIEF_PENDING_CHANGED, onPendingChanged);
+    return () =>
+      window.removeEventListener(MORNING_BRIEF_PENDING_CHANGED, onPendingChanged);
+  }, []);
 
   const sender = thread.participants[0]?.name ?? thread.participants[0]?.email ?? "Unknown";
   const isSnoozed = snoozedThreads.some((s) => s.threadId === thread.id);
   const timeAgo = formatDistanceToNow(new Date(thread.lastMessageAt), { addSuffix: false });
   const hasBulk = isBulkSelected && bulkThreads.length > 1;
   const targets = hasBulk ? bulkThreads : [thread];
+  const allInMorningBrief = useMemo(
+    () => targets.every((t) => isInMorningBriefPending(t.id)),
+    [targets, pendingRevision],
+  );
+
+  const handleAddToMorningBrief = () => {
+    const { added, skipped } = addThreadsToMorningBrief(targets.map((t) => t.id));
+    if (added > 0) {
+      toast({
+        title:
+          added === 1
+            ? "Added to Morning Brief"
+            : `Added ${added} threads to Morning Brief`,
+        variant: "success",
+      });
+    } else if (skipped > 0) {
+      toast({
+        title: hasBulk ? "Already in Morning Brief" : "Already in Morning Brief",
+        variant: "default",
+      });
+    }
+    clearSelection();
+  };
 
   const topics: TopicTag[] = topicMap[thread.id] ?? [];
   const topicBadge = topics.find(
@@ -322,20 +358,17 @@ export function ThreadCard({
           {hasBulk ? `Set ${targets.length} aside` : "Set aside"}
         </ContextMenuItem>
         <ContextMenuItem
-          onClick={() => {
-            addToMorningBrief(targets.map((t) => t.id));
-            clearSelection();
-          }}
-          disabled={targets.every((t) => isInMorningBrief(t.id))}
+          disabled={allInMorningBrief}
+          onClick={handleAddToMorningBrief}
         >
           <Sunrise className="h-4 w-4" />
-          {hasBulk
-            ? targets.every((t) => isInMorningBrief(t.id))
-              ? "All in morning brief"
-              : `Add ${targets.length} to morning brief`
-            : isInMorningBrief(thread.id)
-              ? "In morning brief"
-              : "Add to morning brief"}
+          {allInMorningBrief
+            ? hasBulk
+              ? "Already in Morning Brief"
+              : "In Morning Brief"
+            : hasBulk
+              ? `Add ${targets.length} to Morning Brief`
+              : "Add to Morning Brief"}
         </ContextMenuItem>
         <ContextMenuItem onClick={() => { targets.forEach(t => archiveThread(t.id)); clearSelection(); }}>
           <Archive className="h-4 w-4" />

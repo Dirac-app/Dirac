@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyTesterToken } from "@/lib/tester-auth";
+import { updateSession } from "@/lib/supabase/middleware";
+import { getUserById } from "@/lib/users-db";
+import { requiresUpgrade, resolveSubscriptionStatus } from "@/lib/subscription";
 
 // ── In-memory rate limiter ────────────────────────────────────────────────────
-// Uses a sliding window per IP. Suitable for single-instance deployments.
-// For multi-instance (e.g. multiple Railway containers), replace with Redis.
 
 interface Window {
   count: number;
@@ -13,20 +13,24 @@ interface Window {
 const store = new Map<string, Window>();
 
 const LIMITS: Record<string, { max: number; windowMs: number }> = {
-  // Sending messages — strict
-  "/api/gmail/send":   { max: 30,  windowMs: 60_000 },
-  "/api/outlook/send": { max: 30,  windowMs: 60_000 },
-  "/api/discord/send": { max: 60,  windowMs: 60_000 },
-  // AI — moderate (costly per call)
-  "/api/ai":           { max: 40,  windowMs: 60_000 },
-  // OAuth flows — prevent abuse
-  "/api/oauth":        { max: 20,  windowMs: 60_000 },
-  // General API default
-  "/api":              { max: 200, windowMs: 60_000 },
+  "/api/gmail/send": { max: 30, windowMs: 60_000 },
+  "/api/outlook/send": { max: 30, windowMs: 60_000 },
+  "/api/discord/send": { max: 60, windowMs: 60_000 },
+  "/api/ai": { max: 40, windowMs: 60_000 },
+  "/api/oauth": { max: 20, windowMs: 60_000 },
+  "/api": { max: 200, windowMs: 60_000 },
 };
 
+const APP_PATHS = [
+  "/inbox",
+  "/compose",
+  "/settings",
+  "/activity",
+  "/paper-trail",
+  "/clips",
+];
+
 function getLimit(pathname: string) {
-  // Match most-specific prefix first
   for (const prefix of Object.keys(LIMITS).sort((a, b) => b.length - a.length)) {
     if (pathname.startsWith(prefix)) return LIMITS[prefix];
   }
@@ -47,16 +51,15 @@ function checkRateLimit(key: string, max: number, windowMs: number): boolean {
 
   if (!entry || now > entry.resetAt) {
     store.set(key, { count: 1, resetAt: now + windowMs });
-    return true; // allowed
+    return true;
   }
 
-  if (entry.count >= max) return false; // blocked
+  if (entry.count >= max) return false;
 
   entry.count++;
-  return true; // allowed
+  return true;
 }
 
-// Prune expired entries every 5 minutes to prevent unbounded growth
 let lastPrune = Date.now();
 function maybePrune() {
   const now = Date.now();
@@ -67,29 +70,65 @@ function maybePrune() {
   }
 }
 
-// ── Proxy (Next.js 16 replacement for middleware) ─────────────────────────────
-// Route-level auth is handled inside each API handler via requireAuth().
+function isAppPath(pathname: string): boolean {
+  return APP_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
 
-export function proxy(request: NextRequest) {
+// ── Proxy: session refresh, billing gate, rate limits ─────────────────────────
+
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  const protectedPaths = ["/inbox", "/compose", "/settings", "/activity"];
-  const isProtectedPath = protectedPaths.some(
-    (p) => pathname === p || pathname.startsWith(p + "/"),
-  );
+  const { supabaseResponse, user } = await updateSession(request);
 
-  if (isProtectedPath) {
-    const token = request.cookies.get("dirac-tester-session")?.value;
-    const testerSession = token ? verifyTesterToken(token) : null;
-
-    if (!testerSession) {
+  if (isAppPath(pathname)) {
+    if (!user) {
       const url = request.nextUrl.clone();
-      url.pathname = "/";
+      url.pathname = "/signup";
+      url.searchParams.set("next", pathname);
+      return NextResponse.redirect(url);
+    }
+
+    const appUser = await getUserById(user.id);
+    if (!appUser) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/signup";
+      url.searchParams.set("error", "provision");
+      return NextResponse.redirect(url);
+    }
+
+    const status = await resolveSubscriptionStatus(appUser);
+    if (requiresUpgrade(status)) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/upgrade";
       return NextResponse.redirect(url);
     }
   }
 
-  // Rate limiting for API routes
+  if (pathname === "/upgrade" && user) {
+    const appUser = await getUserById(user.id);
+    if (appUser) {
+      const status = await resolveSubscriptionStatus(appUser);
+      if (!requiresUpgrade(status)) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/inbox";
+        return NextResponse.redirect(url);
+      }
+    }
+  }
+
+  if (pathname === "/signup" && user) {
+    const appUser = await getUserById(user.id);
+    if (appUser?.onboarding_completed_at) {
+      const status = await resolveSubscriptionStatus(appUser);
+      if (!requiresUpgrade(status)) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/inbox";
+        return NextResponse.redirect(url);
+      }
+    }
+  }
+
   if (pathname.startsWith("/api/")) {
     const limit = getLimit(pathname);
     if (limit) {
@@ -113,9 +152,11 @@ export function proxy(request: NextRequest) {
     }
   }
 
-  return NextResponse.next();
+  return supabaseResponse;
 }
 
 export const config = {
-  matcher: ["/api/:path*", "/inbox/:path*", "/compose/:path*", "/settings/:path*", "/activity/:path*"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
 };
