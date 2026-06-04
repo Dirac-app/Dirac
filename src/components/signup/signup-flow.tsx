@@ -72,12 +72,34 @@ const fadeUp = {
   exit: { opacity: 0, y: -8 },
 };
 
+const AUTH_REASON_MESSAGES: Record<string, string> = {
+  no_nextauth_jwt:
+    "Google session was not found on the server. On Vercel, set AUTH_SECRET or NEXTAUTH_SECRET (not TESTER_JWT_SECRET) and NEXTAUTH_URL=https://app.dirac.app.",
+  missing_auth_secret:
+    "Server is missing AUTH_SECRET / NEXTAUTH_SECRET. Add it in Vercel → Project → Environment Variables.",
+  missing_google_id_token:
+    "Google did not return an ID token. Try signing in again.",
+  id_token_exchange_failed: "Could not link your Google account to Dirac. Check Supabase Google provider settings.",
+  supabase_user_missing: "Account link did not complete. Please try again.",
+  provision_failed: "We could not finish setting up your account. Please try again.",
+};
+
+function authErrorMessage(reason: string | null): string {
+  if (!reason) return "Sign-in failed. Please try again.";
+  if (AUTH_REASON_MESSAGES[reason]) return AUTH_REASON_MESSAGES[reason];
+  if (reason.startsWith("id_token_exchange_failed:")) {
+    return "Could not link Google to Dirac. Check Supabase Google Client ID matches GOOGLE_CLIENT_ID.";
+  }
+  return `Sign-in failed (${reason}). Please try again.`;
+}
+
 export function SignupFlow() {
   const router = useRouter();
   const { status: nextAuthStatus } = useSession();
   const [step, setStep] = useState<Step>(1);
   const [booting, setBooting] = useState(true);
   const [authLoading, setAuthLoading] = useState(false);
+  const [linkingAccount, setLinkingAccount] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [emailVolume, setEmailVolume] = useState<EmailVolume | null>(null);
@@ -108,8 +130,11 @@ export function SignupFlow() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const reason = params.get("reason");
     if (params.get("error") === "auth") {
-      setError("Sign-in failed. Please try again.");
+      const msg = authErrorMessage(reason);
+      setError(msg);
+      console.error("[signup] auth error", { reason, message: msg });
     }
     if (params.get("error") === "provision") {
       setError("We could not finish setting up your account. Please try again.");
@@ -120,6 +145,37 @@ export function SignupFlow() {
       const {
         data: { session: supabaseSession },
       } = await supabase.auth.getSession();
+
+      if (nextAuthStatus === "authenticated" && !supabaseSession) {
+        setLinkingAccount(true);
+        try {
+          const res = await fetch("/api/auth/link-supabase", { method: "POST" });
+          const data = (await res.json()) as { ok?: boolean; reason?: string; error?: string };
+          if (res.ok) {
+            await supabase.auth.getSession();
+            setStep(2);
+            persistStep(2);
+            setError(null);
+            setBooting(false);
+            setLinkingAccount(false);
+            return;
+          }
+          const msg = authErrorMessage(data.reason ?? reason);
+          setError(msg);
+          console.error("[signup] link-supabase failed", data);
+          setStep(1);
+          setBooting(false);
+          setLinkingAccount(false);
+          return;
+        } catch (err) {
+          console.error("[signup] link-supabase network error", err);
+          setError("Network error while linking your account. Please try again.");
+          setStep(1);
+          setBooting(false);
+          setLinkingAccount(false);
+          return;
+        }
+      }
 
       if (supabaseSession && nextAuthStatus === "authenticated") {
         try {
@@ -154,13 +210,13 @@ export function SignupFlow() {
     }
 
     void boot();
-  }, [nextAuthStatus, router]);
+  }, [nextAuthStatus, router, persistStep]);
 
   async function handleGoogleSignup() {
     setAuthLoading(true);
     setError(null);
     persistStep(2);
-    await signIn("google", { callbackUrl: "/auth/complete?next=/signup" });
+    await signIn("google", { callbackUrl: "/signup" });
     setAuthLoading(false);
   }
 
@@ -235,10 +291,12 @@ export function SignupFlow() {
     router.push("/inbox");
   }
 
-  if (booting || nextAuthStatus === "loading") {
+  if (booting || nextAuthStatus === "loading" || linkingAccount) {
     return (
       <SignupShell>
-        <p className="text-center text-sm text-zinc-500">Loading…</p>
+        <p className="text-center text-sm text-zinc-500">
+          {linkingAccount ? "Connecting your Google account…" : "Loading…"}
+        </p>
       </SignupShell>
     );
   }
