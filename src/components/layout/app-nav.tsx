@@ -141,7 +141,7 @@ export function AppNav() {
           <Tooltip delayDuration={0}>
             <TooltipTrigger asChild>
               <button
-                id="tour-morning-brief"
+                data-tour="morning-brief"
                 onClick={() => window.dispatchEvent(new CustomEvent("dirac:open-morning-briefing"))}
                 className="flex h-8 w-8 items-center justify-center text-[#FF8A3D] transition-colors hover:bg-[#FF8A3D]/10 touch-target"
               >
@@ -178,15 +178,26 @@ export function AppNav() {
       </header>
 
       {/* Mobile header */}
-      <header className="dirac-panel flex md:hidden h-12 items-center justify-between px-3">
+      <header className="dirac-panel flex md:hidden h-12 items-center justify-between gap-2 px-3">
         <span className="text-sm font-semibold text-foreground tracking-tight">Dirac</span>
-        <button
-          onClick={handleCompose}
-          className="compose-btn flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent/50 touch-target"
-        >
-          <PenSquare className="h-3.5 w-3.5" strokeWidth={2} />
-          Compose
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            data-tour="morning-brief"
+            onClick={() => window.dispatchEvent(new CustomEvent("dirac:open-morning-briefing"))}
+            className="flex h-8 w-8 items-center justify-center text-[#FF8A3D] touch-target"
+            aria-label="Morning Brief"
+          >
+            <Sunrise className="h-4 w-4" strokeWidth={1.75} />
+          </button>
+          <button
+            onClick={handleCompose}
+            className="compose-btn flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent/50 touch-target"
+          >
+            <PenSquare className="h-3.5 w-3.5" strokeWidth={2} />
+            Compose
+          </button>
+        </div>
       </header>
     </>
   );

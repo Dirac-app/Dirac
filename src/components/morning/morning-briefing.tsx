@@ -1308,6 +1308,7 @@ export function MorningBriefing() {
       <AnimatePresence>
         {minimized && !open && (
           <motion.button
+            data-tour="morning-brief"
             key="morning-pill"
             initial={{ opacity: 0, scale: 0.85, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}

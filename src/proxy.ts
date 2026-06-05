@@ -30,6 +30,24 @@ const APP_PATHS = [
   "/clips",
 ];
 
+function isAppPath(pathname: string): boolean {
+  return APP_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+/** Paths reachable while subscription_status is expired (billing + auth only). */
+const EXPIRED_ALLOW_PREFIXES = [
+  "/upgrade",
+  "/api/stripe",
+  "/auth/",
+  "/api/auth/",
+];
+
+function isExpiredBillingExempt(pathname: string): boolean {
+  return EXPIRED_ALLOW_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(prefix),
+  );
+}
+
 function getLimit(pathname: string) {
   for (const prefix of Object.keys(LIMITS).sort((a, b) => b.length - a.length)) {
     if (pathname.startsWith(prefix)) return LIMITS[prefix];
@@ -70,10 +88,6 @@ function maybePrune() {
   }
 }
 
-function isAppPath(pathname: string): boolean {
-  return APP_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
-}
-
 // ── Proxy: session refresh, billing gate, rate limits ─────────────────────────
 
 export async function proxy(request: NextRequest) {
@@ -81,27 +95,15 @@ export async function proxy(request: NextRequest) {
 
   const { supabaseResponse, user } = await updateSession(request);
 
-  if (isAppPath(pathname)) {
-    if (!user) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/signup";
-      url.searchParams.set("next", pathname);
-      return NextResponse.redirect(url);
-    }
-
+  if (user && !isExpiredBillingExempt(pathname)) {
     const appUser = await getUserById(user.id);
-    if (!appUser) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/signup";
-      url.searchParams.set("error", "provision");
-      return NextResponse.redirect(url);
-    }
-
-    const status = await resolveSubscriptionStatus(appUser);
-    if (requiresUpgrade(status)) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/upgrade";
-      return NextResponse.redirect(url);
+    if (appUser) {
+      const status = await resolveSubscriptionStatus(appUser);
+      if (requiresUpgrade(status)) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/upgrade";
+        return NextResponse.redirect(url);
+      }
     }
   }
 
@@ -117,11 +119,23 @@ export async function proxy(request: NextRequest) {
     }
   }
 
+  if (isAppPath(pathname) && !user) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/signup";
+    url.searchParams.set("next", pathname);
+    return NextResponse.redirect(url);
+  }
+
   if (pathname === "/signup" && user) {
     const appUser = await getUserById(user.id);
-    if (appUser?.onboarding_completed_at) {
+    if (appUser) {
       const status = await resolveSubscriptionStatus(appUser);
-      if (!requiresUpgrade(status)) {
+      if (requiresUpgrade(status)) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/upgrade";
+        return NextResponse.redirect(url);
+      }
+      if (appUser.onboarding_completed_at) {
         const url = request.nextUrl.clone();
         url.pathname = "/inbox";
         return NextResponse.redirect(url);

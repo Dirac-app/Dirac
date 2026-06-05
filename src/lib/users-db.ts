@@ -19,6 +19,9 @@ export interface AppUser {
   main_pain_point: MainPainPoint | null;
   shown_tooltips: string[];
   onboarding_completed_at: string | null;
+  emails_processed_count: number;
+  ai_drafts_count: number;
+  trial_reminders_sent: string[];
 }
 
 function mapUser(row: Record<string, unknown>): AppUser {
@@ -36,6 +39,11 @@ function mapUser(row: Record<string, unknown>): AppUser {
     main_pain_point: (row.main_pain_point as MainPainPoint | null) ?? null,
     shown_tooltips: Array.isArray(tooltips) ? (tooltips as string[]) : [],
     onboarding_completed_at: (row.onboarding_completed_at as string | null) ?? null,
+    emails_processed_count: Number(row.emails_processed_count ?? 0),
+    ai_drafts_count: Number(row.ai_drafts_count ?? 0),
+    trial_reminders_sent: Array.isArray(row.trial_reminders_sent)
+      ? (row.trial_reminders_sent as string[])
+      : [],
   };
 }
 
@@ -92,7 +100,14 @@ export async function completeTrialSetup(userId: string, stripeCustomerId: strin
 
 export async function updateOnboardingAnswers(
   userId: string,
-  answers: { user_role: UserRole; email_volume: EmailVolume; main_pain_point: MainPainPoint },
+  answers: {
+    user_role: UserRole;
+    email_volume: EmailVolume;
+    main_pain_point: MainPainPoint;
+    user_role_other?: string | null;
+    email_volume_other?: string | null;
+    main_pain_point_other?: string | null;
+  },
 ): Promise<void> {
   const supabase = createSupabaseAdminClient();
   const { error } = await supabase
@@ -101,6 +116,11 @@ export async function updateOnboardingAnswers(
       user_role: answers.user_role,
       email_volume: answers.email_volume,
       main_pain_point: answers.main_pain_point,
+      user_role_other: answers.user_role === "other" ? (answers.user_role_other?.trim() ?? null) : null,
+      email_volume_other:
+        answers.email_volume === "other" ? (answers.email_volume_other?.trim() ?? null) : null,
+      main_pain_point_other:
+        answers.main_pain_point === "other" ? (answers.main_pain_point_other?.trim() ?? null) : null,
     })
     .eq("id", userId);
   if (error) throw error;

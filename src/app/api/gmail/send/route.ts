@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireGmail } from "@/lib/auth-guard";
 import { validateBody, GmailSendSchema } from "@/lib/validation";
 import { sendReply } from "@/lib/gmail";
+import { incrementUserUsage } from "@/lib/usage-stats";
 
 /**
  * POST /api/gmail/send
@@ -28,6 +29,7 @@ export async function POST(request: NextRequest) {
       body,
       messageId,
     );
+    incrementUserUsage(guard.userId, { emails: 1 });
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("Gmail send error:", err);

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { UpgradeShell } from "@/components/upgrade/upgrade-shell";
 
 export default function UpgradePage() {
   const router = useRouter();
@@ -37,47 +38,36 @@ export default function UpgradePage() {
 
   if (!authReady) {
     return (
-      <main className="home-root">
-        <div className="home-card appear d1">
-          <p className="home-sub">Loading…</p>
-        </div>
-      </main>
+      <UpgradeShell>
+        <p className="text-center text-sm text-zinc-500">Loading…</p>
+      </UpgradeShell>
     );
   }
 
   return (
-    <main className="home-root">
-      <div className="home-card appear d1 max-w-md">
-        <img src="/favicon.png" alt="Dirac" className="home-logo" />
+    <UpgradeShell>
+      <h1 className="text-center text-3xl font-semibold tracking-tight text-white">
+        Your trial has ended.
+      </h1>
 
-        <h1 className="home-title">Upgrade Dirac</h1>
-        <p className="home-sub">
-          Your trial has ended. Choose a plan to keep using Dirac as your inbox chief of staff.
-        </p>
-
-        <div className="mt-6 flex flex-col gap-3">
-          <button
-            type="button"
-            className="home-btn w-full"
-            disabled={loadingPlan !== null}
-            onClick={() => startCheckout("monthly")}
-          >
-            {loadingPlan === "monthly" ? "Redirecting…" : "Monthly — $20/mo"}
-          </button>
-          <button
-            type="button"
-            className="home-btn w-full border border-border bg-transparent text-foreground hover:bg-muted"
-            disabled={loadingPlan !== null}
-            onClick={() => startCheckout("annual")}
-          >
-            {loadingPlan === "annual" ? "Redirecting…" : "Annual — $200/yr"}
-          </button>
-        </div>
-
-        <p className="home-footer">
-          Questions? <a href="mailto:team@dirac.app">Contact the Dirac team</a>
-        </p>
+      <div className="mt-10 flex flex-col gap-3">
+        <button
+          type="button"
+          disabled={loadingPlan !== null}
+          onClick={() => startCheckout("monthly")}
+          className="w-full bg-white px-4 py-3.5 text-sm font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+          {loadingPlan === "monthly" ? "Redirecting…" : "$20 / month"}
+        </button>
+        <button
+          type="button"
+          disabled={loadingPlan !== null}
+          onClick={() => startCheckout("annual")}
+          className="w-full border border-[#FF8A3D] bg-[#FF8A3D]/10 px-4 py-3.5 text-sm font-medium text-white transition-opacity hover:bg-[#FF8A3D]/20 disabled:opacity-50"
+        >
+          {loadingPlan === "annual" ? "Redirecting…" : "$200 / year"}
+        </button>
       </div>
-    </main>
+    </UpgradeShell>
   );
 }

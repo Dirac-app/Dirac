@@ -4,6 +4,7 @@ import { getApiKeyForUser } from "@/lib/user-db";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { resolveModel } from "@/lib/model-config";
 import { rateLimiters, rateLimitResponse } from "@/lib/rate-limit";
+import { incrementUserUsage } from "@/lib/usage-stats";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -130,6 +131,9 @@ Generate 3 different draft options for the above action.`;
       return NextResponse.json({ error: "AI returned invalid JSON" }, { status: 502 });
     }
 
+    incrementUserUsage(session.userId ?? null, {
+      aiDrafts: Array.isArray(options) ? Math.max(1, options.length) : 1,
+    });
     return NextResponse.json({ options });
   } catch (err) {
     console.error("quick-drafts error:", err);

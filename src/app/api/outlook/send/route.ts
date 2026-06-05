@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/auth-guard";
 import { validateBody, OutlookSendSchema } from "@/lib/validation";
 import { sendOutlookReply, sendOutlookMail } from "@/lib/outlook";
 import { getOutlookAccessToken } from "@/lib/outlook-token";
+import { incrementUserUsage } from "@/lib/usage-stats";
 
 export async function POST(request: NextRequest) {
   const guard = await requireAuth();
@@ -28,6 +29,7 @@ export async function POST(request: NextRequest) {
     } else {
       return NextResponse.json({ error: "messageId or to is required" }, { status: 400 });
     }
+    incrementUserUsage(guard.userId, { emails: 1 });
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("Outlook send error:", err);

@@ -9,8 +9,38 @@ import { SignupShell } from "./signup-shell";
 import { ProgressStep } from "./progress-step";
 import { PillToggle } from "./pill-toggle";
 import type { EmailVolume, MainPainPoint, UserRole } from "@/lib/users-db";
+import { fireSignupConfetti } from "@/lib/signup-confetti";
 
 const STEP_STORAGE_KEY = "dirac_signup_step";
+const OAUTH_PENDING_KEY = "dirac_signup_oauth_pending";
+
+function markOAuthPending(): void {
+  try {
+    sessionStorage.setItem(OAUTH_PENDING_KEY, "1");
+  } catch {
+    /* ignore */
+  }
+}
+
+function consumeOAuthPending(): boolean {
+  try {
+    if (sessionStorage.getItem(OAUTH_PENDING_KEY) === "1") {
+      sessionStorage.removeItem(OAUTH_PENDING_KEY);
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
+function clearOAuthPending(): void {
+  try {
+    sessionStorage.removeItem(OAUTH_PENDING_KEY);
+  } catch {
+    /* ignore */
+  }
+}
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -105,12 +135,24 @@ export function SignupFlow() {
   const [emailVolume, setEmailVolume] = useState<EmailVolume | null>(null);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [mainPainPoint, setMainPainPoint] = useState<MainPainPoint | null>(null);
+  const [userRoleOther, setUserRoleOther] = useState("");
+  const [emailVolumeOther, setEmailVolumeOther] = useState("");
+  const [mainPainPointOther, setMainPainPointOther] = useState("");
   const [savingAnswers, setSavingAnswers] = useState(false);
+
+  const answersComplete =
+    !!userRole &&
+    !!emailVolume &&
+    !!mainPainPoint &&
+    (userRole !== "other" || userRoleOther.trim().length > 0) &&
+    (emailVolume !== "other" || emailVolumeOther.trim().length > 0) &&
+    (mainPainPoint !== "other" || mainPainPointOther.trim().length > 0);
 
   const [checkIndex, setCheckIndex] = useState(-1);
   const [checksDone, setChecksDone] = useState(false);
-  const [showBriefNote, setShowBriefNote] = useState(false);
+  const [showReadyNote, setShowReadyNote] = useState(false);
   const [showSetupCta, setShowSetupCta] = useState(false);
+  const [googleConnected, setGoogleConnected] = useState(false);
 
   const persistStep = useCallback((s: Step) => {
     try {
@@ -132,12 +174,19 @@ export function SignupFlow() {
     const params = new URLSearchParams(window.location.search);
     const reason = params.get("reason");
     if (params.get("error") === "auth") {
+      clearOAuthPending();
       const msg = authErrorMessage(reason);
       setError(msg);
       console.error("[signup] auth error", { reason, message: msg });
     }
     if (params.get("error") === "provision") {
+      clearOAuthPending();
       setError("We could not finish setting up your account. Please try again.");
+    }
+
+    function celebrateGoogleSignup() {
+      setGoogleConnected(true);
+      void fireSignupConfetti();
     }
 
     async function boot() {
@@ -156,10 +205,12 @@ export function SignupFlow() {
             setStep(2);
             persistStep(2);
             setError(null);
+            if (consumeOAuthPending()) celebrateGoogleSignup();
             setBooting(false);
             setLinkingAccount(false);
             return;
           }
+          clearOAuthPending();
           const msg = authErrorMessage(data.reason ?? reason);
           setError(msg);
           console.error("[signup] link-supabase failed", data);
@@ -168,6 +219,7 @@ export function SignupFlow() {
           setLinkingAccount(false);
           return;
         } catch (err) {
+          clearOAuthPending();
           console.error("[signup] link-supabase network error", err);
           setError("Network error while linking your account. Please try again.");
           setStep(1);
@@ -198,6 +250,7 @@ export function SignupFlow() {
         } catch {
           setStep(2);
         }
+        if (consumeOAuthPending()) celebrateGoogleSignup();
         setBooting(false);
         return;
       }
@@ -215,13 +268,14 @@ export function SignupFlow() {
   async function handleGoogleSignup() {
     setAuthLoading(true);
     setError(null);
+    markOAuthPending();
     persistStep(2);
     await signIn("google", { callbackUrl: "/signup" });
     setAuthLoading(false);
   }
 
   async function handleSaveQuestions() {
-    if (!userRole || !emailVolume || !mainPainPoint) return;
+    if (!answersComplete || !userRole || !emailVolume || !mainPainPoint) return;
     setSavingAnswers(true);
     setError(null);
     try {
@@ -232,6 +286,9 @@ export function SignupFlow() {
           user_role: userRole,
           email_volume: emailVolume,
           main_pain_point: mainPainPoint,
+          ...(userRole === "other" && { user_role_other: userRoleOther.trim() }),
+          ...(emailVolume === "other" && { email_volume_other: emailVolumeOther.trim() }),
+          ...(mainPainPoint === "other" && { main_pain_point_other: mainPainPointOther.trim() }),
         }),
       });
       if (!res.ok) throw new Error("Failed to save");
@@ -248,7 +305,7 @@ export function SignupFlow() {
 
     setCheckIndex(-1);
     setChecksDone(false);
-    setShowBriefNote(false);
+    setShowReadyNote(false);
     setShowSetupCta(false);
 
     void fetch("/api/user/onboarding/setup", { method: "POST" }).catch((err) => {
@@ -268,7 +325,7 @@ export function SignupFlow() {
     timers.push(
       setTimeout(() => {
         setChecksDone(true);
-        setShowBriefNote(true);
+        setShowReadyNote(true);
       }, SETUP_ITEMS.length * 800 + 400),
     );
 
@@ -337,6 +394,17 @@ export function SignupFlow() {
         {step === 2 && (
           <motion.div key="s2" {...fadeUp} transition={{ duration: 0.35 }}>
             <ProgressStep current={1} />
+            <AnimatePresence>
+              {googleConnected && (
+                <motion.p
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mb-4 text-sm font-medium text-[#FF8A3D]"
+                >
+                  Google connected — you&apos;re signed in.
+                </motion.p>
+              )}
+            </AnimatePresence>
             <h1 className="text-3xl font-semibold tracking-tight text-white">
               Quick question before you go in.
             </h1>
@@ -344,11 +412,25 @@ export function SignupFlow() {
             <div className="mt-10 space-y-8">
               <div>
                 <p className="mb-3 text-sm text-zinc-400">What is your role?</p>
-                <PillToggle options={ROLE_OPTIONS} value={userRole} onChange={setUserRole} />
+                <PillToggle
+                  options={ROLE_OPTIONS}
+                  value={userRole}
+                  onChange={setUserRole}
+                  otherText={userRoleOther}
+                  onOtherTextChange={setUserRoleOther}
+                  otherPlaceholder="Your role"
+                />
               </div>
               <div>
                 <p className="mb-3 text-sm text-zinc-400">What best describes your inbox?</p>
-                <PillToggle options={VOLUME_OPTIONS} value={emailVolume} onChange={setEmailVolume} />
+                <PillToggle
+                  options={VOLUME_OPTIONS}
+                  value={emailVolume}
+                  onChange={setEmailVolume}
+                  otherText={emailVolumeOther}
+                  onOtherTextChange={setEmailVolumeOther}
+                  otherPlaceholder="Describe your inbox"
+                />
               </div>
               <div>
                 <p className="mb-3 text-sm text-zinc-400">What&apos;s your biggest email problem?</p>
@@ -356,13 +438,16 @@ export function SignupFlow() {
                   options={PAIN_OPTIONS}
                   value={mainPainPoint}
                   onChange={setMainPainPoint}
+                  otherText={mainPainPointOther}
+                  onOtherTextChange={setMainPainPointOther}
+                  otherPlaceholder="What’s the main problem?"
                 />
               </div>
             </div>
 
             <button
               type="button"
-              disabled={!userRole || !emailVolume || !mainPainPoint || savingAnswers}
+              disabled={!answersComplete || savingAnswers}
               onClick={handleSaveQuestions}
               className="mt-10 w-full border border-[#FF8A3D] bg-[#FF8A3D]/10 px-4 py-3.5 text-sm font-medium text-white transition-opacity disabled:border-zinc-800 disabled:bg-transparent disabled:text-zinc-600"
             >
@@ -406,13 +491,13 @@ export function SignupFlow() {
             </ul>
 
             <AnimatePresence>
-              {showBriefNote && (
+              {showReadyNote && (
                 <motion.p
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="mt-8 text-sm text-zinc-400"
+                  className="mt-8 text-sm font-medium text-zinc-300"
                 >
-                  Your Morning Brief arrives tomorrow at 7am.
+                  Your inbox is ready.
                 </motion.p>
               )}
             </AnimatePresence>
@@ -439,7 +524,7 @@ export function SignupFlow() {
 
             <ul className="mt-10 space-y-3">
               {[
-                "Your Morning Brief arrives tomorrow at 7am.",
+                "Morning Brief highlights what matters and your plan for each thread.",
                 "Ask the AI to sort your inbox while you wait.",
                 "Everything else is already handled.",
               ].map((line, i) => (

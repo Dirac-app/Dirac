@@ -4,6 +4,7 @@ import { validateBody, AiChatSchema } from "@/lib/validation";
 import { getModelForUser, getApiKeyForUser } from "@/lib/user-db";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { rateLimiters, rateLimitResponse } from "@/lib/rate-limit";
+import { incrementUserUsage } from "@/lib/usage-stats";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const APP_URL = () => process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
@@ -506,6 +507,8 @@ export async function POST(request: NextRequest) {
         }
       },
     });
+
+    incrementUserUsage(guard.userId, { aiDrafts: 1 });
 
     return new Response(stream, {
       headers: {
