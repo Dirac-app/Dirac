@@ -300,6 +300,13 @@ Each key is sent **once** (stored in `trial_reminders_sent`).
 
 ---
 
+## Testing
+
+Step-by-step test checklist (curl, SQL to force day 12/14/15, upgrade wall, Stripe):  
+**[testing-trial-billing.md](./testing-trial-billing.md)**
+
+---
+
 ## Checklist
 
 - [ ] Resend domain **verified**

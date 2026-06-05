@@ -238,6 +238,8 @@ To sign up again as a fresh user:
 
 | Doc | Purpose |
 |-----|---------|
+| [testing-trial-billing.md](./testing-trial-billing.md) | **Trial emails (Resend), upgrade wall, usage stats, day 12/14/15 tests** |
+| [trial-reminder-emails.md](./trial-reminder-emails.md) | Deploy Edge Function, secrets, cron setup |
 | [supabase-setup.md](./supabase-setup.md) | Project, SQL, Google Auth |
 | [stripe-setup.md](./stripe-setup.md) | Products, webhooks, env vars |
 | `.env.local.example` | Full env template |

@@ -1,11 +1,11 @@
 "use client";
 
 interface ProgressStepProps {
-  current: 1 | 2;
-  total?: 2;
+  current: 1 | 2 | 3;
+  total?: 2 | 3;
 }
 
-export function ProgressStep({ current, total = 2 }: ProgressStepProps) {
+export function ProgressStep({ current, total = 3 }: ProgressStepProps) {
   return (
     <div className="mb-10 space-y-2">
       <p className="text-xs font-medium tracking-wide text-zinc-500 uppercase">

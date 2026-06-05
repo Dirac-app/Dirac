@@ -8,6 +8,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { SignupShell } from "./signup-shell";
 import { ProgressStep } from "./progress-step";
 import { PillToggle } from "./pill-toggle";
+import { SignupPricing } from "./signup-pricing";
 import type { EmailVolume, MainPainPoint, UserRole } from "@/lib/users-db";
 import { fireSignupConfetti } from "@/lib/signup-confetti";
 
@@ -42,7 +43,7 @@ function clearOAuthPending(): void {
   }
 }
 
-type Step = 1 | 2 | 3 | 4;
+type Step = 1 | 2 | 3 | 4 | 5;
 
 const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
   { value: "founder_ceo", label: "Founder / CEO" },
@@ -239,7 +240,7 @@ export function SignupFlow() {
               return;
             }
             const saved = Number(localStorage.getItem(STEP_STORAGE_KEY));
-            if (saved >= 2 && saved <= 4) {
+            if (saved >= 2 && saved <= 5) {
               setStep(saved as Step);
             } else {
               setStep(2);
@@ -301,7 +302,7 @@ export function SignupFlow() {
   }
 
   useEffect(() => {
-    if (step !== 3) return;
+    if (step !== 4) return;
 
     setCheckIndex(-1);
     setChecksDone(false);
@@ -461,6 +462,13 @@ export function SignupFlow() {
         {step === 3 && (
           <motion.div key="s3" {...fadeUp} transition={{ duration: 0.35 }}>
             <ProgressStep current={2} />
+            <SignupPricing onContinue={() => goToStep(4)} />
+          </motion.div>
+        )}
+
+        {step === 4 && (
+          <motion.div key="s4" {...fadeUp} transition={{ duration: 0.35 }}>
+            <ProgressStep current={3} />
             <h1 className="text-3xl font-semibold tracking-tight text-white">Setting up your Dirac.</h1>
 
             <ul className="mt-10 space-y-4">
@@ -508,7 +516,7 @@ export function SignupFlow() {
                   type="button"
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
-                  onClick={() => goToStep(4)}
+                  onClick={() => goToStep(5)}
                   className="mt-8 w-full border border-[#FF8A3D] bg-[#FF8A3D]/10 px-4 py-3.5 text-sm font-medium text-white"
                 >
                   Go to my inbox →
@@ -518,8 +526,8 @@ export function SignupFlow() {
           </motion.div>
         )}
 
-        {step === 4 && (
-          <motion.div key="s4" {...fadeUp} transition={{ duration: 0.35 }}>
+        {step === 5 && (
+          <motion.div key="s5" {...fadeUp} transition={{ duration: 0.35 }}>
             <h1 className="text-4xl font-semibold tracking-tight text-white">You&apos;re in.</h1>
 
             <ul className="mt-10 space-y-3">
