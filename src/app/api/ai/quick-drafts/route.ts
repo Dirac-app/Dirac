@@ -5,6 +5,11 @@ import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { resolveModel } from "@/lib/model-config";
 import { rateLimiters, rateLimitResponse } from "@/lib/rate-limit";
 import { incrementUserUsage } from "@/lib/usage-stats";
+import {
+  buildPunctuationRules,
+  buildQuickDraftToneContext,
+} from "@/lib/ai-writing-style";
+import type { ToneProfile } from "@/lib/store";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -48,7 +53,7 @@ export async function POST(request: NextRequest) {
     actionLabel: string;
     threadSubject: string;
     messages?: ThreadMessage[];
-    toneProfile?: Record<string, unknown>;
+    toneProfile?: ToneProfile;
     preset?: string;
   } = body;
 
@@ -60,24 +65,27 @@ export async function POST(request: NextRequest) {
     : "(no thread context available)";
 
   const toneContext = toneProfile
-    ? `\nUser's tone profile: ${JSON.stringify(toneProfile)}`
-    : "";
+    ? buildQuickDraftToneContext(toneProfile)
+    : buildPunctuationRules(null);
 
   const systemPrompt = `You generate ready-to-send email draft options for a busy founder.
 
 Given an action type and thread context, generate exactly 3 draft options. Each option should:
 - Be ready to send as-is (no placeholders, no brackets)
-- Vary meaningfully in approach: e.g., gentle vs. direct vs. assertive, or brief vs. detailed, or different framing
-- Be concise (1–4 sentences typically)
-- Match the user's tone profile if provided
-- Use plain text (no markdown formatting in the body)
+- Sound human and natural, not AI-generated. Match the user's tone profile when provided.
+- Vary meaningfully in approach: gentle vs. direct vs. assertive, or brief vs. detailed, or different framing
+- Be concise (1-4 sentences typically) unless the action clearly needs more
+- Use plain text only in the body (no markdown)
+- Avoid boilerplate ("I hope this email finds you well", "Please don't hesitate to reach out")
 
 Return ONLY a JSON array, no markdown fences, no extra text:
 [
   {"id":"1","label":"Short label for this approach","body":"The full ready-to-send email body"},
   {"id":"2","label":"Short label for this approach","body":"The full ready-to-send email body"},
   {"id":"3","label":"Short label for this approach","body":"The full ready-to-send email body"}
-]${toneContext}`;
+]
+
+${toneContext}`;
 
   const userPrompt = `Action: ${actionLabel}
 Thread subject: "${threadSubject}"

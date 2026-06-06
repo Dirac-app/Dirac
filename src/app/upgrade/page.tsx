@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { UpgradeShell } from "@/components/upgrade/upgrade-shell";
@@ -68,6 +69,15 @@ export default function UpgradePage() {
           {loadingPlan === "annual" ? "Redirecting…" : "$200 / year"}
         </button>
       </div>
+
+      <p className="mt-8 text-center text-sm text-zinc-500">
+        <Link
+          href="/trial-feedback"
+          className="text-zinc-400 underline decoration-zinc-600 underline-offset-4 transition-colors hover:text-[#FF8A3D] hover:decoration-[#FF8A3D]/50"
+        >
+          Share feedback — it genuinely helps us improve Dirac
+        </Link>
+      </p>
     </UpgradeShell>
   );
 }

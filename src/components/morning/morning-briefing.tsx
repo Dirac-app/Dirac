@@ -46,6 +46,10 @@ import {
   type PendingPlanSnapshot,
   MORNING_BRIEF_PENDING_CHANGED,
 } from "@/lib/morning-brief-pending";
+import {
+  notifyBlockingModalClosed,
+  notifyBlockingModalOpened,
+} from "@/lib/modal-blocking";
 
 const MORNING_BRIEF_VERSION = "v2";
 const MORNING_BRIEF_SETTINGS_KEY = "dirac_morning_brief_settings";
@@ -1051,11 +1055,23 @@ export function MorningBriefing() {
   }, [openBriefSession]);
 
   useEffect(() => {
+    if (open) notifyBlockingModalOpened("morning-briefing");
+    else notifyBlockingModalClosed("morning-briefing");
+  }, [open]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     if (pathname !== "/inbox") return;
     if (!settings.enabled) return;
     if (threadsLoading || triageLoading || categoryLoading) return;
     if (threads.length === 0) return;
+
+    // First inbox landing after signup: let shortcuts + tour finish before auto-open.
+    const FIRST_LAND_KEY = "dirac_inbox_first_land";
+    if (!window.localStorage.getItem(FIRST_LAND_KEY)) {
+      window.localStorage.setItem(FIRST_LAND_KEY, "1");
+      return;
+    }
 
     const now = new Date();
     const isWeekday = now.getDay() >= 1 && now.getDay() <= 5;

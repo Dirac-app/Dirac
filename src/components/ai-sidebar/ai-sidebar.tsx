@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import ReactMarkdown from "react-markdown";
+import { AiMarkdown } from "@/components/ai-sidebar/ai-markdown";
+import { DETAIL_LEVEL_KEY } from "@/lib/ai-writing-style";
 import { motion, AnimatePresence } from "framer-motion";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -713,6 +714,19 @@ export function AiSidebar() {
     [buildContextPayload, buildContextPayloadForThreadIds, threads],
   );
 
+  // Start a fresh chat with a prefilled example (inbox tour, etc.)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const query = (e as CustomEvent<{ query?: string }>).detail?.query?.trim();
+      if (!query) return;
+      handleNewChat();
+      setAiSidebarOpen(true);
+      setPendingAiQuery(query);
+    };
+    window.addEventListener("dirac:ai-new-chat", handler);
+    return () => window.removeEventListener("dirac:ai-new-chat", handler);
+  }, [handleNewChat, setAiSidebarOpen, setPendingAiQuery]);
+
   // ─── Pick up pending AI query from spotlight ───────────
   useEffect(() => {
     if (!pendingAiQuery || !aiSidebarOpen || isStreamingRef.current) return;
@@ -765,6 +779,7 @@ export function AiSidebar() {
               recentSends: [...buildPendingSends(), ...loadRecentSends()],
               toneProfile: toneProfile ?? undefined,
               preset: localStorage.getItem("dirac-ai-preset") || undefined,
+              detailLevel: localStorage.getItem(DETAIL_LEVEL_KEY) || undefined,
               userMemory: serializeMemoryForPrompt(userMemoryRef.current) ?? undefined,
             }),
           });
@@ -875,6 +890,7 @@ export function AiSidebar() {
           recentSends: [...buildPendingSends(), ...loadRecentSends()],
           toneProfile: toneProfile ?? undefined,
           preset: localStorage.getItem("dirac-ai-preset") || undefined,
+          detailLevel: localStorage.getItem(DETAIL_LEVEL_KEY) || undefined,
           userMemory: serializeMemoryForPrompt(userMemoryRef.current) ?? undefined,
         }),
       });
@@ -2214,13 +2230,12 @@ function ChatBubble({
           );
         }
 
-        // Rendered markdown
         return (
           <div
             key={segIdx}
-            className="mr-2 rounded-lg bg-muted px-3 py-2 text-[13px] leading-relaxed text-foreground prose prose-sm prose-neutral dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:text-sm prose-headings:font-semibold prose-headings:mt-2 prose-headings:mb-1"
+            className="mr-2 rounded-lg bg-muted px-3 py-2 text-[13px] leading-relaxed text-foreground"
           >
-            <ReactMarkdown>{seg.content}</ReactMarkdown>
+            <AiMarkdown content={seg.content} />
           </div>
         );
       })}
@@ -3274,7 +3289,11 @@ function SidebarIdleState({
     fetch("/api/ai/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: prompt, preset: localStorage.getItem("dirac-ai-preset") || undefined }),
+      body: JSON.stringify({
+        message: prompt,
+        preset: localStorage.getItem("dirac-ai-preset") || undefined,
+        detailLevel: "brief",
+      }),
     })
       .then(async (res) => {
         if (!res.ok || !res.body) return;

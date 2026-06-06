@@ -7,6 +7,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  notifyBlockingModalClosed,
+  notifyBlockingModalOpened,
+} from "@/lib/modal-blocking";
 
 const SHORTCUT_GROUPS = [
   {
@@ -51,6 +55,8 @@ function Kbd({ children }: { children: string }) {
   );
 }
 
+const SHORTCUTS_SEEN_KEY = "dirac_shortcuts_seen";
+
 export function KeyboardShortcutsHelp() {
   const [open, setOpen] = useState(false);
 
@@ -58,13 +64,9 @@ export function KeyboardShortcutsHelp() {
     const handler = () => setOpen(true);
     window.addEventListener("dirac:shortcuts-help", handler);
 
-    const SHORTCUTS_SEEN_KEY = "dirac_shortcuts_seen";
     const seen = localStorage.getItem(SHORTCUTS_SEEN_KEY);
     if (!seen) {
-      const timer = setTimeout(() => {
-        setOpen(true);
-        localStorage.setItem(SHORTCUTS_SEEN_KEY, "true");
-      }, 3000);
+      const timer = setTimeout(() => setOpen(true), 400);
       return () => {
         window.removeEventListener("dirac:shortcuts-help", handler);
         clearTimeout(timer);
@@ -74,8 +76,21 @@ export function KeyboardShortcutsHelp() {
     return () => window.removeEventListener("dirac:shortcuts-help", handler);
   }, []);
 
+  useEffect(() => {
+    if (open) notifyBlockingModalOpened("shortcuts-help");
+    else notifyBlockingModalClosed("shortcuts-help");
+  }, [open]);
+
+  function handleOpenChange(next: boolean) {
+    setOpen(next);
+    if (!next) {
+      localStorage.setItem(SHORTCUTS_SEEN_KEY, "true");
+      window.dispatchEvent(new CustomEvent("dirac:shortcuts-help-closed"));
+    }
+  }
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="text-sm font-semibold">Keyboard shortcuts</DialogTitle>

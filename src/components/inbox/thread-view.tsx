@@ -759,7 +759,13 @@ export function QuickActions({
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: prompt, context, toneProfile: toneProfile ?? undefined, preset: localStorage.getItem("dirac-ai-preset") || undefined }),
+        body: JSON.stringify({
+          message: prompt,
+          context,
+          toneProfile: toneProfile ?? undefined,
+          preset: localStorage.getItem("dirac-ai-preset") || undefined,
+          detailLevel: localStorage.getItem("dirac-ai-detail") || undefined,
+        }),
       });
       if (!res.ok) throw new Error("Failed");
       const reader = res.body?.getReader();

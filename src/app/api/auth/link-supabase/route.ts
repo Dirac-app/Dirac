@@ -9,5 +9,5 @@ export async function POST(request: NextRequest) {
       { status: 401 },
     );
   }
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, supabaseUserId: result.supabaseUserId });
 }

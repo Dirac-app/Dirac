@@ -137,6 +137,7 @@ export const AiChatSchema = z.object({
   recentSends:       z.array(RecentSendSchema).max(30).optional(),
   toneProfile:       ToneProfileSchema.nullable().optional(),
   preset:            z.string().max(20).optional(),
+  detailLevel:       z.enum(["brief", "balanced", "detailed"]).optional(),
   // Compact plain-text block from serializeMemoryForPrompt(); injected as a
   // system message so the AI has cross-session context (relationships, past
   // decisions) without needing a vector DB. Capped at 4 kB to stay well

@@ -99,6 +99,12 @@ const FORMALITY_LABELS: Record<string, string> = {
 // ─── AI Settings Section ─────────────────────────────────
 
 import { PRESET_META, type ModelPreset, FAST_MODEL, STANDARD_MODEL } from "@/lib/model-config";
+import {
+  DETAIL_LEVEL_KEY,
+  DETAIL_LEVEL_META,
+  DETAIL_LEVEL_ORDER,
+  type DetailLevel,
+} from "@/lib/ai-writing-style";
 
 function MorningBriefingSettingsSection() {
   const [enabled, setEnabled] = useState(true);
@@ -186,44 +192,56 @@ function MorningBriefingSettingsSection() {
 const PRESET_ORDER: ModelPreset[] = ["speed", "balanced", "quality"];
 
 function AiSettingsSection() {
-  const [preset,    setPresetState] = useState<ModelPreset>("balanced");
-  const [aboutMe,   setAboutMe]     = useState<string>("");
-  const [saving,    setSaving]      = useState(false);
-  const [saved,     setSaved]       = useState(false);
-  const [saveError, setSaveError]   = useState<string | null>(null);
-  const [loading,   setLoading]     = useState(true);
+  const [preset,      setPresetState]      = useState<ModelPreset>("balanced");
+  const [detailLevel, setDetailLevelState] = useState<DetailLevel>("balanced");
+  const [aboutMe,     setAboutMe]          = useState<string>("");
+  const [saving,      setSaving]           = useState(false);
+  const [saved,       setSaved]            = useState(false);
+  const [saveError,   setSaveError]        = useState<string | null>(null);
+  const [loading,     setLoading]          = useState(true);
 
   useEffect(() => {
     try {
       const savedPreset = localStorage.getItem("dirac-ai-preset") as ModelPreset | null;
       if (savedPreset && PRESET_ORDER.includes(savedPreset)) setPresetState(savedPreset);
+      const savedDetail = localStorage.getItem(DETAIL_LEVEL_KEY) as DetailLevel | null;
+      if (savedDetail && DETAIL_LEVEL_ORDER.includes(savedDetail)) setDetailLevelState(savedDetail);
       const savedAbout = localStorage.getItem("dirac-about-me");
       if (savedAbout) setAboutMe(savedAbout);
     } catch {}
     setLoading(false);
   }, []);
 
-  const persist = useCallback((nextPreset: ModelPreset, nextAbout: string) => {
-    setSaving(true);
-    setSaveError(null);
-    try {
-      localStorage.setItem("dirac-ai-preset", nextPreset);
-      localStorage.setItem("dirac-about-me", nextAbout);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-    } catch {
-      setSaveError("Failed to save.");
-    } finally {
-      setSaving(false);
-    }
-  }, []);
+  const persist = useCallback(
+    (nextPreset: ModelPreset, nextDetail: DetailLevel, nextAbout: string) => {
+      setSaving(true);
+      setSaveError(null);
+      try {
+        localStorage.setItem("dirac-ai-preset", nextPreset);
+        localStorage.setItem(DETAIL_LEVEL_KEY, nextDetail);
+        localStorage.setItem("dirac-about-me", nextAbout);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+      } catch {
+        setSaveError("Failed to save.");
+      } finally {
+        setSaving(false);
+      }
+    },
+    [],
+  );
 
   const handlePresetSelect = (p: ModelPreset) => {
     setPresetState(p);
-    persist(p, aboutMe);
+    persist(p, detailLevel, aboutMe);
   };
 
-  const handleAboutMeBlur = () => persist(preset, aboutMe);
+  const handleDetailSelect = (d: DetailLevel) => {
+    setDetailLevelState(d);
+    persist(preset, d, aboutMe);
+  };
+
+  const handleAboutMeBlur = () => persist(preset, detailLevel, aboutMe);
 
   const meta = PRESET_META[preset];
 
@@ -304,11 +322,57 @@ function AiSettingsSection() {
           )}
         </div>
 
+        {/* Chat detail level */}
+        <div>
+          <label className="text-xs font-medium text-muted-foreground mb-2 block">
+            Chat detail level
+          </label>
+          {loading ? null : (
+            <>
+              <div className="grid grid-cols-3 gap-2">
+                {DETAIL_LEVEL_ORDER.map((d) => {
+                  const isSelected = detailLevel === d;
+                  return (
+                    <button
+                      key={d}
+                      onClick={() => handleDetailSelect(d)}
+                      className={cn(
+                        "flex flex-col items-center gap-1 rounded-lg border px-3 py-3 text-center transition-colors",
+                        isSelected
+                          ? "border-primary bg-primary/8 dark:bg-primary/10"
+                          : "border-border hover:bg-muted/50",
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "h-3 w-3 rounded-full border-2 transition-colors",
+                          isSelected ? "border-primary bg-primary" : "border-muted-foreground/30",
+                        )}
+                      />
+                      <span
+                        className={cn(
+                          "text-xs font-medium",
+                          isSelected ? "text-foreground" : "text-muted-foreground",
+                        )}
+                      >
+                        {DETAIL_LEVEL_META[d].label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                {DETAIL_LEVEL_META[detailLevel].description}
+              </p>
+            </>
+          )}
+        </div>
+
         {/* About you */}
         <div>
           <label className="text-xs font-medium text-muted-foreground">
             About you{" "}
-            <span className="font-normal text-muted-foreground/60">— gives AI context when drafting</span>
+            <span className="font-normal text-muted-foreground/60">gives AI context when drafting</span>
           </label>
           <Textarea
             value={aboutMe}

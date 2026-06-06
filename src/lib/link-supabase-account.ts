@@ -5,7 +5,7 @@ import { ensureUserRowIfNeeded } from "@/lib/provision-user";
 import { getAuthSecret } from "@/lib/auth-secret";
 
 export type LinkSupabaseResult =
-  | { ok: true }
+  | { ok: true; supabaseUserId: string }
   | { ok: false; reason: string; message: string };
 
 /**
@@ -35,6 +35,15 @@ export async function linkSupabaseAccount(request: NextRequest): Promise<LinkSup
     };
   }
 
+  if (jwt.provider !== "google" || !jwt.accessToken || jwt.error) {
+    return {
+      ok: false,
+      reason: "gmail_not_connected",
+      message:
+        "Gmail access was not granted. Sign in again with Google and approve inbox permissions.",
+    };
+  }
+
   const supabase = await createSupabaseServerClient();
   const {
     data: { user: existingUser },
@@ -43,7 +52,7 @@ export async function linkSupabaseAccount(request: NextRequest): Promise<LinkSup
   if (existingUser) {
     try {
       await ensureUserRowIfNeeded(existingUser);
-      return { ok: true };
+      return { ok: true, supabaseUserId: existingUser.id };
     } catch (err) {
       console.error("[link-supabase] ensureUserRowIfNeeded:", err);
       return { ok: false, reason: "provision_failed", message: "Could not finish account setup." };
@@ -79,7 +88,7 @@ export async function linkSupabaseAccount(request: NextRequest): Promise<LinkSup
 
   try {
     await ensureUserRowIfNeeded(data.user);
-    return { ok: true };
+    return { ok: true, supabaseUserId: data.user.id };
   } catch (err) {
     console.error("[link-supabase] ensureUserRowIfNeeded:", err);
     return { ok: false, reason: "provision_failed", message: "Could not finish account setup." };

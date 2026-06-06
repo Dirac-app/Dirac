@@ -69,22 +69,7 @@ export function EmptyState({ type, className }: EmptyStateProps) {
   );
 }
 
-export function AccountsEmptyState() {
-  return (
-    <div className="flex flex-col items-center justify-center px-8 py-20 text-center gap-4">
-      <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-full bg-muted/50">
-        <Mail className="h-8 w-8 text-muted-foreground/40" />
-      </div>
-      <div>
-        <p className="text-base font-medium text-foreground">No accounts connected</p>
-        <p className="mt-1 text-sm text-muted-foreground">Connect Gmail or Outlook in settings</p>
-      </div>
-      <Button size="sm" asChild>
-        <Link href="/settings">Connect an account</Link>
-      </Button>
-    </div>
-  );
-}
+export { AccountsEmptyState } from "./accounts-empty-state";
 
 export function SearchEmptyState() {
   return (

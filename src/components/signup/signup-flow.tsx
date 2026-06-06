@@ -9,6 +9,7 @@ import { SignupShell } from "./signup-shell";
 import { ProgressStep } from "./progress-step";
 import { PillToggle } from "./pill-toggle";
 import { SignupPricing } from "./signup-pricing";
+import type { Session } from "next-auth";
 import type { EmailVolume, MainPainPoint, UserRole } from "@/lib/users-db";
 import { fireSignupConfetti } from "@/lib/signup-confetti";
 
@@ -113,6 +114,8 @@ const AUTH_REASON_MESSAGES: Record<string, string> = {
   id_token_exchange_failed: "Could not link your Google account to Dirac. Check Supabase Google provider settings.",
   supabase_user_missing: "Account link did not complete. Please try again.",
   provision_failed: "We could not finish setting up your account. Please try again.",
+  gmail_not_connected:
+    "Gmail wasn't connected. Sign in again with Google and approve inbox access.",
 };
 
 function authErrorMessage(reason: string | null): string {
@@ -124,9 +127,13 @@ function authErrorMessage(reason: string | null): string {
   return `Sign-in failed (${reason}). Please try again.`;
 }
 
+function gmailReady(session: Session | null | undefined): boolean {
+  return Boolean(session?.gmailConnected && session?.accessToken && !session?.error);
+}
+
 export function SignupFlow() {
   const router = useRouter();
-  const { status: nextAuthStatus } = useSession();
+  const { data: session, status: nextAuthStatus } = useSession();
   const [step, setStep] = useState<Step>(1);
   const [booting, setBooting] = useState(true);
   const [authLoading, setAuthLoading] = useState(false);
@@ -191,12 +198,33 @@ export function SignupFlow() {
     }
 
     async function boot() {
+      if (nextAuthStatus === "loading") return;
+
       const supabase = createSupabaseBrowserClient();
       const {
         data: { session: supabaseSession },
       } = await supabase.auth.getSession();
 
-      if (nextAuthStatus === "authenticated" && !supabaseSession) {
+      const hasGmail = gmailReady(session);
+
+      // Supabase billing row without Gmail tokens — must re-auth with NextAuth.
+      if (supabaseSession && nextAuthStatus === "authenticated" && !hasGmail) {
+        setStep(1);
+        setError(authErrorMessage("gmail_not_connected"));
+        setBooting(false);
+        return;
+      }
+
+      if (supabaseSession && !hasGmail && nextAuthStatus === "unauthenticated") {
+        setStep(1);
+        setError(
+          "Your account exists but Gmail isn't connected. Sign in with Google below to link your inbox.",
+        );
+        setBooting(false);
+        return;
+      }
+
+      if (nextAuthStatus === "authenticated" && hasGmail && !supabaseSession) {
         setLinkingAccount(true);
         try {
           const res = await fetch("/api/auth/link-supabase", { method: "POST" });
@@ -230,7 +258,7 @@ export function SignupFlow() {
         }
       }
 
-      if (supabaseSession && nextAuthStatus === "authenticated") {
+      if (supabaseSession && hasGmail) {
         try {
           const res = await fetch("/api/user/profile");
           if (res.ok) {
@@ -256,22 +284,21 @@ export function SignupFlow() {
         return;
       }
 
-      if (nextAuthStatus !== "loading") {
-        // Always show screen 1 unless both auth sessions already exist.
-        setStep(1);
-        setBooting(false);
-      }
+      setStep(1);
+      setBooting(false);
     }
 
     void boot();
-  }, [nextAuthStatus, router, persistStep]);
+  }, [nextAuthStatus, session, router, persistStep]);
 
   async function handleGoogleSignup() {
     setAuthLoading(true);
     setError(null);
     markOAuthPending();
     persistStep(2);
-    await signIn("google", { callbackUrl: "/signup" });
+    await signIn("google", {
+      callbackUrl: `/auth/complete?next=${encodeURIComponent("/signup")}`,
+    });
     setAuthLoading(false);
   }
 

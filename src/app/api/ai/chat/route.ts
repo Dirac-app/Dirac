@@ -5,65 +5,31 @@ import { getModelForUser, getApiKeyForUser } from "@/lib/user-db";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { rateLimiters, rateLimitResponse } from "@/lib/rate-limit";
 import { incrementUserUsage } from "@/lib/usage-stats";
+import {
+  buildDetailLevelInstruction,
+  buildPunctuationRules,
+  buildToneInstruction,
+  parseDetailLevel,
+} from "@/lib/ai-writing-style";
+import type { ToneProfile } from "@/lib/store";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const APP_URL = () => process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
-interface ConditionalTone {
-  context: "cold_outreach" | "client_customer" | "internal_team" | "formal_professional" | "casual_personal" | "follow_ups";
-  tone: string;
-  formality: string;
-  traits: string[];
-  example_phrases: string[];
-}
-
-const CONTEXT_LABELS: Record<string, string> = {
-  cold_outreach: "cold outreach / first contact",
-  client_customer: "client or customer replies",
-  internal_team: "internal team / coworkers",
-  formal_professional: "formal professional communication",
-  casual_personal: "casual / personal conversations",
-  follow_ups: "follow-ups and reminders",
-};
-
-interface ToneProfile {
-  summary: string;
-  formality: string;
-  traits: string[];
-  greeting_style: string;
-  signoff_style: string;
-  example_phrases: string[];
-  conditional_tones?: ConditionalTone[];
-}
-
-interface RequestBody {
-  message: string;
-  /** Prior turns of THIS chat session, oldest first. Excludes the current
-   *  user message (which is sent as `message`). Required for any kind of
-   *  multi-turn coherence — without it the AI has no memory at all. */
-  history?: { role: "user" | "assistant"; content: string }[];
-  context?: {
-    threadId: string;
-    subject: string;
-    messages: { from: string; body: string; sentAt: string }[];
-    category?: string;
-    triage?: string;
-    lastMessageAt?: string;
-  }[];
-  contactDirectory?: { name?: string; email: string; count?: number }[];
-  recentSends?: { to: string; subject: string; bodyPreview: string; sentAt: string }[];
-  toneProfile?: ToneProfile | null;
-}
-
 const SYSTEM_PROMPT = `You are Dirac, an AI communication assistant embedded in an email client for developers and founders.
 
-You always have automatic access to the user's full inbox overview (provided as structured data before each message). Use it proactively — NEVER tell the user to "add threads as context" for inbox-level questions. You can answer questions like "what's urgent today?", "any failed builds?", "what payments are overdue?" directly from the inbox overview.
+You always have automatic access to the user's full inbox overview (provided as structured data before each message). Use it proactively. NEVER tell the user to "add threads as context" for inbox-level questions. You can answer questions like "what's urgent today?", "any failed builds?", "what payments are overdue?" directly from the inbox overview.
 
-## Core rules
-- Be concise and direct. Default output ≤ ~120 words unless the user asks for detail.
-- Match the tone of the conversation you're helping with.
+## Voice & conversation style
+- Sound like a sharp, helpful colleague. Conversational, not corporate or robotic.
+- No filler openers ("Certainly!", "Great question!", "I'd be happy to help").
 - If context threads are provided, reference them specifically.
-- Prefer bullets and structure over paragraphs.
+- Follow the response detail level instruction injected separately (brief / balanced / detailed).
+
+## Markdown formatting (chat prose only)
+- Format normal chat answers in markdown. The UI renders it: use ## headers, bullet lists, **bold** for emphasis, and markdown tables when comparing items or listing 3+ threads with attributes.
+- Do NOT use markdown inside \`\`\`draft blocks or compose JSON bodies (those stay plain text).
+- Do not say "here is a markdown table" or explain your formatting choices.
 
 ## Source-of-truth precedence — read this carefully
 When deciding what to do, sources of information have a strict order of authority:
@@ -148,7 +114,7 @@ match the recipient implied by the request, ALWAYS use compose.
 \`\`\`draft
 Hey Sarah,
 
-Thanks for sending the proposal over. I've reviewed it and everything looks good — happy to move forward.
+Thanks for sending the proposal over. I've reviewed it and everything looks good. Happy to move forward.
 
 Best,
 Alex
@@ -156,7 +122,10 @@ Alex
 
 Rules for drafts:
 - Use only when the answer above is clearly "draft" per the routing rule.
-- Produce the reply text only — no preamble like "Here's a draft".
+- Produce the reply text only. No preamble like "Here's a draft".
+- Write like a real person: natural phrasing, varied sentence length, no AI boilerplate.
+- Match the user's tone profile when provided (greeting, sign-off, vocabulary, formality).
+- Plain text only inside the draft block. No markdown, no em dashes unless the user's style uses them.
 - The greeting (e.g. "Hey Sarah,") must address a participant of the in-context thread. If the name in your greeting doesn't match an in-context participant, you should be using "compose" instead.
 - You may include a brief 1-sentence note after the draft block.
 
@@ -249,11 +218,11 @@ Inbox overview metadata fields:
 Use this metadata to filter threads for batch operations. When the user says "customer emails", filter by category="customer". When they say "unanswered", filter by triage="needs_reply". When they say "failed builds" or "CI/CD issues", filter by topics containing "ci_cd". When they say "payments" or "billing", filter by topics containing "billing".
 
 ## Other response shapes
-- **Summary**: tight bullets — what changed, what needs reply.
+- **Summary**: tight bullets on what changed and what needs reply.
 - **Checklist**: action items with owner + deadline if present.
 - **Ranking**: ordered list with one-line reasons.
 - **Rewrite**: alternative phrasings (tone/length).
-For these, use plain text (no special fences needed).`;
+For these, use markdown structure (headers, bullets, tables) without special fences.`;
 
 /**
  * POST /api/ai/chat
@@ -285,40 +254,21 @@ export async function POST(request: NextRequest) {
   // Build the messages array for the LLM
   const llmMessages: { role: string; content: string }[] = [
     { role: "system", content: SYSTEM_PROMPT },
+    {
+      role: "system",
+      content: buildDetailLevelInstruction(parseDetailLevel(body.detailLevel)),
+    },
+    {
+      role: "system",
+      content: buildPunctuationRules(body.toneProfile as ToneProfile | null | undefined),
+    },
   ];
 
   if (body.toneProfile) {
-    const tp = body.toneProfile;
-    let toneInstruction = `## User's writing style (IMPORTANT — match this when drafting)\n`;
-    toneInstruction += `Default tone: ${tp.summary}\n`;
-    if (tp.formality) toneInstruction += `Default formality: ${tp.formality}\n`;
-    if (tp.traits.length > 0)
-      toneInstruction += `Key traits: ${tp.traits.join(", ")}\n`;
-    if (tp.greeting_style)
-      toneInstruction += `Typical greeting: ${tp.greeting_style}\n`;
-    if (tp.signoff_style)
-      toneInstruction += `Typical sign-off: ${tp.signoff_style}\n`;
-    if (tp.example_phrases.length > 0)
-      toneInstruction += `Characteristic phrases: ${tp.example_phrases.map((p) => `"${p}"`).join(", ")}\n`;
-
-    if (tp.conditional_tones && tp.conditional_tones.length > 0) {
-      toneInstruction += `\n## Contextual tone shifts\nThis user writes DIFFERENTLY depending on context. Match the appropriate tone:\n`;
-      for (const ct of tp.conditional_tones) {
-        const label = CONTEXT_LABELS[ct.context] || ct.context;
-        toneInstruction += `\n### When writing: ${label}\n`;
-        toneInstruction += `Tone: ${ct.tone}\n`;
-        toneInstruction += `Formality: ${ct.formality}\n`;
-        if (ct.traits.length > 0)
-          toneInstruction += `Traits: ${ct.traits.join(", ")}\n`;
-        if (ct.example_phrases.length > 0)
-          toneInstruction += `Example phrases: ${ct.example_phrases.map((p) => `"${p}"`).join(", ")}\n`;
-      }
-      toneInstruction += `\nDetermine which context best fits the current thread/request and apply that specific tone. If none match, use the default tone.`;
-    }
-
-    toneInstruction += `\nWhen writing drafts, replicate this user's style naturally. Do NOT mention or reference the tone profile itself.`;
-
-    llmMessages.push({ role: "system", content: toneInstruction });
+    llmMessages.push({
+      role: "system",
+      content: buildToneInstruction(body.toneProfile as ToneProfile),
+    });
   }
 
   // Inject cross-session user memory (relationships, past decisions, patterns).

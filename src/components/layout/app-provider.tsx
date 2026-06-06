@@ -75,15 +75,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const { data: session, status: nextAuthStatus } = useSession();
   const { toast } = useToast();
 
-  // Supabase-only session (older sign-up): link Gmail via one NextAuth Google sign-in
+  // Supabase session without Gmail: one NextAuth sign-in (Gmail scopes) links the inbox.
   useEffect(() => {
     if (nextAuthStatus !== "unauthenticated") return;
+    if (typeof window === "undefined") return;
+    if (window.location.pathname.startsWith("/signup")) return;
 
     const supabase = createSupabaseBrowserClient();
     void supabase.auth.getSession().then(({ data: { session: supabaseSession } }) => {
       if (!supabaseSession) return;
+      const returnPath = window.location.pathname + window.location.search;
       void signIn("google", {
-        callbackUrl: `/auth/complete?next=${encodeURIComponent("/signup")}`,
+        callbackUrl: `/auth/complete?next=${encodeURIComponent(returnPath || "/inbox")}`,
       });
     });
   }, [nextAuthStatus]);

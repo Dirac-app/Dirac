@@ -56,7 +56,7 @@ function firstName(user: TrialUser): string {
 
 function buildSubject(key: ReminderKey, endLabel: string): string {
   if (key === "day_12") return `2 days left on Dirac — ends ${endLabel}`;
-  if (key === "day_14") return `Last day of your Dirac trial`;
+  if (key === "day_14") return `Last day of your Dirac trial!`;
   return `Your Dirac trial ended`;
 }
 
@@ -64,47 +64,115 @@ function buildBody(
   user: TrialUser,
   key: ReminderKey,
   upgradeUrl: string,
+  feedbackUrl: string,
   endDateLabel: string,
 ): { html: string; text: string } {
   const name = firstName(user);
   const emails = user.emails_processed_count ?? 0;
   const drafts = user.ai_drafts_count ?? 0;
 
-  const statsLine =
+  const statsHtml =
     emails > 0 || drafts > 0
-      ? `So far you've sent <strong>${emails}</strong> email${emails === 1 ? "" : "s"} through Dirac and drafted <strong>${drafts}</strong> AI repl${drafts === 1 ? "y" : "ies"}.`
-      : `You've started triaging with Dirac — your inbox setup is in place.`;
+      ? `<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#d4d4d8;">
+          So far you&rsquo;ve sent <strong style="color:#fafafa;">${emails}</strong> email${emails === 1 ? "" : "s"} through Dirac and drafted <strong style="color:#fafafa;">${drafts}</strong> AI repl${drafts === 1 ? "y" : "ies"}.
+        </p>`
+      : `<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#d4d4d8;">
+          You&rsquo;ve started triaging with Dirac &mdash; your inbox setup is in place.
+        </p>`;
 
+  let headline: string;
   let opener: string;
   if (key === "day_12") {
-    opener = `Quick note — your trial runs through <strong>${endDateLabel}</strong> (2 days left).`;
+    headline = "2 days left on your trial";
+    opener = `Your trial runs through <strong style="color:#fafafa;">${endDateLabel}</strong>.`;
   } else if (key === "day_14") {
-    opener = `Today is the last day of your trial — access ends after <strong>${endDateLabel}</strong>.`;
+    headline = "Last day of your trial";
+    opener = `Access ends after <strong style="color:#fafafa;">${endDateLabel}</strong>.`;
   } else {
-    opener = `Your trial ended on <strong>${endDateLabel}</strong>.`;
+    headline = "Your trial has ended";
+    opener = `Your access ended on <strong style="color:#fafafa;">${endDateLabel}</strong>.`;
   }
 
   const closing = `Losing this on ${endDateLabel}. $20/mo to keep it.`;
 
   const html = `<!DOCTYPE html>
-<html><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.55; color: #111;">
-<p>Hi ${name},</p>
-<p>${opener}</p>
-<p>${statsLine}</p>
-<p>${closing}</p>
-<p style="margin-top: 24px;"><a href="${upgradeUrl}" style="color: #FF8A3D; font-weight: 600;">Keep Dirac →</a></p>
-<p style="color: #666; font-size: 13px;">— Dirac</p>
-</body></html>`;
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>Dirac</title>
+</head>
+<body style="margin:0;padding:0;background-color:#050505;-webkit-text-size-adjust:100%;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#050505;background-image:linear-gradient(rgba(255,138,61,0.07) 1px, transparent 1px),linear-gradient(90deg, rgba(255,138,61,0.07) 1px, transparent 1px);background-size:28px 28px;">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;">
+          <tr>
+            <td style="padding:0 0 20px;">
+              <span style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.2em;text-transform:uppercase;color:#FF8A3D;">Dirac</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color:#0a0a0a;border:1px solid #27272a;padding:32px 28px;">
+              <p style="margin:0 0 8px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:13px;color:#a1a1aa;">Hi ${name},</p>
+              <h1 style="margin:0 0 20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:22px;font-weight:600;letter-spacing:-0.02em;line-height:1.3;color:#fafafa;">${headline}</h1>
+              <p style="margin:0 0 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#d4d4d8;">${opener}</p>
+              ${statsHtml}
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0 24px;">
+                <tr>
+                  <td style="border-left:2px solid #FF8A3D;padding:12px 0 12px 16px;">
+                    <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:15px;line-height:1.55;color:#fafafa;font-weight:500;">${closing}</p>
+                  </td>
+                </tr>
+              </table>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;">
+                <tr>
+                  <td style="background-color:#fafafa;border-radius:2px;">
+                    <a href="${upgradeUrl}" style="display:inline-block;padding:12px 22px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;color:#0a0a0a;text-decoration:none;">Keep Dirac &mdash; $20/mo</a>
+                  </td>
+                </tr>
+              </table>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="border:1px solid rgba(255,138,61,0.45);border-radius:2px;">
+                    <a href="${feedbackUrl}" style="display:inline-block;padding:11px 20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:13px;font-weight:500;color:#FF8A3D;text-decoration:none;">Share quick feedback</a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:20px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:12px;line-height:1.5;color:#71717a;">Whether you stay or not, a short note helps us improve Dirac &mdash; we read every one.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 4px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:12px;color:#52525b;text-align:center;">
+              Dirac &middot; Your intelligent inbox
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  const openerText = opener.replace(/<[^>]+>/g, "");
+  const statsText =
+    emails > 0 || drafts > 0
+      ? `So far you've sent ${emails} email${emails === 1 ? "" : "s"} through Dirac and drafted ${drafts} AI repl${drafts === 1 ? "y" : "ies"}.`
+      : `You've started triaging with Dirac — your inbox setup is in place.`;
 
   const text = `Hi ${name},
 
-${opener.replace(/<[^>]+>/g, "")}
+${headline}
+${openerText}
 
-${statsLine.replace(/<[^>]+>/g, "")}
+${statsText}
 
 ${closing}
 
 Keep Dirac: ${upgradeUrl}
+
+Share feedback (helps us improve, super appreciated!): ${feedbackUrl}
 
 — Dirac`;
 
@@ -193,8 +261,9 @@ Deno.serve(async (req) => {
     const endDate = trialEndDateOnly(row.trial_start_date);
     const endLabel = formatLongDate(endDate);
     const upgradeUrl = `${appUrl}/upgrade`;
+    const feedbackUrl = `${appUrl}/trial-feedback?reminder=${key}`;
     const subject = buildSubject(key, endLabel);
-    const { html, text } = buildBody(row, key, upgradeUrl, endLabel);
+    const { html, text } = buildBody(row, key, upgradeUrl, feedbackUrl, endLabel);
 
     const sent = await sendResend(resendKey, fromEmail, row.email, subject, html, text);
     if (!sent.ok) {

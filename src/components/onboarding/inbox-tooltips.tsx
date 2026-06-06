@@ -1,11 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
 import { Sunrise, Sparkles, ArrowRight } from "lucide-react";
 import { useAppState } from "@/lib/store";
 import type { InboxTooltipId } from "@/lib/users-db";
+import { isAiSidebarTourTooltip } from "@/lib/modal-blocking";
+
+const EXAMPLE_CHAT_QUERY = "What in my inbox needs a reply today?";
 
 interface TooltipConfig {
   id: InboxTooltipId;
@@ -14,10 +17,7 @@ interface TooltipConfig {
   body: string;
   placement: "top" | "bottom" | "left" | "right";
   actionLabel?: string;
-  onAction?: (helpers: {
-    setAiSidebarOpen: (open: boolean) => void;
-    setPendingAiQuery: (q: string | null) => void;
-  }) => void;
+  onAction?: () => void;
   desktopOnly?: boolean;
 }
 
@@ -41,9 +41,12 @@ const TOOLTIPS: TooltipConfig[] = [
     body: "Ask Dirac anything — reply, sort, or archive in plain language.",
     actionLabel: "Try an example",
     desktopOnly: true,
-    onAction: ({ setAiSidebarOpen, setPendingAiQuery }) => {
-      setAiSidebarOpen(true);
-      setPendingAiQuery("What in my inbox needs a reply today?");
+    onAction: () => {
+      window.dispatchEvent(
+        new CustomEvent("dirac:ai-new-chat", {
+          detail: { query: EXAMPLE_CHAT_QUERY },
+        }),
+      );
     },
   },
 ];
@@ -203,25 +206,100 @@ function TourTooltipCard({
   );
 }
 
+function findNextTooltip(
+  dismissed: Set<InboxTooltipId>,
+  blockedByModal: boolean,
+): TooltipConfig | null {
+  return (
+    TOOLTIPS.find((t) => {
+      if (dismissed.has(t.id)) return false;
+      if (t.desktopOnly && window.innerWidth < 1024) return false;
+      if (blockedByModal && isAiSidebarTourTooltip(t.id)) return false;
+      return true;
+    }) ?? null
+  );
+}
+
 export function InboxTooltips() {
   const pathname = usePathname();
-  const { setAiSidebarOpen, setPendingAiQuery } = useAppState();
+  const { setAiSidebarOpen } = useAppState();
   const [dismissed, setDismissed] = useState<Set<InboxTooltipId>>(new Set());
   const [loaded, setLoaded] = useState(false);
   const [activeId, setActiveId] = useState<InboxTooltipId | null>(null);
+  const [pendingId, setPendingId] = useState<InboxTooltipId | null>(null);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const [mounted, setMounted] = useState(false);
   const [highlightEl, setHighlightEl] = useState<HTMLElement | null>(null);
+  const [shortcutsReady, setShortcutsReady] = useState(false);
+  const [openModalCount, setOpenModalCount] = useState(0);
+  const openModalsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
+    const SHORTCUTS_SEEN_KEY = "dirac_shortcuts_seen";
+    if (localStorage.getItem(SHORTCUTS_SEEN_KEY)) {
+      setShortcutsReady(true);
+    }
+    const onClosed = () => setShortcutsReady(true);
+    window.addEventListener("dirac:shortcuts-help-closed", onClosed);
+    return () => window.removeEventListener("dirac:shortcuts-help-closed", onClosed);
+  }, []);
+
+  useEffect(() => {
+    const syncCount = () => setOpenModalCount(openModalsRef.current.size);
+    const onModalOpened = (e: Event) => {
+      const id = (e as CustomEvent<{ id: string }>).detail?.id;
+      if (!id) return;
+      openModalsRef.current.add(id);
+      syncCount();
+    };
+    const onModalClosed = (e: Event) => {
+      const id = (e as CustomEvent<{ id: string }>).detail?.id;
+      if (!id) return;
+      openModalsRef.current.delete(id);
+      syncCount();
+    };
+    window.addEventListener("dirac:modal-opened", onModalOpened);
+    window.addEventListener("dirac:modal-closed", onModalClosed);
+    return () => {
+      window.removeEventListener("dirac:modal-opened", onModalOpened);
+      window.removeEventListener("dirac:modal-closed", onModalClosed);
+    };
+  }, []);
+
+  const scheduleTooltip = useCallback((id: InboxTooltipId | null) => {
+    if (!id) return;
+    if (isAiSidebarTourTooltip(id) && openModalsRef.current.size > 0) {
+      setPendingId(id);
+      setActiveId(null);
+      return;
+    }
+    setPendingId(null);
+    setTimeout(() => setActiveId(id), 350);
+  }, []);
+
+  useEffect(() => {
+    if (openModalCount > 0 || !pendingId || dismissed.has(pendingId)) return;
+    scheduleTooltip(pendingId);
+  }, [openModalCount, pendingId, dismissed, scheduleTooltip]);
+
+  useEffect(() => {
+    if (!activeId || !isAiSidebarTourTooltip(activeId) || openModalCount === 0) return;
+    setPendingId(activeId);
+    setActiveId(null);
+    setAnchorRect(null);
+    setHighlightEl(null);
+  }, [openModalCount, activeId]);
+
+  useEffect(() => {
     if (!pathname.startsWith("/inbox")) {
       setActiveId(null);
       return;
     }
+    if (!shortcutsReady) return;
 
     void fetch("/api/user/profile")
       .then((res) => (res.ok ? res.json() : null))
@@ -229,16 +307,14 @@ export function InboxTooltips() {
         if (!data?.shown_tooltips) return;
         const shown = new Set(data.shown_tooltips as InboxTooltipId[]);
         setDismissed(shown);
-        const next = TOOLTIPS.find((t) => {
-          if (shown.has(t.id)) return false;
-          if (t.desktopOnly && window.innerWidth < 1024) return false;
-          return true;
-        });
-        setActiveId(next?.id ?? null);
+        const blocked = openModalsRef.current.size > 0;
+        const next = findNextTooltip(shown, blocked);
+        if (next) scheduleTooltip(next.id);
+        else setActiveId(null);
       })
       .catch(() => {})
       .finally(() => setLoaded(true));
-  }, [pathname]);
+  }, [pathname, shortcutsReady, scheduleTooltip]);
 
   const measureAnchor = useCallback(() => {
     if (!activeId) return;
@@ -295,20 +371,30 @@ export function InboxTooltips() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tooltip_id: id }),
       });
-      const next = TOOLTIPS.find((t) => {
-        if (nextDismissed.has(t.id)) return false;
-        if (t.desktopOnly && window.innerWidth < 1024) return false;
-        return true;
-      });
-      if (next) {
-        setTimeout(() => setActiveId(next.id), 350);
-      }
+      const next = findNextTooltip(
+        nextDismissed,
+        openModalsRef.current.size > 0,
+      );
+      scheduleTooltip(next?.id ?? null);
     } catch (err) {
       console.error("[inbox-tooltips] dismiss:", err);
     }
   }
 
-  if (!mounted || !loaded || !pathname.startsWith("/inbox") || !activeId || dismissed.has(activeId)) {
+  const blockedByModal =
+    !!activeId &&
+    isAiSidebarTourTooltip(activeId) &&
+    openModalCount > 0;
+
+  if (
+    !mounted ||
+    !loaded ||
+    !shortcutsReady ||
+    !pathname.startsWith("/inbox") ||
+    !activeId ||
+    dismissed.has(activeId) ||
+    blockedByModal
+  ) {
     return null;
   }
 
@@ -316,7 +402,8 @@ export function InboxTooltips() {
   if (!config || !anchorRect) return null;
 
   const runAction = () => {
-    config.onAction?.({ setAiSidebarOpen, setPendingAiQuery });
+    config.onAction?.();
+    void handleDismiss(activeId);
   };
 
   return createPortal(
