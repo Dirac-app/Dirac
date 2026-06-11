@@ -272,12 +272,12 @@ Run curl → expect `day_14` appended.
 UPDATE public.users
 SET
   trial_start_date = (CURRENT_DATE - INTERVAL '15 days')::timestamptz + TIME '12:00',
-  subscription_status = 'expired',
+  subscription_status = 'trialing',
   trial_reminders_sent = ARRAY['day_12', 'day_14']
 WHERE email = 'your-test@example.com';
 ```
 
-Run curl → expect `day_15` appended.
+Run curl → expect `day_15` appended **and** `subscription_status` → `expired` (set by the Edge Function).
 
 ### 7c. Idempotency
 

@@ -219,6 +219,13 @@ function reminderKeyForUser(user: TrialUser, today: string): ReminderKey | null 
   return null;
 }
 
+/** Matches app logic in src/lib/subscription.ts (14 × 24h after trial_start_date). */
+function isTrialExpiredByTimestamp(trialStart: string): boolean {
+  const start = new Date(trialStart).getTime();
+  const cutoff = start + TRIAL_DAYS * 24 * 60 * 60 * 1000;
+  return Date.now() > cutoff;
+}
+
 Deno.serve(async (req) => {
   const cronSecret = Deno.env.get("TRIAL_REMINDER_CRON_SECRET");
   const auth = req.headers.get("Authorization");
@@ -252,7 +259,33 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: error.message }), { status: 500 });
   }
 
-  const results: { userId: string; key: string; ok: boolean; error?: string }[] = [];
+  const results: {
+    userId: string;
+    key?: string;
+    action?: string;
+    ok: boolean;
+    error?: string;
+  }[] = [];
+
+  // Flip trialing → expired in DB when past 14 days (emails alone never did this).
+  for (const row of (users ?? []) as TrialUser[]) {
+    if (row.subscription_status !== "trialing" || !row.trial_start_date) continue;
+    if (!isTrialExpiredByTimestamp(row.trial_start_date)) continue;
+
+    const { error: expireErr } = await supabase
+      .from("users")
+      .update({ subscription_status: "expired" })
+      .eq("id", row.id)
+      .eq("subscription_status", "trialing");
+
+    results.push({
+      userId: row.id,
+      action: "expire_trial",
+      ok: !expireErr,
+      error: expireErr?.message,
+    });
+    if (!expireErr) row.subscription_status = "expired";
+  }
 
   for (const row of (users ?? []) as TrialUser[]) {
     const key = reminderKeyForUser(row, today);
@@ -272,9 +305,15 @@ Deno.serve(async (req) => {
     }
 
     const nextSent = Array.from(new Set([...(row.trial_reminders_sent ?? []), key]));
+    const patch: { trial_reminders_sent: string[]; subscription_status?: string } = {
+      trial_reminders_sent: nextSent,
+    };
+    if (key === "day_15" || isTrialExpiredByTimestamp(row.trial_start_date)) {
+      patch.subscription_status = "expired";
+    }
     const { error: updateErr } = await supabase
       .from("users")
-      .update({ trial_reminders_sent: nextSent })
+      .update(patch)
       .eq("id", row.id);
 
     if (updateErr) {
