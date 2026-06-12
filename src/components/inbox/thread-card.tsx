@@ -15,6 +15,8 @@ import {
   BrainCircuit,
   Layers,
   Sunrise,
+  ShieldOff,
+  ShieldCheck,
 } from "lucide-react";
 import {
   addThreadsToMorningBrief,
@@ -22,6 +24,7 @@ import {
   MORNING_BRIEF_PENDING_CHANGED,
 } from "@/lib/morning-brief-pending";
 import { useToast } from "@/components/ui/toast";
+import { addScreenedSender, unscreenByEmail, isScreened } from "@/lib/screener";
 import { cn } from "@/lib/utils";
 import { useAppState } from "@/lib/store";
 import {
@@ -107,6 +110,7 @@ export function ThreadCard({
   } = useAppState();
   const { toast } = useToast();
   const [pendingRevision, setPendingRevision] = useState(0);
+  const [screenerRevision, setScreenerRevision] = useState(0);
 
   useEffect(() => {
     const onPendingChanged = () => setPendingRevision((n) => n + 1);
@@ -114,6 +118,42 @@ export function ThreadCard({
     return () =>
       window.removeEventListener(MORNING_BRIEF_PENDING_CHANGED, onPendingChanged);
   }, []);
+
+  useEffect(() => {
+    const onScreenerChanged = () => setScreenerRevision((n) => n + 1);
+    window.addEventListener("dirac:screened-senders-changed", onScreenerChanged);
+    return () =>
+      window.removeEventListener("dirac:screened-senders-changed", onScreenerChanged);
+  }, []);
+
+  const senderEmail = thread.participants[0]?.email ?? "";
+  const senderName = thread.participants[0]?.name ?? senderEmail;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const senderIsScreened = useMemo(() => isScreened(senderEmail), [senderEmail, screenerRevision]);
+
+  const handleScreenSender = () => {
+    if (!senderEmail) return;
+    addScreenedSender(senderEmail, senderName);
+    toast({
+      title: "Sender screened",
+      description: senderEmail,
+      variant: "default",
+      duration: 6000,
+      action: {
+        label: "Undo",
+        onClick: () => {
+          unscreenByEmail(senderEmail);
+          toast({ title: "Unscreened", description: senderEmail, variant: "success" });
+        },
+      },
+    });
+  };
+
+  const handleUnscreenSender = () => {
+    if (!senderEmail) return;
+    unscreenByEmail(senderEmail);
+    toast({ title: "Sender unscreened", description: senderEmail, variant: "success" });
+  };
 
   const sender = thread.participants[0]?.name ?? thread.participants[0]?.email ?? "Unknown";
   const isSnoozed = snoozedThreads.some((s) => s.threadId === thread.id);
@@ -397,6 +437,24 @@ export function ThreadCard({
           <BrainCircuit className="h-4 w-4 text-primary" />
           {hasBulk ? "Ask AI about all" : "Ask AI about this"}
         </ContextMenuItem>
+
+        {/* ── Screener ── */}
+        {!hasBulk && senderEmail && (
+          <>
+            <ContextMenuSeparator />
+            {senderIsScreened ? (
+              <ContextMenuItem onClick={handleUnscreenSender}>
+                <ShieldCheck className="h-4 w-4 text-teal-500" />
+                Unscreen sender
+              </ContextMenuItem>
+            ) : (
+              <ContextMenuItem onClick={handleScreenSender}>
+                <ShieldOff className="h-4 w-4 text-rose-500" />
+                Screen sender
+              </ContextMenuItem>
+            )}
+          </>
+        )}
 
         {/* ── Destructive ── */}
         {targets.every(t => t.platform !== "DISCORD") && (

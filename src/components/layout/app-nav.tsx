@@ -13,6 +13,7 @@ import {
   PenSquare,
   FileText,
   Bookmark,
+  Users,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,7 @@ import {
 const NAV_LINKS = [
   { href: "/inbox", label: "Inbox", icon: Inbox },
   { href: "/paper-trail", label: "Paper trail", icon: FileText },
+  { href: "/senders", label: "Senders", icon: Users },
   { href: "/clips", label: "Clip library", icon: Bookmark },
   { href: "/activity", label: "Activity", icon: Activity },
   { href: "/settings", label: "Settings", icon: Settings },
@@ -37,6 +39,15 @@ export function AppNav() {
   const { setComposeOpen, setComposeMinimized, unreadCount } = useAppState();
   const [navOpen, setNavOpen] = useState(false);
   const navRef = useRef<HTMLDivElement>(null);
+  const [briefMinimized, setBriefMinimized] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      setBriefMinimized((e as CustomEvent<{ minimized: boolean }>).detail.minimized);
+    };
+    window.addEventListener("dirac:morning-brief-minimized", handler);
+    return () => window.removeEventListener("dirac:morning-brief-minimized", handler);
+  }, []);
 
   // Close on outside click
   useEffect(() => {
@@ -142,13 +153,26 @@ export function AppNav() {
             <TooltipTrigger asChild>
               <button
                 data-tour="morning-brief"
-                onClick={() => window.dispatchEvent(new CustomEvent("dirac:open-morning-briefing"))}
-                className="flex h-8 w-8 items-center justify-center text-[#FF8A3D] transition-colors hover:bg-[#FF8A3D]/10 touch-target"
+                onClick={() => window.dispatchEvent(new CustomEvent(
+                  briefMinimized ? "dirac:reopen-morning-briefing" : "dirac:open-morning-briefing"
+                ))}
+                className={cn(
+                  "relative flex h-8 w-8 items-center justify-center text-[#FF8A3D] transition-colors hover:bg-[#FF8A3D]/10 touch-target",
+                  briefMinimized && "rounded-lg ring-2 ring-[#FF8A3D]/40",
+                )}
               >
                 <Sunrise className="h-4 w-4" strokeWidth={1.75} />
+                {briefMinimized && (
+                  <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#FF8A3D] opacity-60" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-[#FF8A3D]" />
+                  </span>
+                )}
               </button>
             </TooltipTrigger>
-            <TooltipContent side="bottom" sideOffset={6}>Morning briefing</TooltipContent>
+            <TooltipContent side="bottom" sideOffset={6}>
+              {briefMinimized ? "Resume Morning Brief" : "Morning briefing"}
+            </TooltipContent>
           </Tooltip>
 
           {/* Keyboard shortcuts */}
@@ -184,11 +208,22 @@ export function AppNav() {
           <button
             type="button"
             data-tour="morning-brief"
-            onClick={() => window.dispatchEvent(new CustomEvent("dirac:open-morning-briefing"))}
-            className="flex h-8 w-8 items-center justify-center text-[#FF8A3D] touch-target"
-            aria-label="Morning Brief"
+            onClick={() => window.dispatchEvent(new CustomEvent(
+              briefMinimized ? "dirac:reopen-morning-briefing" : "dirac:open-morning-briefing"
+            ))}
+            className={cn(
+              "relative flex h-8 w-8 items-center justify-center text-[#FF8A3D] touch-target",
+              briefMinimized && "rounded-lg ring-2 ring-[#FF8A3D]/40",
+            )}
+            aria-label={briefMinimized ? "Resume Morning Brief" : "Morning Brief"}
           >
             <Sunrise className="h-4 w-4" strokeWidth={1.75} />
+            {briefMinimized && (
+              <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#FF8A3D] opacity-60" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-[#FF8A3D]" />
+              </span>
+            )}
           </button>
           <button
             onClick={handleCompose}

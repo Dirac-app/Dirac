@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
-import { Sunrise, Sparkles, ArrowRight } from "lucide-react";
+import { Sunrise, Sparkles, Users, ShieldOff, ArrowRight } from "lucide-react";
 import { useAppState } from "@/lib/store";
 import type { InboxTooltipId } from "@/lib/users-db";
 import { isAiSidebarTourTooltip } from "@/lib/modal-blocking";
@@ -47,6 +47,28 @@ const TOOLTIPS: TooltipConfig[] = [
           detail: { query: EXAMPLE_CHAT_QUERY },
         }),
       );
+    },
+  },
+  {
+    id: "senders",
+    tourKey: "senders",
+    title: "Senders",
+    placement: "bottom",
+    body: "Every sender from your inbox, grouped by relationship type. Drag a card to reassign their category — or right-click any thread to screen a sender.",
+    actionLabel: "View Senders",
+    onAction: () => {
+      window.location.href = "/senders";
+    },
+  },
+  {
+    id: "screener",
+    tourKey: "screener",
+    title: "Screener",
+    placement: "bottom",
+    body: "Block senders you never want to see again. Right-click any thread → \"Screen sender\" and they land here automatically.",
+    actionLabel: "Open Screener",
+    onAction: () => {
+      window.location.href = "/senders/screener";
     },
   },
 ];
@@ -174,6 +196,10 @@ function TourTooltipCard({
         <div className="mb-2 flex items-center gap-2 text-[#FF8A3D]">
           {config.id === "morning_brief" ? (
             <Sunrise className="h-3.5 w-3.5" />
+          ) : config.id === "senders" ? (
+            <Users className="h-3.5 w-3.5" />
+          ) : config.id === "screener" ? (
+            <ShieldOff className="h-3.5 w-3.5" />
           ) : (
             <Sparkles className="h-3.5 w-3.5" />
           )}
@@ -294,21 +320,43 @@ export function InboxTooltips() {
     setHighlightEl(null);
   }, [openModalCount, activeId]);
 
+  // Which tooltips are valid on the current page
+  const pageAllowsTooltip = useCallback((id: InboxTooltipId) => {
+    if (pathname.startsWith("/inbox")) return true;
+    if (pathname.startsWith("/senders") && (id === "senders" || id === "screener")) return true;
+    return false;
+  }, [pathname]);
+
   useEffect(() => {
-    if (!pathname.startsWith("/inbox")) {
+    const onCurrentPage = (id: InboxTooltipId | null) =>
+      id !== null && pageAllowsTooltip(id);
+    if (!onCurrentPage(activeId)) {
+      setActiveId(null);
+    }
+  }, [pathname, activeId, pageAllowsTooltip]);
+
+  useEffect(() => {
+    if (!pathname.startsWith("/inbox") && !pathname.startsWith("/senders")) {
       setActiveId(null);
       return;
     }
     if (!shortcutsReady) return;
 
-    void fetch("/api/user/profile")
+      void fetch("/api/user/profile")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!data?.shown_tooltips) return;
         const shown = new Set(data.shown_tooltips as InboxTooltipId[]);
         setDismissed(shown);
         const blocked = openModalsRef.current.size > 0;
-        const next = findNextTooltip(shown, blocked);
+        // Only schedule tooltips valid for the current page
+        const next = TOOLTIPS.find((t) => {
+          if (shown.has(t.id)) return false;
+          if (t.desktopOnly && window.innerWidth < 1024) return false;
+          if (blocked && isAiSidebarTourTooltip(t.id)) return false;
+          if (!pageAllowsTooltip(t.id)) return false;
+          return true;
+        }) ?? null;
         if (next) scheduleTooltip(next.id);
         else setActiveId(null);
       })
@@ -386,11 +434,13 @@ export function InboxTooltips() {
     isAiSidebarTourTooltip(activeId) &&
     openModalCount > 0;
 
+  const allowedOnPage = activeId ? pageAllowsTooltip(activeId) : false;
+
   if (
     !mounted ||
     !loaded ||
     !shortcutsReady ||
-    !pathname.startsWith("/inbox") ||
+    !allowedOnPage ||
     !activeId ||
     dismissed.has(activeId) ||
     blockedByModal

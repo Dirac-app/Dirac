@@ -682,6 +682,14 @@ export function MorningBriefing() {
 
   const [open, setOpen] = useState(false);
   const [minimized, setMinimized] = useState(false);
+
+  // Notify the nav button whenever minimized state changes
+  const setMinimizedWithEvent = (val: boolean) => {
+    setMinimized(val);
+    window.dispatchEvent(
+      new CustomEvent("dirac:morning-brief-minimized", { detail: { minimized: val } }),
+    );
+  };
   const [revealed, setRevealed] = useState(false);
   const [plans, setPlans] = useState<MorningPlanCard[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -1043,13 +1051,21 @@ export function MorningBriefing() {
     function handleOpen() {
       openBriefSession({ recordShownForNew: true });
     }
+    function handleReopen() {
+      // Re-open from the minimized state via the nav button
+      skipNextShimmer.current = true;
+      setMinimizedWithEvent(false);
+      setOpen(true);
+    }
     function handleStorage() {
       setSettings(loadMorningSettings());
     }
     window.addEventListener("dirac:open-morning-briefing", handleOpen);
+    window.addEventListener("dirac:reopen-morning-briefing", handleReopen);
     window.addEventListener("storage", handleStorage);
     return () => {
       window.removeEventListener("dirac:open-morning-briefing", handleOpen);
+      window.removeEventListener("dirac:reopen-morning-briefing", handleReopen);
       window.removeEventListener("storage", handleStorage);
     };
   }, [openBriefSession]);
@@ -1107,12 +1123,12 @@ export function MorningBriefing() {
 
   const minimize = () => {
     setOpen(false);
-    setMinimized(true);
+    setMinimizedWithEvent(true);
   };
 
   const reopenFromMinimized = () => {
     skipNextShimmer.current = true;
-    setMinimized(false);
+    setMinimizedWithEvent(false);
     setOpen(true);
   };
 
@@ -1180,7 +1196,7 @@ export function MorningBriefing() {
 
   const closeForToday = () => {
     // localStorage key already written when modal opened — just close
-    setMinimized(false);
+    setMinimizedWithEvent(false);
     setOpen(false);
   };
 
@@ -1320,30 +1336,7 @@ export function MorningBriefing() {
         </DialogContent>
       </Dialog>
 
-      {/* Floating minimized pill */}
-      <AnimatePresence>
-        {minimized && !open && (
-          <motion.button
-            data-tour="morning-brief"
-            key="morning-pill"
-            initial={{ opacity: 0, scale: 0.85, y: 12 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.85, y: 12 }}
-            transition={{ type: "spring", stiffness: 380, damping: 26 }}
-            onClick={reopenFromMinimized}
-            className="fixed bottom-6 left-6 z-50 flex items-center gap-2 border border-white/12 bg-black/95 px-4 py-2.5 shadow-lg backdrop-blur-sm text-[13px] font-medium text-white/80 hover:bg-white/6 transition-colors"
-            style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontStyle: "italic" }}
-          >
-            <Sparkles className="h-3.5 w-3.5 text-orange-400/70" />
-            Morning Brief
-            {plans.length > 0 && (
-              <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-orange-500/15 px-1 font-mono text-[10px] font-semibold text-orange-400/80 not-italic" style={{ fontFamily: "inherit" }}>
-                {plans.length}
-              </span>
-            )}
-          </motion.button>
-        )}
-      </AnimatePresence>
+      {/* Minimized state is shown via the nav Sunrise button (see app-nav.tsx) */}
     </>
   );
 }

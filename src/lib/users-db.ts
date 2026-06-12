@@ -4,7 +4,7 @@ export type SubscriptionStatus = "trialing" | "active" | "expired";
 export type UserRole = "founder_ceo" | "operator" | "sales" | "product_engineering" | "investor" | "other";
 export type EmailVolume = "receipts" | "cold_outreach" | "internal_investor" | "other";
 export type MainPainPoint = "volume" | "replies" | "missing_important" | "other";
-export type InboxTooltipId = "morning_brief" | "ai_sidebar";
+export type InboxTooltipId = "morning_brief" | "ai_sidebar" | "senders" | "screener";
 
 export interface AppUser {
   id: string;

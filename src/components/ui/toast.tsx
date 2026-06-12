@@ -29,6 +29,8 @@ export interface ToastItem {
   description?: string;
   variant?: ToastVariant;
   duration?: number; // ms, default 4000
+  /** Optional inline action button (e.g. "Undo") */
+  action?: { label: string; onClick: () => void };
 }
 
 interface ToastContextValue {
@@ -158,6 +160,14 @@ function ToastCard({
           </p>
         )}
       </div>
+      {toast.action && (
+        <button
+          onClick={() => { toast.action!.onClick(); onDismiss(toast.id); }}
+          className="shrink-0 rounded px-2 py-1 text-xs font-semibold text-primary hover:bg-primary/10 transition-colors"
+        >
+          {toast.action.label}
+        </button>
+      )}
       <button
         onClick={() => onDismiss(toast.id)}
         className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
