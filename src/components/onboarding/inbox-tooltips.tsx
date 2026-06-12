@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { Sunrise, Sparkles, Users, ShieldOff, ArrowRight } from "lucide-react";
 import { useAppState } from "@/lib/store";
@@ -17,6 +17,8 @@ interface TooltipConfig {
   body: string;
   placement: "top" | "bottom" | "left" | "right";
   actionLabel?: string;
+  /** If set, clicking the action button navigates here (soft route). */
+  actionHref?: string;
   onAction?: () => void;
   desktopOnly?: boolean;
 }
@@ -54,11 +56,9 @@ const TOOLTIPS: TooltipConfig[] = [
     tourKey: "senders",
     title: "Senders",
     placement: "bottom",
-    body: "Every sender from your inbox, grouped by relationship type. Drag a card to reassign their category — or right-click any thread to screen a sender.",
+    body: "Every sender from your inbox — organised by relationship type. Drag to reassign categories or screen senders you never want to see.",
     actionLabel: "View Senders",
-    onAction: () => {
-      window.location.href = "/senders";
-    },
+    actionHref: "/senders",
   },
   {
     id: "screener",
@@ -67,9 +67,7 @@ const TOOLTIPS: TooltipConfig[] = [
     placement: "bottom",
     body: "Block senders you never want to see again. Right-click any thread → \"Screen sender\" and they land here automatically.",
     actionLabel: "Open Screener",
-    onAction: () => {
-      window.location.href = "/senders/screener";
-    },
+    actionHref: "/senders/screener",
   },
 ];
 
@@ -248,6 +246,7 @@ function findNextTooltip(
 
 export function InboxTooltips() {
   const pathname = usePathname();
+  const router = useRouter();
   const { setAiSidebarOpen } = useAppState();
   const [dismissed, setDismissed] = useState<Set<InboxTooltipId>>(new Set());
   const [loaded, setLoaded] = useState(false);
@@ -320,10 +319,12 @@ export function InboxTooltips() {
     setHighlightEl(null);
   }, [openModalCount, activeId]);
 
-  // Which tooltips are valid on the current page
+  // Which tooltips are valid on the current page.
+  // senders/screener cards can show from /inbox (the nav anchor is always visible)
+  // and also stay visible while actually on the /senders pages.
   const pageAllowsTooltip = useCallback((id: InboxTooltipId) => {
     if (pathname.startsWith("/inbox")) return true;
-    if (pathname.startsWith("/senders") && (id === "senders" || id === "screener")) return true;
+    if ((id === "senders" || id === "screener") && pathname.startsWith("/senders")) return true;
     return false;
   }, [pathname]);
 
@@ -342,7 +343,7 @@ export function InboxTooltips() {
     }
     if (!shortcutsReady) return;
 
-      void fetch("/api/user/profile")
+    void fetch("/api/user/profile")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!data?.shown_tooltips) return;
@@ -362,7 +363,7 @@ export function InboxTooltips() {
       })
       .catch(() => {})
       .finally(() => setLoaded(true));
-  }, [pathname, shortcutsReady, scheduleTooltip]);
+  }, [pathname, shortcutsReady, scheduleTooltip, pageAllowsTooltip]);
 
   const measureAnchor = useCallback(() => {
     if (!activeId) return;
@@ -452,8 +453,10 @@ export function InboxTooltips() {
   if (!config || !anchorRect) return null;
 
   const runAction = () => {
-    config.onAction?.();
-    void handleDismiss(activeId);
+    void handleDismiss(activeId).then(() => {
+      if (config.actionHref) router.push(config.actionHref);
+      else config.onAction?.();
+    });
   };
 
   return createPortal(

@@ -127,7 +127,8 @@ export interface DiracThread {
   isStarred: boolean;
   isUrgent: boolean;
   messageCount: number;
-  lastMessageAt: string; // ISO date
+  firstMessageAt?: string; // ISO date — when the thread started
+  lastMessageAt: string;   // ISO date — most recent message
   participants: { name: string; email: string; avatarUrl?: string }[];
   status: ThreadStatus;
   tags: string[];

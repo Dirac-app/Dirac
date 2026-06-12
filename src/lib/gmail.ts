@@ -498,6 +498,7 @@ export async function getThreadMetadata(
   isUnread: boolean;
   isStarred: boolean;
   messageCount: number;
+  firstMessageAt: string;
   lastMessageAt: string;
   participants: { name: string; email: string }[];
   gmailCategory: GmailCategory;
@@ -541,6 +542,10 @@ export async function getThreadMetadata(
     ? new Date(Number(lastMsg.internalDate)).toISOString()
     : new Date().toISOString();
 
+  const firstMessageAt = firstMsg
+    ? new Date(Number(firstMsg.internalDate)).toISOString()
+    : lastMessageAt;
+
   return {
     id: data.id,
     subject: subject || "(no subject)",
@@ -548,6 +553,7 @@ export async function getThreadMetadata(
     isUnread,
     isStarred,
     messageCount: messages.length,
+    firstMessageAt,
     lastMessageAt,
     participants: Array.from(participantMap.values()),
     gmailCategory,

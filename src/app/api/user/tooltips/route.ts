@@ -4,7 +4,7 @@ import { requireSupabaseUser } from "@/lib/api-auth";
 import { dismissTooltip, type InboxTooltipId } from "@/lib/users-db";
 
 const BodySchema = z.object({
-  tooltip_id: z.enum(["morning_brief", "ai_sidebar"]),
+  tooltip_id: z.enum(["morning_brief", "ai_sidebar", "senders", "screener"]),
 });
 
 export async function PATCH(request: Request) {

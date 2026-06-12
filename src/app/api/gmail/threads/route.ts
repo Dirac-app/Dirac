@@ -66,6 +66,7 @@ export async function GET(request: Request) {
       isStarred: t.isStarred,
       isUrgent: false,
       messageCount: t.messageCount,
+      firstMessageAt: t.firstMessageAt,
       lastMessageAt: t.lastMessageAt,
       participants: t.participants,
       status: "INBOX" as const,
