@@ -202,9 +202,62 @@ export function AppNav() {
       </header>
 
       {/* Mobile header */}
-      <header className="dirac-panel flex md:hidden h-12 items-center justify-between gap-2 px-3">
+      <header className="dirac-panel flex md:hidden h-12 items-center gap-2 px-3 relative z-40">
+        {/* Mobile hamburger → full-screen nav overlay */}
+        <div className="relative flex items-center" ref={navRef}>
+          <button
+            onClick={() => setNavOpen(v => !v)}
+            className={cn(
+              "flex h-9 w-9 items-center justify-center rounded-lg transition-colors touch-target",
+              navOpen ? "bg-accent text-foreground" : "text-muted-foreground",
+            )}
+            aria-label="Navigation"
+          >
+            {navOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+
+          {/* Full-width slide-down nav panel — mobile only */}
+          <div
+            className={cn(
+              "fixed left-0 right-0 top-12 z-50 border-b border-border bg-background shadow-xl transition-all duration-200 md:hidden",
+              navOpen
+                ? "opacity-100 translate-y-0 pointer-events-auto"
+                : "opacity-0 -translate-y-2 pointer-events-none",
+            )}
+          >
+            <nav className="p-3 grid grid-cols-3 gap-1">
+              {NAV_LINKS.map(({ href, label, icon: Icon }) => {
+                const isActive = pathname === href || pathname.startsWith(href + "/");
+                const badge = href === "/inbox" && unreadCount > 0 ? unreadCount : null;
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    onClick={() => setNavOpen(false)}
+                    className={cn(
+                      "relative flex flex-col items-center gap-1.5 rounded-xl px-2 py-3 text-[11px] font-medium transition-colors touch-target",
+                      isActive
+                        ? "bg-accent text-accent-foreground"
+                        : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                    )}
+                  >
+                    <Icon className="h-5 w-5 shrink-0" strokeWidth={1.75} />
+                    {label}
+                    {badge !== null && (
+                      <span className="absolute top-2 right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground leading-none">
+                        {badge > 99 ? "99+" : badge}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
+        </div>
+
         <span className="text-sm font-semibold text-foreground tracking-tight">Dirac</span>
-        <div className="flex items-center gap-1">
+
+        <div className="flex items-center gap-1 ml-auto">
           <button
             type="button"
             data-tour="morning-brief"
@@ -212,8 +265,8 @@ export function AppNav() {
               briefMinimized ? "dirac:reopen-morning-briefing" : "dirac:open-morning-briefing"
             ))}
             className={cn(
-              "relative flex h-8 w-8 items-center justify-center text-[#FF8A3D] touch-target",
-              briefMinimized && "rounded-lg ring-2 ring-[#FF8A3D]/40",
+              "relative flex h-9 w-9 items-center justify-center text-[#FF8A3D] touch-target rounded-lg",
+              briefMinimized && "ring-2 ring-[#FF8A3D]/40",
             )}
             aria-label={briefMinimized ? "Resume Morning Brief" : "Morning Brief"}
           >
@@ -227,7 +280,7 @@ export function AppNav() {
           </button>
           <button
             onClick={handleCompose}
-            className="compose-btn flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent/50 touch-target"
+            className="compose-btn flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors touch-target"
           >
             <PenSquare className="h-3.5 w-3.5" strokeWidth={2} />
             Compose

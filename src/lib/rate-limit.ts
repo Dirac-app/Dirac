@@ -73,8 +73,8 @@ export const rateLimiters = {
   /** Quick-draft generation: 20 req / 5 min */
   quickDrafts: new SlidingWindowLimiter(20, 5 * 60 * 1000),
 
-  /** Background tasks (triage, tone, briefing, etc.): 120 req / hour */
-  background: new SlidingWindowLimiter(120, 60 * 60 * 1000),
+  /** Background tasks (triage, tone, briefing, categorize, etc.): 300 req / hour */
+  background: new SlidingWindowLimiter(300, 60 * 60 * 1000),
 } as const;
 
 /**

@@ -1393,6 +1393,15 @@
   min-width: 44px;
 }
 
+/* Hide scrollbar while preserving scroll behavior */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
 /* Ensure all interactive elements have adequate touch targets */
 button,
 [role="button"],

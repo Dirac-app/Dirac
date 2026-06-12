@@ -1,7 +1,7 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   MessageSquare,
   Star,
@@ -107,6 +107,7 @@ export function ThreadCard({
     snoozedThreads,
     doneThreads,
     clearSelection,
+    toggleBulkSelect,
   } = useAppState();
   const { toast } = useToast();
   const [pendingRevision, setPendingRevision] = useState(0);
@@ -232,12 +233,86 @@ export function ThreadCard({
     triage === "waiting_on"  ? "bg-indigo-400" :
     null;
 
+  // ── Touch interactions (mobile) ────────────────────────
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFired = useRef(false);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [swipeDone, setSwipeDone] = useState(false);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent<HTMLButtonElement>) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+    longPressFired.current = false;
+    // Long press timer — fires after 500ms
+    longPressTimer.current = setTimeout(() => {
+      longPressFired.current = true;
+      // Dispatch synthetic contextmenu event so Radix ContextMenu opens
+      const el = e.currentTarget;
+      const synth = new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        clientX: e.touches[0].clientX,
+        clientY: e.touches[0].clientY,
+      });
+      el.dispatchEvent(synth);
+    }, 500);
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent<HTMLButtonElement>) => {
+    if (touchStartX.current === null || touchStartY.current === null) return;
+    const dx = e.touches[0].clientX - touchStartX.current;
+    const dy = e.touches[0].clientY - touchStartY.current;
+    // Cancel long press if moved
+    if ((Math.abs(dx) > 8 || Math.abs(dy) > 8) && longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+    // Swipe left reveal — only track horizontal swipes
+    if (dy < -10 || dy > 10) return; // scrolling vertically
+    if (dx < 0) {
+      setSwipeOffset(Math.max(dx, -80));
+    } else {
+      setSwipeOffset(0);
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+    // Committed left-swipe = mark as read
+    if (swipeOffset < -50 && !swipeDone) {
+      setSwipeDone(true);
+      markThreadRead(thread.id);
+    }
+    setSwipeOffset(0);
+    touchStartX.current = null;
+    touchStartY.current = null;
+  }, [swipeOffset, swipeDone, markThreadRead, thread.id]);
+
   return (
     <ContextMenu>
+      {/* Swipe-left reveal: mark-as-read indicator behind the card */}
+      <div className="relative overflow-hidden">
+        {swipeOffset < -10 && (
+          <div
+            className="absolute inset-y-0 right-0 flex items-center justify-end px-4 text-sky-500"
+            style={{ width: `${Math.abs(swipeOffset)}px` }}
+          >
+            <MailOpen className="h-4 w-4" />
+          </div>
+        )}
       <ContextMenuTrigger asChild>
         <button
-          onClick={onSelect}
+          onClick={longPressFired.current ? undefined : onSelect}
           data-thread-card
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          style={swipeOffset !== 0 ? { transform: `translateX(${swipeOffset}px)`, transition: "none" } : undefined}
           className={cn(
             "group relative flex w-full items-start gap-3 border-b border-border/40 px-4 md:px-5 py-3 md:py-3 touch-target text-left transition-all duration-150",
             isBulkSelected
@@ -247,8 +322,16 @@ export function ThreadCard({
                 : "hover:bg-accent/25",
           )}
         >
-          {/* Avatar */}
-          <div className="relative mt-1 shrink-0">
+          {/* Avatar — tap on mobile starts multi-select */}
+          <div
+            role="button"
+            aria-label="Select thread"
+            className="relative mt-1 shrink-0 cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleBulkSelect(thread.id);
+            }}
+          >
             {isBulkSelected ? (
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary">
                 <svg className="h-3.5 w-3.5 text-primary-foreground" viewBox="0 0 10 10" fill="none">
@@ -356,6 +439,7 @@ export function ThreadCard({
           </div>
         </button>
       </ContextMenuTrigger>
+      </div>
 
       <ContextMenuContent className="w-56">
         {/* Selection header when multi-selected */}

@@ -26,6 +26,12 @@ import type {
   TopicTag,
 } from "@/lib/types";
 import { TAB_COLORS } from "@/lib/types";
+import { mergeSenderStatsFromThreads } from "@/lib/sender-stats";
+import {
+  loadSenderAiCategories,
+  saveSenderAiCategories,
+} from "@/lib/sender-categories";
+import { preclassifyEmail } from "@/lib/sender-classify";
 import {
   loadSenderOverrides,
   matchSenderOverride,
@@ -740,30 +746,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Deterministic pre-rules run client-side before the AI call.
   // These patterns are so reliable that they don't need AI.
-  const preclassify = useCallback((email: string, subject: string): FounderCategory | null => {
-    const addr = email.toLowerCase();
+  // Stable team domain derived from the signed-in user's email
+  const PUBLIC_DOMAINS_SET = useMemo(() => new Set([
+    "gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com",
+    "msn.com", "yahoo.com", "yahoo.co.uk", "ymail.com", "icloud.com", "me.com",
+    "mac.com", "proton.me", "protonmail.com", "aol.com", "zoho.com",
+  ]), []);
+  const teamDomain = useMemo(() => {
+    const raw = session?.user?.email?.split("@")[1]?.toLowerCase() ?? "";
+    return PUBLIC_DOMAINS_SET.has(raw) ? "" : raw;
+  }, [session?.user?.email, PUBLIC_DOMAINS_SET]);
+
+  // Subject-line only signals (used when we have thread subject data)
+  const preclassifyBySubject = useCallback((subject: string): FounderCategory | null => {
     const subj = subject.toLowerCase();
-
-    // User-configured rules beat every heuristic — they're an explicit override.
-    const manual = matchSenderOverride(addr, senderOverrides);
-    if (manual) return manual;
-
-    // No-reply / machine senders
-    const automatedAddressPatterns = [
-      "noreply", "no-reply", "no_reply", "donotreply", "do-not-reply", "do_not_reply",
-      "notifications@", "notification@", "alerts@", "alert@",
-      "newsletter@", "newsletters@", "digest@", "mailer@", "mailer-daemon",
-      "bounce@", "-bounces@", "bounces@", "postmaster@",
-      "support@github", "noreply@github", "noreply@gitlab",
-      "noreply@vercel", "noreply@netlify", "noreply@heroku",
-      "noreply@stripe", "noreply@paypal", "noreply@shopify",
-      "sendgrid", "mailchimp", "mailgun", "mandrillapp", "postmarkapp",
-      "amazonses", "amazonaws.com", "sparkpostmail",
-      "updates@", "update@", "info@", "automated@",
-    ];
-    if (automatedAddressPatterns.some((p) => addr.includes(p))) return "automated";
-
-    // Subject-line signals for newsletters / automated
     const automatedSubjectPatterns = [
       "unsubscribe", "weekly digest", "daily digest", "monthly digest",
       "issue #", "issue no.", "newsletter", "you have a new message",
@@ -774,10 +770,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       "your account", "verify your", "confirm your email",
       "security alert", "sign-in attempt", "new login",
     ];
-    if (automatedSubjectPatterns.some((p) => subj.includes(p))) return "automated";
+    return automatedSubjectPatterns.some((p) => subj.includes(p)) ? "automated" : null;
+  }, []);
 
-    return null; // defer to AI
-  }, [senderOverrides]);
+  // Full preclassify: email rules (from lib) + subject rules + manual overrides
+  const preclassify = useCallback((email: string, subject: string): FounderCategory | null => {
+    const addr = email.toLowerCase();
+    const manual = matchSenderOverride(addr, senderOverrides);
+    if (manual) return manual;
+    return preclassifyEmail(addr, teamDomain || undefined) ?? preclassifyBySubject(subject);
+  }, [senderOverrides, teamDomain, preclassifyBySubject]);
 
   const runCategorization = useCallback(async () => {
     const allThreads = [...gmailThreads, ...outlookThreads];
@@ -785,103 +787,138 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCategoryLoading(true);
     // Derive team domain from logged-in user's email (e.g. "acme.com")
     // Public email providers — never treat these as a "team domain"
-    const PUBLIC_DOMAINS = new Set([
-      "gmail.com", "googlemail.com",
-      "outlook.com", "hotmail.com", "live.com", "msn.com",
-      "yahoo.com", "yahoo.co.uk", "ymail.com",
-      "icloud.com", "me.com", "mac.com",
-      "proton.me", "protonmail.com",
-      "aol.com", "zoho.com",
-    ]);
-    const rawDomain = session?.user?.email?.split("@")[1]?.toLowerCase() ?? "";
-    const teamDomain = PUBLIC_DOMAINS.has(rawDomain) ? "" : rawDomain;
     try {
-      const preMap: Record<string, FounderCategory> = {};
-      const needsAi: typeof allThreads = [];
+      // Load the sender-level category cache — one entry covers all threads from that sender.
+      // This means we never call AI twice for the same person, even across sessions.
+      const senderAiCats = loadSenderAiCategories();
 
-      for (const t of allThreads.slice(0, 40)) {
-        const senderEmail = t.participants[0]?.email ?? "";
+      // ── One-time migration: bootstrap sender cache from existing per-thread data ──
+      // Users who had threads categorized before sender-level caching existed will
+      // have data in categoryMap (thread→category) but nothing in senderAiCats.
+      // Mine that existing data now so past senders are immediately categorized.
+      let migrated = false;
+      for (const t of allThreads) {
+        const senderEmail = (t.participants[0]?.email ?? "").toLowerCase();
+        if (senderEmail && !senderAiCats[senderEmail] && categoryMap[t.id]) {
+          senderAiCats[senderEmail] = categoryMap[t.id];
+          migrated = true;
+        }
+      }
+      if (migrated) saveSenderAiCategories(senderAiCats);
+
+      const map: Record<string, FounderCategory> = { ...categoryMap };
+      const tabMap: Record<string, string> = { ...categoryTabMap };
+
+      // ── Pass 1: rule-based preclassification + cache lookup ────────────────
+      // We iterate ALL threads (not just 40) so every loaded thread gets a
+      // category, including threads from already-known senders.
+      const needsAiByEmail = new Map<string, typeof allThreads[0]>(); // one representative thread per new sender
+
+      for (const t of allThreads) {
+        const senderEmail = (t.participants[0]?.email ?? "").toLowerCase();
         const pre = preclassify(senderEmail, t.subject);
+
         if (pre) {
-          preMap[t.id] = pre;
+          // Rule-based hit (automated, team, etc.) — instant, no AI needed
+          map[t.id] = pre;
+          if (!senderAiCats[senderEmail]) senderAiCats[senderEmail] = pre;
+        } else if (senderAiCats[senderEmail]) {
+          // Already classified in a previous session — reuse directly
+          map[t.id] = senderAiCats[senderEmail];
         } else {
-          needsAi.push(t);
+          // New sender — queue one representative thread per email for AI
+          if (!needsAiByEmail.has(senderEmail)) {
+            needsAiByEmail.set(senderEmail, t);
+          }
+          // Don't assign map[t.id] yet — will be filled after AI responds
         }
       }
 
-      const summaries = needsAi.slice(0, 30).map((t) => ({
-        threadId: t.id,
-        subject: t.subject,
-        snippet: t.snippet ?? "",
-        from: t.participants[0]?.email ?? "",
-        fromName: t.participants[0]?.name ?? "",
-        messageCount: t.messageCount,
-        participantCount: t.participants.length,
-        isForward: /^(fwd?|fw)\s*:/i.test(t.subject),
-      }));
-
-      const map: Record<string, FounderCategory> = { ...preMap };
-      const tabMap: Record<string, string> = { ...categoryTabMap };
-
-      // Pre-classify tabs by PURPOSE, not sender brand
-      for (const t of allThreads.slice(0, 40)) {
+      // ── Pass 1b: pre-classify tabs for all threads ─────────────────────────
+      for (const t of allThreads) {
         if (teamDomain && t.participants[0]?.email?.endsWith(`@${teamDomain}`)) {
           tabMap[t.id] = "team";
           continue;
         }
-        if (preMap[t.id] === "automated") {
+        if (map[t.id] === "automated") {
           const addr = (t.participants[0]?.email ?? "").toLowerCase();
           const subj = t.subject.toLowerCase();
 
-          // CI/CD & build notifications
           if (["github", "gitlab", "bitbucket", "vercel", "netlify", "heroku", "railway", "render", "circleci", "jenkins"].some(s => addr.includes(s))
             || ["build", "deploy", "pipeline", "ci ", "ci/cd", "preview"].some(s => subj.includes(s))) {
             tabMap[t.id] = "builds & deploys";
-          }
-          // Billing & receipts
-          else if (["stripe", "paypal", "mercury", "brex", "invoice", "receipt", "billing", "payment"].some(s => addr.includes(s) || subj.includes(s))) {
+          } else if (["stripe", "paypal", "mercury", "brex", "invoice", "receipt", "billing", "payment"].some(s => addr.includes(s) || subj.includes(s))) {
             tabMap[t.id] = "receipts";
-          }
-          // Security & access
-          else if (["security", "login", "verify", "password", "2fa", "authentication", "sign-in"].some(s => subj.includes(s))) {
+          } else if (["security", "login", "verify", "password", "2fa", "authentication", "sign-in"].some(s => subj.includes(s))) {
             tabMap[t.id] = "security";
-          }
-          // Social media notifications
-          else if (["instagram", "twitter", "facebook", "linkedin", "tiktok", "youtube", "threads", "mastodon"].some(s => addr.includes(s))) {
+          } else if (["instagram", "twitter", "facebook", "linkedin", "tiktok", "youtube", "threads", "mastodon"].some(s => addr.includes(s))) {
             tabMap[t.id] = "social";
-          }
-          // Newsletters & marketing
-          else if (["newsletter", "digest", "weekly", "unsubscribe", "indiehackers", "morningbrew", "substack", "mailchimp", "beehiiv"].some(s => addr.includes(s) || subj.includes(s))) {
+          } else if (["newsletter", "digest", "weekly", "unsubscribe", "indiehackers", "morningbrew", "substack", "mailchimp", "beehiiv"].some(s => addr.includes(s) || subj.includes(s))) {
             tabMap[t.id] = "newsletters";
-          }
-          // Monitoring & alerts
-          else if (["sentry", "datadog", "pagerduty", "alert", "monitoring", "uptime", "incident"].some(s => addr.includes(s) || subj.includes(s))) {
+          } else if (["sentry", "datadog", "pagerduty", "alert", "monitoring", "uptime", "incident"].some(s => addr.includes(s) || subj.includes(s))) {
             tabMap[t.id] = "alerts";
-          }
-          // Fallback for other automated
-          else {
+          } else {
             tabMap[t.id] = "notifications";
           }
         }
       }
 
-      if (summaries.length > 0) {
+      // ── Pass 2: AI classification for new senders only ─────────────────────
+      // We send one representative thread per new sender (max 30 unique senders
+      // per run). The result is saved at the sender level and propagated to ALL
+      // threads from that sender — including future thread loads.
+      const newSenderThreads = Array.from(needsAiByEmail.values()).slice(0, 30);
+
+      if (newSenderThreads.length > 0) {
+        const summaries = newSenderThreads.map((t) => ({
+          threadId: t.id,
+          subject: t.subject,
+          snippet: t.snippet ?? "",
+          from: t.participants[0]?.email ?? "",
+          fromName: t.participants[0]?.name ?? "",
+          messageCount: t.messageCount,
+          participantCount: t.participants.length,
+          isForward: /^(fwd?|fw)\s*:/i.test(t.subject),
+        }));
+
         const existingTabNames = categoryTabs.map(tab => tab.label.toLowerCase());
         const res = await fetch("/api/ai/categorize", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ threads: summaries, teamDomain, existingTabs: existingTabNames }),
         });
+
         if (res.ok) {
           const data = await res.json();
+          // Build a threadId → {category, tab} lookup from AI response
+          const aiResultByThread = new Map<string, { category: FounderCategory; tab?: string }>();
           for (const r of data.results ?? []) {
-            if (r.threadId && r.category) map[r.threadId] = r.category;
-            if (r.threadId && r.tab) {
-              tabMap[r.threadId] = r.tab.toLowerCase().trim();
+            if (r.threadId && r.category) {
+              aiResultByThread.set(r.threadId, { category: r.category, tab: r.tab });
+            }
+          }
+
+          // Save category at the sender level, then propagate to ALL their threads
+          for (const [senderEmail, repThread] of needsAiByEmail) {
+            const result = aiResultByThread.get(repThread.id);
+            if (!result) continue;
+
+            senderAiCats[senderEmail] = result.category;
+
+            // Apply to every thread from this sender in the current batch
+            for (const t of allThreads) {
+              const addr = (t.participants[0]?.email ?? "").toLowerCase();
+              if (addr === senderEmail) {
+                map[t.id] = result.category;
+                if (result.tab) tabMap[t.id] = result.tab.toLowerCase().trim();
+              }
             }
           }
         }
       }
+
+      // Persist sender-level categories so future loads skip AI for known senders
+      saveSenderAiCategories(senderAiCats);
 
       setCategoryMap(map);
       setCategoryTabMap(tabMap);
@@ -1053,6 +1090,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             setGmailThreads(threads);
             setGmailNextPageToken(data.nextPageToken ?? undefined);
 
+            // Passively accumulate sender history in localStorage (zero extra API calls)
+            mergeSenderStatsFromThreads(threads);
+
             // Seed starred from Gmail's STARRED label (merge, don't overwrite)
             const gmailStarred = threads
               .filter((t) => t.isStarred)
@@ -1140,6 +1180,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const newThreads: DiracThread[] = data.threads ?? [];
+      mergeSenderStatsFromThreads(newThreads);
       setGmailThreads(prev => {
         const existingIds = new Set(prev.map(t => t.id));
         const deduped = newThreads.filter(t => !existingIds.has(t.id));

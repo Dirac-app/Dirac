@@ -8,7 +8,7 @@ import { ViewAllView } from "@/components/inbox/view-all-overlay";
 import { AiSidebarSkeleton } from "@/components/ui/skeleton";
 import { useAppState } from "@/lib/store";
 import { Button } from "@/components/ui/button";
-import { Sparkles, ArrowLeft, X } from "lucide-react";
+import { Sparkles, ArrowLeft } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -27,6 +27,16 @@ const AiSidebar = dynamic(
       </div>
     ),
   }
+);
+
+// Mobile AI bottom sheet
+const AiBottomSheet = dynamic(
+  () => import("@/components/ai-sidebar/ai-bottom-sheet").then((m) => m.AiBottomSheet),
+  { ssr: false }
+);
+const AiBottomSheetTrigger = dynamic(
+  () => import("@/components/ai-sidebar/ai-bottom-sheet").then((m) => m.AiBottomSheetTrigger),
+  { ssr: false }
 );
 
 const SLIDE = {
@@ -103,18 +113,19 @@ export default function InboxPage() {
                 exit={SLIDE.thread.exit}
                 transition={TRANSITION}
               >
-                {/* Mobile header with back button */}
+                {/* Mobile header with back button + AI trigger */}
                 <div className="flex flex-1 flex-col overflow-hidden">
-                  <div className="flex items-center gap-2 px-3 py-2 border-b border-border/40 md:hidden">
+                  <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border/40 md:hidden">
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={handleBack}
-                      className="touch-target h-9 w-9"
+                      className="touch-target h-9 w-9 shrink-0"
                     >
                       <ArrowLeft className="h-4 w-4" />
                     </Button>
-                    <span className="text-sm font-medium truncate">Back to inbox</span>
+                    <span className="text-sm font-medium truncate flex-1 px-1">Back to inbox</span>
+                    <AiBottomSheetTrigger />
                   </div>
                   <ThreadView />
                 </div>
@@ -196,6 +207,9 @@ export default function InboxPage() {
       <div className="hidden lg:flex h-full">
         <AiSidebar />
       </div>
+
+      {/* Mobile AI bottom sheet - only rendered on mobile */}
+      {isMobile && <AiBottomSheet />}
     </>
   );
 }
