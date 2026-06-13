@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { ThreadList } from "@/components/inbox/thread-list";
 import { ThreadView } from "@/components/inbox/thread-view";
 import { ViewAllView } from "@/components/inbox/view-all-overlay";
@@ -60,7 +61,8 @@ const SLIDE = {
 const TRANSITION = { duration: 0.18, ease: [0.25, 0.1, 0.25, 1] } as const;
 
 export default function InboxPage() {
-  const { aiSidebarOpen, setAiSidebarOpen, selectedThreadId, viewAllOpen } = useAppState();
+  const router = useRouter();
+  const { aiSidebarOpen, setAiSidebarOpen, selectedThreadId, viewAllOpen, setSelectedThreadId } = useAppState();
   const [isMobile, setIsMobile] = useState(false);
   const [showThreadOnMobile, setShowThreadOnMobile] = useState(false);
 
@@ -85,6 +87,12 @@ export default function InboxPage() {
 
   const handleBack = () => {
     setShowThreadOnMobile(false);
+    const fromBrief = sessionStorage.getItem("dirac:nav-from-brief") === "1";
+    if (fromBrief) {
+      sessionStorage.removeItem("dirac:nav-from-brief");
+      setSelectedThreadId(null);
+      router.push("/brief");
+    }
   };
 
   return (
@@ -124,7 +132,9 @@ export default function InboxPage() {
                     >
                       <ArrowLeft className="h-4 w-4" />
                     </Button>
-                    <span className="text-sm font-medium truncate flex-1 px-1">Back to inbox</span>
+                    <span className="text-sm font-medium truncate flex-1 px-1">
+                      {sessionStorage.getItem("dirac:nav-from-brief") === "1" ? "Back to Brief" : "Back to inbox"}
+                    </span>
                     <AiBottomSheetTrigger />
                   </div>
                   <ThreadView />

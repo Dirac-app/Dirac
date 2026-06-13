@@ -32,7 +32,9 @@ export interface UndoToastProps {
 // Icons for each action type
 const icons: Record<UndoableActionType, typeof Archive> = {
   archive: Archive,
+  unarchive: Archive,
   trash: Trash2,
+  untrash: Trash2,
   delete: Trash2,
   star: Star,
   unstar: Star,
@@ -42,10 +44,13 @@ const icons: Record<UndoableActionType, typeof Archive> = {
   unmarkDone: CheckCircle2,
   snooze: Clock,
   unsnooze: Clock,
+  batch_archive: Archive,
+  batch_star: Star,
+  bundle: Archive,
 };
 
 // Action types that cannot be undone
-const irreversibleActions = new Set(["delete", "archive"]);
+const irreversibleActions = new Set(["delete"]);
 
 export function UndoToast({ 
   action, 

@@ -7,6 +7,8 @@ import {
   markOutlookMessageUnread,
   archiveOutlookMessage,
   trashOutlookMessage,
+  unarchiveOutlookMessage,
+  untrashOutlookMessage,
 } from "@/lib/outlook";
 import { getOutlookAccessToken } from "@/lib/outlook-token";
 
@@ -53,7 +55,7 @@ export async function POST(
 
   const conversationId = threadId.replace(/^outlook-/, "");
   const body = await request.json();
-  const VALID_ACTIONS = ["mark-read", "mark-unread", "archive", "trash"] as const;
+  const VALID_ACTIONS = ["mark-read", "mark-unread", "archive", "unarchive", "trash", "untrash"] as const;
   type Action = typeof VALID_ACTIONS[number];
   const action = body?.action as string | undefined;
   if (!action || !(VALID_ACTIONS as readonly string[]).includes(action)) {
@@ -62,14 +64,21 @@ export async function POST(
   const validatedAction = action as Action;
 
   try {
+    // getOutlookThreadMessages queries /messages across all folders by conversationId,
+    // so archived/trashed messages are still reachable here.
+    // TODO(outlook-undo): Outlook archive/trash operates per-message, not per-conversation.
+    // If a conversation has messages spread across multiple folders, all will be moved to the
+    // target folder. This is the best-effort approach given the Graph API's per-message model.
     const graphMessages = await getOutlookThreadMessages(accessToken, conversationId);
     const messageIds = graphMessages.map(m => m.id);
 
     switch (validatedAction) {
-      case "mark-read":   await Promise.allSettled(messageIds.map(id => markOutlookMessageRead(accessToken, id)));   break;
-      case "mark-unread": await Promise.allSettled(messageIds.map(id => markOutlookMessageUnread(accessToken, id))); break;
-      case "archive":     await Promise.allSettled(messageIds.map(id => archiveOutlookMessage(accessToken, id)));    break;
-      case "trash":       await Promise.allSettled(messageIds.map(id => trashOutlookMessage(accessToken, id)));      break;
+      case "mark-read":   await Promise.allSettled(messageIds.map(id => markOutlookMessageRead(accessToken, id)));     break;
+      case "mark-unread": await Promise.allSettled(messageIds.map(id => markOutlookMessageUnread(accessToken, id)));   break;
+      case "archive":     await Promise.allSettled(messageIds.map(id => archiveOutlookMessage(accessToken, id)));      break;
+      case "unarchive":   await Promise.allSettled(messageIds.map(id => unarchiveOutlookMessage(accessToken, id)));    break;
+      case "trash":       await Promise.allSettled(messageIds.map(id => trashOutlookMessage(accessToken, id)));        break;
+      case "untrash":     await Promise.allSettled(messageIds.map(id => untrashOutlookMessage(accessToken, id)));      break;
     }
 
     return NextResponse.json({ ok: true });

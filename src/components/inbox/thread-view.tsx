@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { format, addHours, nextMonday, setHours, setMinutes, setSeconds } from "date-fns";
 import {
   Bookmark,
@@ -75,6 +76,7 @@ function getInitials(name: string) {
 }
 
 export function ThreadView() {
+  const router = useRouter();
   const {
     selectedThreadId,
     setSelectedThreadId,
@@ -145,14 +147,20 @@ export function ThreadView() {
     }
   }, [clipPopup]);
 
-  // Escape → back to inbox
+  // Escape → back to inbox / brief
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !e.defaultPrevented) setSelectedThreadId(null);
+      if (e.key === "Escape" && !e.defaultPrevented) {
+        setSelectedThreadId(null);
+        if (sessionStorage.getItem("dirac:nav-from-brief") === "1") {
+          sessionStorage.removeItem("dirac:nav-from-brief");
+          router.push("/brief");
+        }
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [setSelectedThreadId]);
+  }, [setSelectedThreadId, router]);
 
   if (!selectedThreadId) return null;
 
@@ -197,14 +205,25 @@ export function ThreadView() {
         <div className="flex flex-1 items-center justify-between gap-3 min-w-0">
           <div className="flex items-center gap-3 min-w-0">
             {/* Back button */}
-            <button
-              onClick={() => setSelectedThreadId(null)}
-              className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-colors"
-              title="Back to inbox (Esc)"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Inbox
-            </button>
+            {(() => {
+              const fromBrief = typeof window !== "undefined" && sessionStorage.getItem("dirac:nav-from-brief") === "1";
+              return (
+                <button
+                  onClick={() => {
+                    setSelectedThreadId(null);
+                    if (fromBrief) {
+                      sessionStorage.removeItem("dirac:nav-from-brief");
+                      router.push("/brief");
+                    }
+                  }}
+                  className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-colors"
+                  title={fromBrief ? "Back to Brief (Esc)" : "Back to inbox (Esc)"}
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  {fromBrief ? "Brief" : "Inbox"}
+                </button>
+              );
+            })()}
             <div className="h-4 w-px bg-border shrink-0" />
             <div className="flex min-w-0 items-center gap-2">
               {isDiscord && (

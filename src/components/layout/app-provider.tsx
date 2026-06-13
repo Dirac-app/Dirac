@@ -373,7 +373,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // ─── Toggle starred ───────────────────────────────────
-  const toggleStarred = useCallback((threadId: string) => {
+  const toggleStarred = useCallback((threadId: string, skipUndo?: boolean) => {
     // Find thread for undo tracking
     const thread = threads.find(t => t.id === threadId);
     const threadSubject = thread?.subject;
@@ -402,12 +402,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return next;
     });
     
-    // Show toast with undo
-    pushUndoAction({
-      type: actionType,
-      threadId,
-      threadSubject,
-    });
+    // Show toast with undo (skip when called from the undo handler itself)
+    if (!skipUndo) {
+      pushUndoAction({
+        type: actionType,
+        threadId,
+        threadSubject,
+      });
+    }
   }, [threads, starredIds, pushUndoAction]);
 
   // ─── Toggle urgent ──────────────────────────────────
@@ -507,7 +509,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   // ─── Mark thread as read (optimistic + API) ────────
-  const markThreadRead = useCallback((threadId: string) => {
+  const markThreadRead = useCallback((threadId: string, skipUndo?: boolean) => {
     // Only the ID is available here; use prefix as platform hint
     const isOutlook = threadId.startsWith("outlook-");
     const isDiscord = threadId.startsWith("discord-");
@@ -537,22 +539,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }).catch(() => {});
     }
     
-    // Show toast with undo
-    pushUndoAction({
-      type: "markRead",
-      threadId,
-      threadSubject,
-    });
+    // Show toast with undo (skip when called from the undo handler itself)
+    if (!skipUndo) {
+      pushUndoAction({
+        type: "markRead",
+        threadId,
+        threadSubject,
+      });
+    }
   }, [threads, pushUndoAction]);
 
   // ─── Archive thread (optimistic remove + API) ──────
   const archiveThread = useCallback(
-    (threadId: string) => {
+    (threadId: string, skipUndo?: boolean) => {
       // Only the ID is available here; use prefix as platform hint
       const isOutlook = threadId.startsWith("outlook-");
       const isDiscord = threadId.startsWith("discord-");
       
-      // Find thread for undo tracking
+      // Capture full thread for undo restore
       const thread = threads.find(t => t.id === threadId);
       const threadSubject = thread?.subject;
 
@@ -578,14 +582,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }).catch(() => {});
       }
       
-      // Show toast with undo
-      pushUndoAction({
-        type: "archive",
-        threadId,
-        threadSubject,
-      });
+      if (!skipUndo) {
+        // Store full thread in metadata so undo can re-insert it
+        pushUndoAction({
+          type: "archive",
+          threadId,
+          threadSubject,
+          metadata: { thread },
+        });
+      }
     },
     [selectedThreadId, toast, pushUndoAction, threads],
+  );
+
+  // ─── Unarchive thread (undo for archive) ───────────
+  const unarchiveThread = useCallback(
+    (threadId: string, thread?: DiracThread) => {
+      const isOutlook = threadId.startsWith("outlook-");
+      const isDiscord = threadId.startsWith("discord-");
+
+      // Re-insert optimistically using the captured snapshot
+      if (thread) {
+        if (isOutlook) {
+          setOutlookThreads((prev) => {
+            if (prev.some(t => t.id === threadId)) return prev;
+            return [thread, ...prev];
+          });
+        } else if (!isDiscord) {
+          setGmailThreads((prev) => {
+            if (prev.some(t => t.id === threadId)) return prev;
+            return [thread, ...prev];
+          });
+        }
+      }
+
+      if (!isDiscord) {
+        const apiUrl = isOutlook
+          ? `/api/outlook/threads/${threadId}`
+          : `/api/gmail/threads/${threadId}`;
+        fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "unarchive" }),
+        }).catch(() => {});
+      }
+    },
+    [],
   );
 
   // ─── Trash thread (optimistic remove + API) ────────
@@ -595,7 +637,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const isOutlook = threadId.startsWith("outlook-");
       const isDiscord = threadId.startsWith("discord-");
       
-      // Find thread for undo tracking
+      // Capture full thread for undo restore
       const thread = threads.find(t => t.id === threadId);
       const threadSubject = thread?.subject;
 
@@ -620,14 +662,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }).catch(() => {});
       }
       
-      // Show toast with undo
+      // Store full thread in metadata so undo can re-insert it
       pushUndoAction({
         type: "trash",
         threadId,
         threadSubject,
+        metadata: { thread },
       });
     },
     [selectedThreadId, toast, pushUndoAction, threads],
+  );
+
+  // ─── Untrash thread (undo for trash) ───────────────
+  const untrashThread = useCallback(
+    (threadId: string, thread?: DiracThread) => {
+      const isOutlook = threadId.startsWith("outlook-");
+      const isDiscord = threadId.startsWith("discord-");
+
+      // Re-insert optimistically using the captured snapshot
+      if (thread) {
+        if (isOutlook) {
+          setOutlookThreads((prev) => {
+            if (prev.some(t => t.id === threadId)) return prev;
+            return [thread, ...prev];
+          });
+        } else if (!isDiscord) {
+          setGmailThreads((prev) => {
+            if (prev.some(t => t.id === threadId)) return prev;
+            return [thread, ...prev];
+          });
+        }
+      }
+
+      if (!isDiscord) {
+        const apiUrl = isOutlook
+          ? `/api/outlook/threads/${threadId}`
+          : `/api/gmail/threads/${threadId}`;
+        fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "untrash" }),
+        }).catch(() => {});
+      }
+    },
+    [],
   );
 
   // ─── AI context helpers ───────────────────────────────
@@ -662,7 +740,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ─── Snooze helpers (Direction A.2) ─────────────────────
   const snoozeThread = useCallback(
-    (threadId: string, snooze: Omit<SnoozeState, "threadId" | "snoozedAt">) => {
+    (threadId: string, snooze: Omit<SnoozeState, "threadId" | "snoozedAt">, skipUndo?: boolean) => {
+      const thread = threads.find(t => t.id === threadId);
+      const threadSubject = thread?.subject;
       setSnoozedThreads((prev) => {
         const next = [
           ...prev.filter((s) => s.threadId !== threadId),
@@ -672,17 +752,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return next;
       });
       if (selectedThreadId === threadId) setSelectedThreadId(null);
+      if (!skipUndo) {
+        pushUndoAction({ type: "snooze", threadId, threadSubject });
+      }
     },
-    [selectedThreadId],
+    [selectedThreadId, threads, pushUndoAction],
   );
 
   const unsnoozeThread = useCallback((threadId: string) => {
+    const snoozeState = snoozedThreads.find(s => s.threadId === threadId);
     setSnoozedThreads((prev) => {
       const next = prev.filter((s) => s.threadId !== threadId);
       try { localStorage.setItem(SNOOZED_KEY, JSON.stringify(next)); } catch {}
       return next;
     });
-  }, []);
+    if (snoozeState) {
+      pushUndoAction({ type: "unsnooze", threadId, metadata: { snooze: snoozeState } });
+    }
+  }, [snoozedThreads, pushUndoAction]);
 
   useEffect(() => {
     const checkSnoozes = () => {
@@ -705,14 +792,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // ─── Done helpers (Direction A.1) ───────────────────────
-  const markDone = useCallback((threadId: string) => {
+  const markDone = useCallback((threadId: string, skipUndo?: boolean) => {
+    const thread = threads.find(t => t.id === threadId);
+    const threadSubject = thread?.subject;
     setDoneThreadIds((prev) => {
       const next = new Set(prev);
       next.add(threadId);
       try { localStorage.setItem(DONE_KEY, JSON.stringify(Array.from(next))); } catch {}
       return next;
     });
-  }, []);
+    if (!skipUndo) {
+      pushUndoAction({ type: "markDone", threadId, threadSubject });
+    }
+  }, [threads, pushUndoAction]);
 
   const unmarkDone = useCallback((threadId: string) => {
     setDoneThreadIds((prev) => {
@@ -1027,6 +1119,71 @@ export function AppProvider({ children }: { children: ReactNode }) {
       dismissPattern(id);
     },
     [patternSuggestions, gmailThreads, outlookThreads, archiveThread, toggleStarred, markThreadRead, toggleUrgent, dismissPattern],
+  );
+
+  // ─── Send reply (shared across brief + sidebar) ─────────
+  // Resolves platform + recipient from threads state, calls the right endpoint.
+  const sendThreadReply = useCallback(
+    async (threadId: string, body: string): Promise<{ ok: boolean; error?: string }> => {
+      const thread = threads.find((t) => t.id === threadId);
+      if (!thread) return { ok: false, error: "Thread not found" };
+
+      const userEmail = session?.user?.email?.toLowerCase();
+      const recipient =
+        thread.participants.find(
+          (p) => p.email && (!userEmail || p.email.toLowerCase() !== userEmail),
+        ) ?? thread.participants[0];
+
+      if (!recipient?.email) return { ok: false, error: "No recipient found" };
+
+      try {
+        if (thread.platform === "DISCORD") {
+          const channelId = threadId.replace(/^discord-/, "");
+          const res = await fetch("/api/discord/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ channelId, content: body }),
+          });
+          if (!res.ok) throw new Error("Discord send failed");
+        } else if (thread.platform === "OUTLOOK") {
+          const res = await fetch("/api/outlook/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: recipient.email,
+              subject: thread.subject,
+              body,
+            }),
+          });
+          if (!res.ok) {
+            const errBody = await res.json().catch(() => ({}));
+            throw new Error(errBody.error || `Send failed (${res.status})`);
+          }
+        } else {
+          const res = await fetch("/api/gmail/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              threadId,
+              to: recipient.email,
+              subject: thread.subject,
+              body,
+            }),
+          });
+          if (!res.ok) {
+            const errBody = await res.json().catch(() => ({}));
+            throw new Error(errBody.error || `Send failed (${res.status})`);
+          }
+        }
+        return { ok: true };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : "Send failed",
+        };
+      }
+    },
+    [threads, session?.user?.email],
   );
 
   // ─── Relationship context (Direction B.4) ───────────────
@@ -1406,13 +1563,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       markThreadUnread,
       markThreadRead,
       archiveThread,
+      unarchiveThread,
       trashThread,
+      untrashThread,
       aiContext,
       addToAiContext,
       removeFromAiContext,
       toggleAiContext,
-      clearAiContext,
-      isInAiContext,
+      clearAiContext,      isInAiContext,
       triageMap,
       triageLoading,
       runTriage,
@@ -1469,6 +1627,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       pushUndoAction: pushUndoAction,
       performUndo: performUndo,
       dismissUndo: dismissUndo,
+      sendThreadReply,
     }),
     [
       selectedThreadId,
@@ -1491,13 +1650,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       markThreadUnread,
       markThreadRead,
       archiveThread,
+      unarchiveThread,
       trashThread,
+      untrashThread,
       aiContext,
       addToAiContext,
       removeFromAiContext,
       toggleAiContext,
-      clearAiContext,
-      isInAiContext,
+      clearAiContext,      isInAiContext,
       triageMap,
       triageLoading,
       runTriage,
@@ -1544,6 +1704,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       currentUndo,
       currentUndoAction,
       currentUndoTimeLeft,
+      sendThreadReply,
     ],
   );
 

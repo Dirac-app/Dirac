@@ -16,6 +16,7 @@ import { MorningBriefing } from "@/components/morning/morning-briefing";
 import { SetAsideBar } from "@/components/set-aside/set-aside-bar";
 import { ViewAllOverlay } from "@/components/inbox/view-all-overlay";
 import { InboxTooltips } from "@/components/onboarding/inbox-tooltips";
+import { UndoToastDisplay } from "@/components/ui/undo-toast-display";
 import { ThemeConfigProvider, useThemeConfig, getColorSchemeClass, getDensityClass } from "@/lib/theme";
 import { useEffect, useState } from "react";
 import { PenSquare } from "lucide-react";
@@ -59,7 +60,7 @@ function ThemedAppShell({ children }: { children: ReactNode }) {
     <div className={`dirac-bg flex h-screen w-screen flex-col overflow-hidden ${isPanelLayout ? 'gap-0' : 'divide-y divide-border'} ${colorSchemeClass} ${densityClass}`}>
       <AppNav />
       {/* Mobile: single column layout, Desktop: horizontal layout */}
-      <main className={`flex flex-1 items-stretch overflow-hidden min-h-0 ${
+      <main className={`flex flex-1 items-stretch overflow-hidden overflow-x-hidden min-h-0 ${
           isPanelLayout
           ? isMobile ? 'flex-col gap-3 p-3' : 'gap-3 p-3'
           : isMobile ? 'flex-col divide-y divide-border' : 'divide-x divide-border'
@@ -97,6 +98,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <ViewAllOverlay />
               <KeyboardShortcutsHelp />
               <InboxTooltips />
+              <UndoToastDisplay />
             </TooltipProvider>
           </AppProvider>
           </ThemeConfigProvider>

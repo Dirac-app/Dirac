@@ -402,61 +402,64 @@ export default function PaperTrailPage() {
     <>
       <div className="dirac-panel flex flex-1 flex-col overflow-hidden">
         {/* ── Header ── */}
-        <div className="border-b border-border px-5 py-4 shrink-0">
-          <div className="flex items-center gap-3">
+        <div className="border-b border-border px-4 sm:px-5 py-3 sm:py-4 shrink-0">
+          <div className="flex items-center gap-2">
+            {/* Breadcrumb — hidden on mobile to save space */}
             <Link href="/inbox"
-              className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-colors">
+              className="hidden sm:flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-colors shrink-0">
               <ArrowLeft className="h-3.5 w-3.5" /> Inbox
             </Link>
-            <div className="h-4 w-px bg-border" />
-            <FileText className="h-4 w-4 text-primary/70" />
-            <h1 className="text-xl font-bold text-foreground">Paper trail</h1>
-            <span className="text-sm text-muted-foreground/50">
+            <div className="hidden sm:block h-4 w-px bg-border shrink-0" />
+            <FileText className="hidden sm:block h-4 w-4 shrink-0 text-primary/70" />
+            <h1 className="text-base sm:text-xl font-bold text-foreground">Paper trail</h1>
+            <span className="hidden sm:inline text-sm text-muted-foreground/50">
               {serverMode ? `${serverResults.length}+ results` : `${totalLocal} threads`}
             </span>
             <button
               onClick={() => setAddOpen(v => !v)}
               className={cn(
-                "ml-auto flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+                "ml-auto flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors shrink-0",
                 addOpen ? "border-primary/30 bg-primary/5 text-primary" : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
               )}>
-              <Plus className="h-3.5 w-3.5" /> Add email
+              <Plus className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Add email</span>
             </button>
           </div>
-          <p className="mt-1.5 text-xs text-muted-foreground/60">
-            Automated and non-primary emails, grouped by purpose.
-          </p>
 
           {/* Search + date */}
           <div className="mt-3 flex flex-col gap-2">
             <div className="flex items-center gap-2">
-              <div className="flex flex-1 items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+              <div className="flex flex-1 items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 min-w-0">
                 <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40" />
-                <input type="text" placeholder="Search subject, sender, or keyword…"
+                <input type="text" placeholder="Search…"
                   value={ptSearch} onChange={e => setPtSearch(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && runSearch()}
-                  className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/35 outline-none" />
+                  className="flex-1 min-w-0 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/35 outline-none" />
                 {ptSearch && (
-                  <button onClick={() => setPtSearch("")} className="text-muted-foreground/40 hover:text-muted-foreground">
+                  <button onClick={() => setPtSearch("")} className="text-muted-foreground/40 hover:text-muted-foreground shrink-0">
                     <X className="h-3.5 w-3.5" /></button>
                 )}
               </div>
+              {/* Date — icon-only on mobile */}
               <button onClick={() => setShowDateFilter(v => !v)}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors shrink-0",
+                  "flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-medium transition-colors shrink-0",
                   (showDateFilter || dateFrom || dateTo) ? "border-primary/40 bg-primary/5 text-primary" : "border-border/60 text-muted-foreground hover:bg-accent/50",
                 )}>
-                <Calendar className="h-3.5 w-3.5" /> Date
+                <Calendar className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Date</span>
               </button>
+              {/* Search button — icon-only on mobile */}
               <button onClick={runSearch} disabled={!(ptSearch.trim() || dateFrom || dateTo) || serverLoading}
-                className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground disabled:opacity-40 hover:opacity-90 transition-opacity shrink-0">
+                className="flex items-center gap-1.5 rounded-lg bg-primary px-2.5 py-2 text-xs font-medium text-primary-foreground disabled:opacity-40 hover:opacity-90 transition-opacity shrink-0">
                 {serverLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
-                Search
+                <span className="hidden sm:inline">Search</span>
               </button>
               {serverMode && (
                 <button onClick={() => { setServerMode(false); setPtSearch(""); setDateFrom(""); setDateTo(""); }}
-                  className="flex items-center gap-1 rounded-lg border border-border/60 px-3 py-2 text-xs text-muted-foreground hover:bg-accent/50 transition-colors shrink-0">
-                  <X className="h-3 w-3" /> Clear
+                  className="flex items-center gap-1 rounded-lg border border-border/60 px-2.5 py-2 text-xs text-muted-foreground hover:bg-accent/50 transition-colors shrink-0">
+                  <X className="h-3 w-3" />
+                  <span className="hidden sm:inline">Clear</span>
                 </button>
               )}
             </div>

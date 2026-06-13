@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   ArrowLeft, Mail, MessageSquare, Star, ChevronDown, ChevronRight, Loader2, Layers,
@@ -226,7 +227,17 @@ function ExpandedThread({ thread, defaultExpanded = true }: { thread: DiracThrea
 
 /** Not an overlay — rendered inline as the main content area, AI sidebar stays visible on the right. */
 export function ViewAllView() {
+  const router = useRouter();
   const { viewAllThreadIds, closeViewAll, threads } = useAppState();
+  const fromBrief = typeof window !== "undefined" && sessionStorage.getItem("dirac:nav-from-brief") === "1";
+
+  const handleBack = () => {
+    closeViewAll();
+    if (fromBrief) {
+      sessionStorage.removeItem("dirac:nav-from-brief");
+      router.push("/brief");
+    }
+  };
 
   const viewAllThreads = viewAllThreadIds
     .map((id) => threads.find((t) => t.id === id))
@@ -237,11 +248,11 @@ export function ViewAllView() {
       {/* Header */}
       <div className="flex shrink-0 items-center gap-3 border-b border-border px-5 py-3.5">
         <button
-          onClick={closeViewAll}
+          onClick={handleBack}
           className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back to inbox
+          {fromBrief ? "Back to Brief" : "Back to inbox"}
         </button>
         <Separator orientation="vertical" className="h-4" />
         <Layers className="h-4 w-4 text-primary" />

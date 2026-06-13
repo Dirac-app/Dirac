@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   Inbox,
@@ -23,6 +23,14 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  getMorningStorageKey,
+  loadMorningSettings,
+} from "@/components/morning/morning-briefing";
+import {
+  loadPendingStore,
+  MORNING_BRIEF_PENDING_CHANGED,
+} from "@/lib/morning-brief-pending";
 
 const NAV_LINKS = [
   { href: "/inbox", label: "Inbox", icon: Inbox },
@@ -34,31 +42,58 @@ const NAV_LINKS = [
 ] as const;
 
 
+function computeHasUnseenBrief(): boolean {
+  if (typeof window === "undefined") return false;
+  const settings = loadMorningSettings();
+  if (!settings.enabled) return false;
+  const seen = window.localStorage.getItem(getMorningStorageKey());
+  if (seen) return false;
+  const pendingCount = loadPendingStore()?.cards.length ?? 0;
+  return pendingCount > 0;
+}
+
 export function AppNav() {
   const pathname = usePathname();
+  const router = useRouter();
   const { setComposeOpen, setComposeMinimized, unreadCount } = useAppState();
   const [navOpen, setNavOpen] = useState(false);
   const navRef = useRef<HTMLDivElement>(null);
-  const [briefMinimized, setBriefMinimized] = useState(false);
+  const mobileNavRef = useRef<HTMLDivElement>(null);
+  const [hasUnseenBrief, setHasUnseenBrief] = useState(false);
 
+  // Compute pulse on mount (client-only) and refresh on brief/pending events
   useEffect(() => {
-    const handler = (e: Event) => {
-      setBriefMinimized((e as CustomEvent<{ minimized: boolean }>).detail.minimized);
+    setHasUnseenBrief(computeHasUnseenBrief());
+
+    const refresh = () => setHasUnseenBrief(computeHasUnseenBrief());
+    window.addEventListener(MORNING_BRIEF_PENDING_CHANGED, refresh);
+    window.addEventListener("dirac:brief-seen", refresh);
+    // Keep the old minimized listener so the modal's emit doesn't throw
+    window.addEventListener("dirac:morning-brief-minimized", refresh);
+    return () => {
+      window.removeEventListener(MORNING_BRIEF_PENDING_CHANGED, refresh);
+      window.removeEventListener("dirac:brief-seen", refresh);
+      window.removeEventListener("dirac:morning-brief-minimized", refresh);
     };
-    window.addEventListener("dirac:morning-brief-minimized", handler);
-    return () => window.removeEventListener("dirac:morning-brief-minimized", handler);
   }, []);
 
-  // Close on outside click
+  // Close on outside click/touch
   useEffect(() => {
     if (!navOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (navRef.current && !navRef.current.contains(e.target as Node)) {
+    const handler = (e: MouseEvent | TouchEvent) => {
+      const target = "touches" in e ? e.touches[0]?.target : (e as MouseEvent).target;
+      const insideDesktop = navRef.current?.contains(target as Node) ?? false;
+      const insideMobile = mobileNavRef.current?.contains(target as Node) ?? false;
+      if (!insideDesktop && !insideMobile) {
         setNavOpen(false);
       }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("mousedown", handler as EventListener);
+    document.addEventListener("touchstart", handler as EventListener, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", handler as EventListener);
+      document.removeEventListener("touchstart", handler as EventListener);
+    };
   }, [navOpen]);
 
   // Close on Escape
@@ -153,16 +188,14 @@ export function AppNav() {
             <TooltipTrigger asChild>
               <button
                 data-tour="morning-brief"
-                onClick={() => window.dispatchEvent(new CustomEvent(
-                  briefMinimized ? "dirac:reopen-morning-briefing" : "dirac:open-morning-briefing"
-                ))}
+                onClick={() => window.open("/brief", "_blank")}
                 className={cn(
                   "relative flex h-8 w-8 items-center justify-center text-[#FF8A3D] transition-colors hover:bg-[#FF8A3D]/10 touch-target",
-                  briefMinimized && "rounded-lg ring-2 ring-[#FF8A3D]/40",
+                  pathname === "/brief" && "rounded-lg ring-2 ring-[#FF8A3D]/40",
                 )}
               >
                 <Sunrise className="h-4 w-4" strokeWidth={1.75} />
-                {briefMinimized && (
+                {hasUnseenBrief && (
                   <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#FF8A3D] opacity-60" />
                     <span className="relative inline-flex h-2 w-2 rounded-full bg-[#FF8A3D]" />
@@ -171,7 +204,7 @@ export function AppNav() {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" sideOffset={6}>
-              {briefMinimized ? "Resume Morning Brief" : "Morning briefing"}
+              Morning briefing
             </TooltipContent>
           </Tooltip>
 
@@ -204,7 +237,7 @@ export function AppNav() {
       {/* Mobile header */}
       <header className="dirac-panel flex md:hidden h-12 items-center gap-2 px-3 relative z-40">
         {/* Mobile hamburger → full-screen nav overlay */}
-        <div className="relative flex items-center" ref={navRef}>
+        <div className="relative flex items-center" ref={mobileNavRef}>
           <button
             onClick={() => setNavOpen(v => !v)}
             className={cn(
@@ -230,10 +263,9 @@ export function AppNav() {
                 const isActive = pathname === href || pathname.startsWith(href + "/");
                 const badge = href === "/inbox" && unreadCount > 0 ? unreadCount : null;
                 return (
-                  <Link
+                  <button
                     key={href}
-                    href={href}
-                    onClick={() => setNavOpen(false)}
+                    onClick={() => { setNavOpen(false); router.push(href); }}
                     className={cn(
                       "relative flex flex-col items-center gap-1.5 rounded-xl px-2 py-3 text-[11px] font-medium transition-colors touch-target",
                       isActive
@@ -248,7 +280,7 @@ export function AppNav() {
                         {badge > 99 ? "99+" : badge}
                       </span>
                     )}
-                  </Link>
+                  </button>
                 );
               })}
             </nav>
@@ -261,17 +293,15 @@ export function AppNav() {
           <button
             type="button"
             data-tour="morning-brief"
-            onClick={() => window.dispatchEvent(new CustomEvent(
-              briefMinimized ? "dirac:reopen-morning-briefing" : "dirac:open-morning-briefing"
-            ))}
+            onClick={() => window.open("/brief", "_blank")}
             className={cn(
               "relative flex h-9 w-9 items-center justify-center text-[#FF8A3D] touch-target rounded-lg",
-              briefMinimized && "ring-2 ring-[#FF8A3D]/40",
+              pathname === "/brief" && "ring-2 ring-[#FF8A3D]/40",
             )}
-            aria-label={briefMinimized ? "Resume Morning Brief" : "Morning Brief"}
+            aria-label="Morning Brief"
           >
             <Sunrise className="h-4 w-4" strokeWidth={1.75} />
-            {briefMinimized && (
+            {hasUnseenBrief && (
               <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#FF8A3D] opacity-60" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-[#FF8A3D]" />

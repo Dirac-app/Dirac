@@ -1,0 +1,297 @@
+DIRAC CODEBASE CONTEXT
+Generated: June 13 2026
+─────────────────────────────────────────────────────────────────────────────
+
+
+Q1: HOW IS THE MORNING BRIEF BUILT?
+────────────────────────────────────
+
+One component or multiple?
+  Single large exported component (~1,340 lines) in:
+    src/components/morning/morning-briefing.tsx
+  Internal helpers (not exported): PlanCardContent, PlanCardSkeleton,
+  buildPlanCardFromThread, hydratePendingPlans — all in the same file.
+
+  Supporting files:
+    src/lib/morning-brief-pending.ts   — client-side pending queue, localStorage
+    src/app/api/ai/morning-cards/      — AI enrichment per card (subject/plan)
+    src/lib/modal-blocking.ts          — registers "morning-briefing" as blocking modal
+
+  NOTE: src/components/inbox/morning-briefing.tsx is a legacy inline banner
+  (not a dialog). It is not imported anywhere today and can be ignored.
+
+Is it genuinely a modal overlay?
+  Yes. It uses Radix UI Dialog (via shadcn wrapper at src/components/ui/dialog.tsx).
+  Not a Sheet, Drawer, or page. The dialog CSS class is ".morning-brief-dialog".
+
+  Closing minimizes (does not dismiss) — sets open=false and emits a
+  "dirac:morning-brief-minimized" event so the nav sunrise button shows a pulse.
+
+Is there a /brief route?
+  No. No routed page exists. The component is mounted globally inside
+  AppShell (src/components/layout/app-shell.tsx) as an overlay, not a page.
+
+How is it triggered?
+  1. Nav sunrise button dispatches window event "dirac:open-morning-briefing"
+     (or "dirac:reopen-morning-briefing" when minimized).
+  2. Onboarding tooltip (inbox-tooltips.tsx) dispatches the same open event.
+  3. Auto-open on /inbox: a useEffect checks weekday, morning hour, localStorage
+     flags (dirac_morning_brief_settings, dirac_morning_brief_seen_v2_<date>),
+     and presence of pending cards — then calls openBriefSession().
+  4. Thread card context menu: addThreadsToMorningBrief() queues threads into
+     the pending store; user must open the brief manually.
+
+
+Q2: WHERE DOES EMAIL DATA LIVE AND HOW IS IT READ/ACTED ON?
+────────────────────────────────────────────────────────────
+
+Direct API or synced to Supabase?
+  DIRECT API — threads are fetched live from Gmail/Outlook/Discord on each app
+  load. Nothing is synced into Postgres for inbox display.
+
+  Flow:
+    Client → fetchThreads() in app-provider.tsx
+    → parallel fetch("/api/gmail/threads"), fetch("/api/outlook/threads"),
+       fetch("/api/discord/threads")
+    → server routes call Gmail REST / Outlook Graph / Discord API directly
+    → results set into React state (gmailThreads, outlookThreads, discordThreads)
+
+  Key server files:
+    src/app/api/gmail/threads/route.ts   — calls listThreads + getThreadMetadata
+    src/lib/gmail.ts                     — all Gmail REST calls
+    src/lib/outlook.ts                   — Outlook Graph calls
+
+  Prisma models (Thread, Message, Account in prisma/schema.prisma) exist but
+  are NOT used for inbox thread listing. The /api/threads/metadata endpoint is
+  a stub that returns { metadata: [] } — comment says "all metadata is stored
+  client-side in localStorage."
+
+  Sender stats table (sender_stats) was created then dropped. Sender history
+  now lives entirely in localStorage via src/lib/sender-stats.ts.
+
+  No background email sync worker exists. There is no BullMQ worker running.
+  Thread fetch is on-demand, triggered when AppProvider mounts or
+  refreshThreads() is called.
+
+Where does thread fetching happen?
+  src/components/layout/app-provider.tsx
+    fetchThreads()    — main loader (runs on mount)
+    loadMoreThreads() — Gmail pagination via pageToken
+    loadMessages()    — fetches full thread when selectedThreadId changes
+
+  src/lib/gmail.ts
+    listThreads(), getThreadMetadata(), getThreadMessages()
+
+Where is FounderCategory (categorization result) stored?
+  Hybrid: in-memory React state + localStorage. NOT in Postgres.
+
+  React state:  categoryMap: Record<string, FounderCategory>
+                categoryTabMap: Record<string, string>
+  localStorage: "dirac_categories"             — per-thread category map
+                "dirac:sender_ai_cats_v1"       — sender-level AI cache
+                "dirac-category-tab-map"        — tab assignments
+                "dirac-sender-overrides"        — manual sender rules
+
+  runCategorization() in app-provider.tsx re-runs when threads change:
+    Pass 1: rule-based preclassify (no API) — team, automated patterns
+    Pass 1b: pre-classify tabs
+    Pass 2: new senders only → POST /api/ai/categorize (AI call)
+    Saves results to sender cache, so known senders never hit AI again.
+
+  Triage (triageMap) is in-memory only — recomputed via /api/ai/triage on each
+  thread load, not persisted anywhere.
+
+
+Q3: DO ARCHIVE / STAR / FILE-TO-FOLDER EXIST AS FUNCTIONS?
+────────────────────────────────────────────────────────────
+
+archiveThread — YES
+  Defined in app-provider.tsx (~L549).
+  Pattern: optimistic local state first, then provider API fire-and-forget.
+    1. Removes thread from gmailThreads / outlookThreads React state
+    2. Clears selectedThreadId if the archived thread was open
+    3. POSTs to /api/gmail/threads/${threadId} or /api/outlook/threads/${threadId}
+       with { action: "archive" }
+    4. Pushes undo toast
+  Server: archiveGmailThread() in gmail.ts → Gmail threads.modify with
+          { removeLabelIds: ["INBOX"] }
+  Used in: thread-card, thread-view, thread-list, view-all-overlay,
+           set-aside-bar, keyboard-shortcuts, spotlight-search, ai-sidebar.
+
+toggleStarred — YES
+  Defined in app-provider.tsx (~L376).
+  DOES NOT sync to Gmail STARRED label. Local-only:
+    1. Toggles starredIds Set in React state
+    2. Saves to localStorage ("dirac_starred")
+    3. POSTs to /api/threads/metadata (stub — no-op server-side)
+    4. Shows undo toast
+  On initial Gmail fetch, isStarred is seeded from Gmail's STARRED label, but
+  subsequent toggles are local-only and do not write back to Gmail.
+
+File to folder / label assignment — DOES NOT EXIST
+  No general "file to folder" or custom label-assignment UI exists.
+  Gmail label operations in gmail.ts are limited to:
+    - removeLabelIds: ["INBOX"]         — archive
+    - addLabelIds:    ["INBOX"]         — unarchive
+    - addLabelIds/removeLabelIds: ["UNREAD"] — read/unread
+    - threads/trash                     — trash
+  FounderCategory / categoryTabs are Dirac-side classification only, not
+  written back as Gmail labels.
+
+Summary table:
+  Action       Local state              Provider API
+  Archive      Remove from thread list  Gmail/Outlook archive ✓
+  Trash        Remove from thread list  Gmail/Outlook trash   ✓
+  Mark read    Update isUnread          Gmail/Outlook modify  ✓
+  Star         starredIds + localStorage  NO Gmail sync
+  Urgent       urgentIds + localStorage   No provider call
+  Done/Snooze  localStorage only          No provider call
+
+
+Q4: IS THE AI SIDEBAR SEPARATE, AND HOW DOES HANDOFF WORK?
+────────────────────────────────────────────────────────────
+
+Files:
+  src/components/ai-sidebar/ai-sidebar.tsx     — main component (~3,600 lines)
+  src/components/ai-sidebar/ai-bottom-sheet.tsx — mobile vaul Drawer wrapper
+  src/components/ai-sidebar/ai-markdown.tsx    — markdown rendering helper
+
+Mounted from:
+  src/app/(app)/inbox/page.tsx         (desktop sidebar + mobile bottom sheet)
+  src/app/(app)/paper-trail/page.tsx
+
+What is useAppState / the store?
+  React Context — NOT Zustand or any external store library.
+    src/lib/store.ts              — types + useAppState() hook definition
+    src/components/layout/app-provider.tsx — provider implementation
+  AppContext = createContext<AppState | null>(null)
+  All state is useState/useCallback/useMemo inside AppProvider.
+
+How does Morning Brief (and thread view) hand off to AI sidebar?
+  Via shared React Context state — not URL params, not a dedicated event bus.
+
+  Standard handoff (e.g. Morning Brief acceptPlan, ~L1156 in morning-briefing.tsx):
+    clearAiContext();
+    addToAiContext({ id: plan.threadId, label: plan.subject });
+    setPendingAiQuery("From this morning's briefing — thread ...");
+    setAiSidebarOpen(true);
+    setSelectedThreadId(plan.threadId);
+    minimize(); // closes the brief dialog
+
+  Thread view (~L188, ~L434) and thread card context menu use the same trio:
+    addToAiContext() → setPendingAiQuery() → setAiSidebarOpen(true)
+
+  Secondary mechanism (tour/spotlight only):
+    Custom window event "dirac:ai-new-chat" with { query } payload.
+    ai-sidebar.tsx listens and starts a new chat with that query.
+    This is only used from inbox-tooltips.tsx "Try an example" button.
+
+  AI sidebar picks up pendingAiQuery in a useEffect (~L731):
+    When sidebar is open and pendingAiQuery is non-empty → auto-sends that
+    message as the first chat message, then clears pendingAiQuery.
+
+How does addToAiContext work?
+  app-provider.tsx ~L634:
+    const addToAiContext = (item: AiContextItem) => {
+      setAiContext(prev => prev.some(c => c.id === item.id)
+        ? prev
+        : [...prev, item]);
+    }
+
+  AiContextItem shape:
+    { id: string, label: string, type?: "thread"|"message"|"clip",
+      threadId?: string, messageId?: string }
+
+  aiContext[] is rendered as chips in the AI sidebar input area.
+  buildContextPayload() fetches full message bodies from
+  /api/gmail/threads/${id} and includes them in AI prompts.
+  Siblings: removeFromAiContext, toggleAiContext, clearAiContext, isInAiContext.
+
+  Morning Brief always calls clearAiContext() before addToAiContext() to scope
+  the sidebar to exactly one thread when executing a plan.
+
+
+Q5: IS "BUNDLING / FILING RECEIPTS" REAL GMAIL API OR JUST VISUAL?
+────────────────────────────────────────────────────────────────────
+
+Currently: purely visual grouping within Dirac's own UI. No Gmail API label
+writes happen anywhere in the codebase.
+
+What exists today:
+  The paper-trail page (src/app/(app)/paper-trail/page.tsx) groups non-primary
+  emails into tabs like "receipts", "security", "builds & deploys", "alerts",
+  "newsletters", etc. These are Dirac-side groupings only.
+
+  Internally it uses Gmail search queries to fetch threads per tab:
+    "receipts" → "category:promotions (receipt OR invoice OR order OR payment
+                  OR subscription)"
+    "security" → "category:updates (security OR verify OR 2fa OR password ...)"
+    etc.
+  The grouping is computed client-side from gmailCategory + Dirac's own
+  FounderCategory classification. Nothing is written back to Gmail.
+
+What does NOT exist:
+  - No Gmail label creation (threads.labels.create)
+  - No label assignment to threads (threads.modify with custom addLabelIds)
+  - No "move to folder" UI or API call
+  - No Outlook folder-move either (Outlook archive is folder-based but only
+    moves to the default Archive folder, not a custom one)
+
+Verdict for build planning:
+  Visual grouping = already exists, zero Gmail API risk.
+  Real Gmail label/folder write-back = net-new, requires:
+    1. Label create or lookup (idempotent by name)
+    2. threads.modify({ addLabelIds: [labelId], removeLabelIds: ["INBOX"] })
+    3. Deciding whether to remove INBOX label (= archive to folder) or keep it
+  This is a meaningfully larger surface — auth scope is already sufficient
+  (gmail.modify), but UI, error handling, and label management are new work.
+
+
+Q6: DOES AN UNDO / ACTION-LOG EXIST?
+──────────────────────────────────────
+
+Infrastructure exists. Actual reversal is NOT wired up — it is visually present
+but functionally incomplete.
+
+What exists:
+  src/lib/undo.ts
+    useUndoSystem() hook:
+      - undoStack: in-memory array, max 10 items, lost on page reload
+      - 5-second countdown timer with 100ms tick
+      - pushAction() — called by archive, trash, star, markRead, markDone,
+        snooze (and their inverses)
+      - undo() — pops action from stack and returns it (caller must handle)
+
+  Types tracked:
+    archive, trash, delete, star, unstar, markRead, markUnread,
+    markDone, unmarkDone, snooze, unsnooze
+
+  src/components/ui/undo-toast.tsx       — renders the countdown toast UI
+  src/components/ui/undo-toast-display.tsx — mounts at bottom-right, wires to
+                                             currentUndo state
+
+CRITICAL GAP — the "Undo" button does nothing real:
+  In undo-toast-display.tsx handleUndo():
+    // "In a full implementation, this would call the appropriate restore
+    //  function. For now we just dismiss the toast."
+    dismissUndo();   ← that's it; the thread is NOT restored
+
+  The undo() helper in the hook correctly pops and returns the action, but no
+  caller in the UI uses the returned action to actually call unarchiveThread(),
+  addToStarred(), etc. The toast shows a progress bar and an "Undo" button that
+  only closes itself.
+
+  getInverseAction() for archive returns "archive" with comment "Cannot truly
+  undo archive." Trash similarly. So even the helper acknowledges these two are
+  cosmetic.
+
+What is genuinely functional:
+  star ↔ unstar, markRead ↔ markUnread, markDone ↔ unmarkDone, snooze ↔
+  unsnooze — these are all local-state toggles that could be trivially wired,
+  since they don't require provider API calls.
+
+  archive and trash undo would require a real API call (unarchiveGmailThread
+  exists in gmail.ts — it calls threads.modify with addLabelIds: ["INBOX"]).
+
+No persistent action log exists anywhere (no DB table, no localStorage log).
+The stack is React state only.

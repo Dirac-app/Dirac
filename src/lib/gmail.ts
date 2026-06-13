@@ -398,6 +398,22 @@ export async function trashGmailThread(
 }
 
 /**
+ * Restore a thread from Trash back to the inbox.
+ */
+export async function untrashGmailThread(
+  accessToken: string,
+  threadId: string,
+): Promise<void> {
+  await fetch(`${GMAIL_BASE}/threads/${threadId}/untrash`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+  });
+}
+
+/**
  * Send a new email or reply to a thread. Builds a minimal RFC 2822 message.
  * If threadId is provided, the message is sent as part of that thread.
  */

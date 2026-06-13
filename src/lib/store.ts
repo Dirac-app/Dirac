@@ -14,6 +14,7 @@ import type {
   PatternSuggestion,
   TopicTag,
 } from "./types";
+import type { UndoableAction, UndoableActionType } from "./undo";
 
 // ─── Shared types ───────────────────────────────────────────────────────────
 
@@ -87,7 +88,7 @@ export interface ThreadsContextValue {
   toggleUrgent: (threadId: string) => void;
   markThreadUnread: (threadId: string) => void;
   markThreadRead: (threadId: string) => void;
-  archiveThread: (threadId: string) => void;
+  archiveThread: (threadId: string, skipUndo?: boolean) => void;
   trashThread: (threadId: string) => void;
   // Derived from threads
   unreadCount: number;
@@ -172,12 +173,14 @@ export interface AppState {
   toneProfile: ToneProfile | null;
   setToneProfile: (profile: ToneProfile | null) => void;
   // Thread actions
-  toggleStarred: (threadId: string) => void;
+  toggleStarred: (threadId: string, skipUndo?: boolean) => void;
   toggleUrgent: (threadId: string) => void;
   markThreadUnread: (threadId: string) => void;
-  markThreadRead: (threadId: string) => void;
-  archiveThread: (threadId: string) => void;
+  markThreadRead: (threadId: string, skipUndo?: boolean) => void;
+  archiveThread: (threadId: string, skipUndo?: boolean) => void;
+  unarchiveThread: (threadId: string, thread?: DiracThread) => void;
   trashThread: (threadId: string) => void;
+  untrashThread: (threadId: string, thread?: DiracThread) => void;
   // AI context (shared between sidebar + thread view)
   aiContext: AiContextItem[];
   addToAiContext: (item: AiContextItem) => void;
@@ -207,10 +210,10 @@ export interface AppState {
   unreadCount: number;
   // Thread lifecycle (Direction A)
   snoozedThreads: SnoozeState[];
-  snoozeThread: (threadId: string, snooze: Omit<SnoozeState, "threadId" | "snoozedAt">) => void;
+  snoozeThread: (threadId: string, snooze: Omit<SnoozeState, "threadId" | "snoozedAt">, skipUndo?: boolean) => void;
   unsnoozeThread: (threadId: string) => void;
   doneThreads: Set<string>;
-  markDone: (threadId: string) => void;
+  markDone: (threadId: string, skipUndo?: boolean) => void;
   unmarkDone: (threadId: string) => void;
   commitments: Commitment[];
   setCommitments: (commitments: Commitment[]) => void;
@@ -251,11 +254,13 @@ export interface AppState {
   addClip: (clip: Omit<Clip, "id" | "createdAt">) => void;
   removeClip: (id: string) => void;
   // Undo system
-  undoStack: Array<{ id: string; type: any; threadId: string; threadSubject?: string; timestamp: number }>;
-  currentUndo: { action: { id: string; type: any; threadId: string; threadSubject?: string }; timeLeft: number } | null;
-  pushUndoAction: (action: { type: any; threadId: string; threadSubject?: string }) => void;
-  performUndo: () => void;
+  undoStack: UndoableAction[];
+  currentUndo: { action: UndoableAction; timeLeft: number } | null;
+  pushUndoAction: (action: Omit<UndoableAction, "id" | "timestamp">) => void;
+  performUndo: (actionType?: UndoableActionType) => UndoableAction | null;
   dismissUndo: () => void;
+  // Cross-component send (extracted from AI sidebar so brief can reuse it)
+  sendThreadReply: (threadId: string, body: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
 export const AppContext = createContext<AppState | null>(null);

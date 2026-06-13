@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState, useRef } from "react";
 
 export type UndoableActionType = 
   | "archive" 
+  | "unarchive"
   | "trash" 
+  | "untrash"
   | "delete"
   | "star" 
   | "unstar" 
@@ -13,7 +15,11 @@ export type UndoableActionType =
   | "markDone" 
   | "unmarkDone" 
   | "snooze" 
-  | "unsnooze";
+  | "unsnooze"
+  // Brief "Handled" batch types
+  | "batch_archive"   // metadata: { threadIds: string[], threads: DiracThread[] }
+  | "batch_star"      // metadata: { threadIds: string[] }
+  | "bundle";         // metadata: { bundleKey: string, threadIds: string[], label: string }
 
 export interface UndoableAction {
   id: string;
@@ -174,9 +180,16 @@ export function useUndoSystem() {
 
 // Helper functions
 export function getUndoLabel(type: UndoableActionType, count: number = 1): string {
-  const singleLabels: Record<UndoableActionType, string> = {
+  // Batch / bundle types — always describe by count
+  if (type === "batch_archive") return count === 1 ? "Archived" : `${count} archived`;
+  if (type === "batch_star")    return count === 1 ? "Starred"  : `${count} starred`;
+  if (type === "bundle")        return count === 1 ? "Bundled"  : `${count} bundled`;
+
+  const singleLabels: Record<string, string> = {
     archive: "Archived",
+    unarchive: "Moved to inbox",
     trash: "Moved to trash",
+    untrash: "Restored from trash",
     delete: "Deleted",
     star: "Starred",
     unstar: "Unstarred",
@@ -192,9 +205,11 @@ export function getUndoLabel(type: UndoableActionType, count: number = 1): strin
     return singleLabels[type] ?? "Action";
   }
 
-  const pluralLabels: Record<UndoableActionType, string> = {
+  const pluralLabels: Record<string, string> = {
     archive: "Archived",
+    unarchive: "Moved to inbox",
     trash: "Moved to trash",
+    untrash: "Restored from trash",
     delete: "Deleted",
     star: "Starred",
     unstar: "Unstarred",
@@ -210,57 +225,55 @@ export function getUndoLabel(type: UndoableActionType, count: number = 1): strin
 }
 
 export function getUndoDescription(type: UndoableActionType, subject?: string, count: number = 1): string {
+  if (type === "batch_archive") return `${count} newsletter${count !== 1 ? "s" : ""} archived`;
+  if (type === "batch_star")    return `${count} thread${count !== 1 ? "s" : ""} starred`;
+  if (type === "bundle")        return subject ?? "bundled";
   if (count > 1) {
     return `${count} threads`;
   }
   return subject ?? "this thread";
 }
 
-// Get the inverse action for undo
-// Returns the opposite action to restore the previous state
 export function getInverseAction(type: UndoableActionType): UndoableActionType {
   switch (type) {
-    case "archive":
-      return "archive"; // Cannot truly undo archive, but provide a no-op
-    case "trash":
-      return "trash";  // Cannot truly undo trash, but provide a no-op  
-    case "delete":
-      return "delete"; // Cannot undo delete at all
-    case "star":
-      return "unstar";
-    case "unstar":
-      return "star";
-    case "markRead":
-      return "markUnread";
-    case "markUnread":
-      return "markRead";
-    case "markDone":
-      return "unmarkDone";
-    case "unmarkDone":
-      return "markDone";
-    case "snooze":
-      return "unsnooze";
-    case "unsnooze":
-      return "snooze";
-    default:
-      return type;
+    case "archive":       return "unarchive";
+    case "unarchive":     return "archive";
+    case "trash":         return "untrash";
+    case "untrash":       return "trash";
+    case "delete":        return "delete"; // Cannot undo permanent delete
+    case "star":          return "unstar";
+    case "unstar":        return "star";
+    case "markRead":      return "markUnread";
+    case "markUnread":    return "markRead";
+    case "markDone":      return "unmarkDone";
+    case "unmarkDone":    return "markDone";
+    case "snooze":        return "unsnooze";
+    case "unsnooze":      return "snooze";
+    case "batch_archive": return "unarchive";
+    case "batch_star":    return "unstar";
+    case "bundle":        return "bundle";
+    default:              return type;
   }
 }
 
-// Get the button label for undo
 export function getUndoButtonLabel(type: UndoableActionType): string {
   switch (type) {
-    case "archive": return "Undo archive";
-    case "trash": return "Restore";
-    case "delete": return "Cannot undo";
-    case "star": return "Unstar";
-    case "unstar": return "Star";
-    case "markRead": return "Mark unread";
-    case "markUnread": return "Mark read";
-    case "markDone": return "Unmark done";
-    case "unmarkDone": return "Mark done";
-    case "snooze": return "Unsnooze";
-    case "unsnooze": return "Snooze";
-    default: return "Undo";
+    case "archive":        return "Undo archive";
+    case "unarchive":      return "Undo";
+    case "trash":          return "Restore";
+    case "untrash":        return "Undo";
+    case "delete":         return "Cannot undo";
+    case "star":           return "Unstar";
+    case "unstar":         return "Star";
+    case "markRead":       return "Mark unread";
+    case "markUnread":     return "Mark read";
+    case "markDone":       return "Unmark done";
+    case "unmarkDone":     return "Mark done";
+    case "snooze":         return "Unsnooze";
+    case "unsnooze":       return "Snooze";
+    case "batch_archive":  return "Undo archive";
+    case "batch_star":     return "Undo star";
+    case "bundle":         return "Undo";
+    default:               return "Undo";
   }
 }

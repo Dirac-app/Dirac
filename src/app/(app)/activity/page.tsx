@@ -223,7 +223,7 @@ export default function ActivityPage() {
   return (
     <div className="dirac-panel flex flex-1 flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border px-6 py-3">
+      <div className="flex items-center justify-between border-b border-border px-4 sm:px-6 py-3">
         <h1 className="text-sm font-semibold text-foreground">Activity</h1>
         <Button
           variant="ghost"
@@ -239,7 +239,7 @@ export default function ActivityPage() {
       </div>
 
       {/* Stats row */}
-      <div className="grid grid-cols-3 gap-3 border-b border-border px-6 py-4">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3 border-b border-border px-4 sm:px-6 py-3 sm:py-4">
         <StatCard
           label="Messages sent"
           value={sent.length}

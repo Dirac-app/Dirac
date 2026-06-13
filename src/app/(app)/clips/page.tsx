@@ -82,21 +82,21 @@ export default function ClipsPage() {
   return (
     <div className="dirac-panel flex flex-1 flex-col overflow-hidden">
       {/* Header */}
-      <div className="border-b border-border px-5 py-4">
-        <div className="flex items-center gap-3">
+      <div className="border-b border-border px-4 sm:px-5 py-3 sm:py-4">
+        <div className="flex items-center gap-2 sm:gap-3">
           <Link
             href="/inbox"
-            className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-colors"
+            className="hidden sm:flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-colors shrink-0"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             Inbox
           </Link>
-          <div className="h-4 w-px bg-border" />
-          <Bookmark className="h-4 w-4 text-primary/70" />
-          <h1 className="text-xl font-bold text-foreground">Clip library</h1>
-          <span className="text-sm text-muted-foreground/50">{clips.length} clips</span>
+          <div className="hidden sm:block h-4 w-px bg-border shrink-0" />
+          <Bookmark className="hidden sm:block h-4 w-4 shrink-0 text-primary/70" />
+          <h1 className="text-base sm:text-xl font-bold text-foreground">Clip library</h1>
+          <span className="hidden sm:inline text-sm text-muted-foreground/50">{clips.length} clips</span>
         </div>
-        <p className="mt-1.5 text-xs text-muted-foreground/60">
+        <p className="mt-1 sm:mt-1.5 text-xs text-muted-foreground/60">
           Snippets, links, and quotes clipped from your emails.
         </p>
       </div>

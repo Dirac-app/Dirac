@@ -61,8 +61,9 @@ export function AiBottomSheet() {
             <div className="h-1 w-10 rounded-full bg-muted-foreground/25" />
           </div>
 
-          {/* AI sidebar content — fills available height */}
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {/* AI sidebar content — fills available height.
+              Force the AiSidebar's internal fixed w-80/w-96 to stretch full-width. */}
+          <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden [&>div]:!w-full [&>div]:flex-1">
             <AiSidebar />
           </div>
         </Drawer.Content>

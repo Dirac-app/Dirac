@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format, formatDistanceToNow, getHours } from "date-fns";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Sparkles,
@@ -52,10 +52,10 @@ import {
 } from "@/lib/modal-blocking";
 
 const MORNING_BRIEF_VERSION = "v2";
-const MORNING_BRIEF_SETTINGS_KEY = "dirac_morning_brief_settings";
+export const MORNING_BRIEF_SETTINGS_KEY = "dirac_morning_brief_settings";
 const REVEAL_DELAY_MS = 1400;
 
-interface MorningPlanCard {
+export interface MorningPlanCard {
   threadId: string;
   platform: string;
   subject: string;
@@ -74,7 +74,7 @@ interface MorningPlanCard {
   ageLabel: string;
 }
 
-interface MorningBriefSettings {
+export interface MorningBriefSettings {
   enabled: boolean;
   weekdaysOnly: boolean;
   morningOnly: boolean;
@@ -88,18 +88,18 @@ const DEFAULT_SETTINGS: MorningBriefSettings = {
   maxItems: 5,
 };
 
-function todayKey() {
+export function todayKey() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
-function getMorningStorageKey() {
+export function getMorningStorageKey() {
   return `dirac_morning_brief_seen_${MORNING_BRIEF_VERSION}_${todayKey()}`;
 }
 
 const BRIEF_DISMISSED_KEY = "dirac_brief_dismissed";
 
-function loadDismissedThreads(): Record<string, string> {
+export function loadDismissedThreads(): Record<string, string> {
   if (typeof window === "undefined") return {};
   try {
     const raw = window.localStorage.getItem(BRIEF_DISMISSED_KEY) ?? "{}";
@@ -112,7 +112,7 @@ function loadDismissedThreads(): Record<string, string> {
   }
 }
 
-function suppressThread(threadId: string, days: number) {
+export function suppressThread(threadId: string, days: number) {
   if (typeof window === "undefined") return;
   try {
     const all = loadDismissedThreads();
@@ -140,14 +140,14 @@ function suppressThread(threadId: string, days: number) {
 
 const BRIEF_SHOWN_KEY = "dirac_brief_shown";
 const SHOWN_RETENTION_DAYS = 21;   // forget shown records after this long
-const SHOWN_RESTAGE_DAYS   = 4;    // re-surface anyway after this many days
+export const SHOWN_RESTAGE_DAYS   = 4;    // re-surface anyway after this many days
 
-interface ShownRecord {
+export interface ShownRecord {
   shownAt: string;         // ISO — when this thread last appeared in a briefing
   shownMessageAt: string;  // ISO — the thread's lastMessageAt at that time
 }
 
-function loadShownHistory(): Record<string, ShownRecord> {
+export function loadShownHistory(): Record<string, ShownRecord> {
   if (typeof window === "undefined") return {};
   try {
     const raw = window.localStorage.getItem(BRIEF_SHOWN_KEY) ?? "{}";
@@ -164,7 +164,7 @@ function loadShownHistory(): Record<string, ShownRecord> {
   }
 }
 
-function recordShownBriefing(
+export function recordShownBriefing(
   plans: { threadId: string }[],
   threadsById: Map<string, DiracThread>,
 ) {
@@ -184,7 +184,7 @@ function recordShownBriefing(
 }
 
 /** Only explicit lifecycle actions remove a thread from the pending brief queue. */
-function isExcludedFromPendingBrief(
+export function isExcludedFromPendingBrief(
   threadId: string,
   dismissedThreads: Record<string, string>,
   doneThreads: Set<string>,
@@ -198,7 +198,7 @@ function isExcludedFromPendingBrief(
   return false;
 }
 
-function loadMorningSettings(): MorningBriefSettings {
+export function loadMorningSettings(): MorningBriefSettings {
   if (typeof window === "undefined") return DEFAULT_SETTINGS;
   try {
     const raw = window.localStorage.getItem(MORNING_BRIEF_SETTINGS_KEY);
@@ -209,7 +209,7 @@ function loadMorningSettings(): MorningBriefSettings {
   }
 }
 
-function buildSummary(thread: DiracThread, triage?: TriageCategory, commitmentCount = 0) {
+export function buildSummary(thread: DiracThread, triage?: TriageCategory, commitmentCount = 0) {
   if (triage === "needs_reply") {
     return commitmentCount > 0
       ? `Needs your response and has ${commitmentCount} active commitment${commitmentCount !== 1 ? "s" : ""}.`
@@ -226,7 +226,7 @@ function buildSummary(thread: DiracThread, triage?: TriageCategory, commitmentCo
     : "Likely low-touch or informational.";
 }
 
-function buildPlan(thread: DiracThread, triage?: TriageCategory, category?: FounderCategory, commitmentCount = 0) {
+export function buildPlan(thread: DiracThread, triage?: TriageCategory, category?: FounderCategory, commitmentCount = 0) {
   if (triage === "needs_reply") {
     if (category === "customer") return "Draft a short, reassuring reply and clear the open asks.";
     if (category === "investor") return "Send a concise response and clarify whether this needs a meeting or a pass.";
@@ -239,7 +239,7 @@ function buildPlan(thread: DiracThread, triage?: TriageCategory, category?: Foun
   return "Skim once, then archive, mark done, or leave for later if it still matters.";
 }
 
-function buildPlanCardFromThread(
+export function buildPlanCardFromThread(
   thread: DiracThread,
   triage: TriageCategory | undefined,
   category: FounderCategory | undefined,
@@ -272,7 +272,7 @@ function buildPlanCardFromThread(
   };
 }
 
-function hydratePendingPlans(
+export function hydratePendingPlans(
   store: PendingBriefStore,
   threads: DiracThread[],
   triageMap: Record<string, TriageCategory>,
@@ -313,7 +313,7 @@ function hydratePendingPlans(
   return plans;
 }
 
-function syncPendingStoreAfterHydrate(
+export function syncPendingStoreAfterHydrate(
   store: PendingBriefStore,
   hydrated: MorningPlanCard[],
   threads: DiracThread[],
@@ -361,7 +361,7 @@ function syncPendingStoreAfterHydrate(
   }
 }
 
-function resolveBriefPlansForOpen(
+export function resolveBriefPlansForOpen(
   hydratedPending: MorningPlanCard[],
   candidates: MorningPlanCard[],
 ): MorningPlanCard[] {
@@ -380,7 +380,7 @@ function SkeletonBar({ w, h = "h-3", opacity = "opacity-60" }: { w: string; h?: 
 
 // ── Skeleton card ─────────────────────────────────────────────────────────
 
-function PlanCardSkeleton({ index }: { index: number }) {
+export function PlanCardSkeleton({ index }: { index: number }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
@@ -416,7 +416,7 @@ function PlanCardSkeleton({ index }: { index: number }) {
 
 // ── Real plan card — dossier page aesthetic ────────────────────────────────
 
-function PlanCardContent({
+export function PlanCardContent({
   plan,
   index,
   isEditing,
@@ -512,10 +512,7 @@ function PlanCardContent({
               {state.chipLabel}
             </span>
           )}
-          <h3
-            className="text-[15px] leading-snug text-white/92 line-clamp-2"
-            style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontStyle: "italic" }}
-          >
+          <h3 className="text-[15px] font-medium leading-snug text-white/92 line-clamp-2">
             {plan.subject}
           </h3>
         </div>
@@ -659,6 +656,105 @@ function PlanCardContent({
   );
 }
 
+// ── computeBriefCandidates — extracted pure scoring function ───────────────
+
+export interface ComputeBriefCandidatesArgs {
+  threads: DiracThread[];
+  triageMap: Record<string, TriageCategory>;
+  categoryMap: Record<string, FounderCategory>;
+  commitments: { threadId: string }[];
+  doneThreads: Set<string>;
+  snoozedThreads: { threadId: string }[];
+  dismissedThreads: Record<string, string>;
+  shownHistory: Record<string, ShownRecord>;
+  pendingThreadIds: Set<string>;
+  maxItems: number;
+}
+
+export function computeBriefCandidates({
+  threads,
+  triageMap,
+  categoryMap,
+  commitments,
+  doneThreads,
+  snoozedThreads,
+  dismissedThreads,
+  shownHistory,
+  pendingThreadIds,
+  maxItems,
+}: ComputeBriefCandidatesArgs): MorningPlanCard[] {
+  const today = todayKey();
+  const nowMs = Date.now();
+  const scored = threads
+    .filter((thread) => {
+      if (pendingThreadIds.has(thread.id)) return false;
+      if (doneThreads.has(thread.id)) return false;
+      if (snoozedThreads.some((s) => s.threadId === thread.id)) return false;
+      const suppressedUntil = dismissedThreads[thread.id];
+      if (suppressedUntil && suppressedUntil >= today) return false;
+
+      const shown = shownHistory[thread.id];
+      if (shown) {
+        const shownAtMs = new Date(shown.shownAt).getTime();
+        const shownMsgMs = shown.shownMessageAt
+          ? new Date(shown.shownMessageAt).getTime()
+          : 0;
+        const threadMsgMs = new Date(thread.lastMessageAt).getTime();
+        const hasNewActivity = threadMsgMs > shownMsgMs;
+        const stale = (nowMs - shownAtMs) / 86_400_000 >= SHOWN_RESTAGE_DAYS;
+
+        if (!hasNewActivity && !stale) return false;
+        if (!hasNewActivity && !thread.isUnread) return false;
+      }
+      return true;
+    })
+    .map((thread) => {
+      const triage = triageMap[thread.id];
+      const category = categoryMap[thread.id];
+      const commitmentCount = commitments.filter((c) => c.threadId === thread.id).length;
+
+      const ageDays = (Date.now() - new Date(thread.lastMessageAt).getTime()) / 86_400_000;
+
+      if (ageDays > 14 && !(thread.isUrgent && commitmentCount > 0)) return null;
+
+      const agePenalty = ageDays > 10 ? 55 : ageDays > 5 ? 35 : ageDays > 2 ? 15 : 0;
+
+      const score =
+        (thread.isUrgent ? 100 : 0) +
+        (triage === "needs_reply" ? 60 : 0) +
+        (triage === "waiting_on" ? 25 : 0) +
+        (category === "customer" ? 24 : 0) +
+        (category === "investor" ? 20 : 0) +
+        commitmentCount * 8 +
+        (thread.isUnread ? 8 : 0) -
+        agePenalty;
+
+      return { thread, triage, category, commitmentCount, score, ageDays };
+    })
+    .filter((item): item is NonNullable<typeof item> => {
+      if (!item) return false;
+      if (item.category === "automated" && !item.thread.isUrgent && item.triage !== "needs_reply") return false;
+
+      const wasShown = shownHistory[item.thread.id];
+      if (!wasShown && !item.thread.isUnread) {
+        const actionable =
+          item.thread.isUrgent ||
+          item.triage === "needs_reply" ||
+          item.commitmentCount > 0;
+        if (!actionable) return false;
+      }
+
+      return item.score > 0;
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxItems)
+    .map(({ thread, triage, category, commitmentCount }) =>
+      buildPlanCardFromThread(thread, triage, category, commitmentCount),
+    );
+
+  return scored;
+}
+
 // ── Main component ─────────────────────────────────────────────────────────
 
 export function MorningBriefing() {
@@ -679,6 +775,7 @@ export function MorningBriefing() {
     clearAiContext,
   } = useAppState();
   const pathname = usePathname();
+  const router = useRouter();
 
   const [open, setOpen] = useState(false);
   const [minimized, setMinimized] = useState(false);
@@ -738,100 +835,33 @@ export function MorningBriefing() {
     pendingThreadIds,
   ]);
 
-  const candidates = useMemo(() => {
-    const today = todayKey();
-    const nowMs = Date.now();
-    const scored = threads
-      .filter((thread) => {
-        if (pendingThreadIds.has(thread.id)) return false;
-        if (doneThreads.has(thread.id)) return false;
-        if (snoozedThreads.some((s) => s.threadId === thread.id)) return false;
-        // Skip threads the user has explicitly suppressed from the briefing
-        const suppressedUntil = dismissedThreads[thread.id];
-        if (suppressedUntil && suppressedUntil >= today) return false;
-
-        // Soft-suppress anything we already surfaced in a previous briefing,
-        // unless fresh activity arrived or it's been several days.
-        const shown = shownHistory[thread.id];
-        if (shown) {
-          const shownAtMs = new Date(shown.shownAt).getTime();
-          const shownMsgMs = shown.shownMessageAt
-            ? new Date(shown.shownMessageAt).getTime()
-            : 0;
-          const threadMsgMs = new Date(thread.lastMessageAt).getTime();
-          const hasNewActivity = threadMsgMs > shownMsgMs;
-          const stale = (nowMs - shownAtMs) / 86_400_000 >= SHOWN_RESTAGE_DAYS;
-
-          if (!hasNewActivity && !stale) return false;
-          // User has read it in the inbox since we showed it, and nothing new
-          // came in → assume it's been handled and don't re-surface.
-          if (!hasNewActivity && !thread.isUnread) return false;
-        }
-        return true;
-      })
-      .map((thread) => {
-        const triage = triageMap[thread.id];
-        const category = categoryMap[thread.id];
-        const commitmentCount = commitments.filter((c) => c.threadId === thread.id).length;
-
-        const ageDays = (Date.now() - new Date(thread.lastMessageAt).getTime()) / 86_400_000;
-
-        // Hard cutoff: very old threads only if urgent with active commitments
-        if (ageDays > 14 && !(thread.isUrgent && commitmentCount > 0)) return null;
-
-        const agePenalty = ageDays > 10 ? 55 : ageDays > 5 ? 35 : ageDays > 2 ? 15 : 0;
-
-        const score =
-          (thread.isUrgent ? 100 : 0) +
-          (triage === "needs_reply" ? 60 : 0) +
-          (triage === "waiting_on" ? 25 : 0) +
-          (category === "customer" ? 24 : 0) +
-          (category === "investor" ? 20 : 0) +
-          commitmentCount * 8 +
-          (thread.isUnread ? 8 : 0) -
-          agePenalty;
-
-        return { thread, triage, category, commitmentCount, score, ageDays };
-      })
-      .filter((item): item is NonNullable<typeof item> => {
-        if (!item) return false;
-        // Filter out noise: automated and low-signal
-        if (item.category === "automated" && !item.thread.isUrgent && item.triage !== "needs_reply") return false;
-
-        // General-usage "seen" detection: if we've never briefed this thread
-        // and the user has already read it in the normal inbox, and nothing
-        // about it demands attention, assume they've made their call.
-        const wasShown = shownHistory[item.thread.id];
-        if (!wasShown && !item.thread.isUnread) {
-          const actionable =
-            item.thread.isUrgent ||
-            item.triage === "needs_reply" ||
-            item.commitmentCount > 0;
-          if (!actionable) return false;
-        }
-
-        // Drop threads with a negative score (old + low signal)
-        return item.score > 0;
-      })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, settings.maxItems)
-      .map(({ thread, triage, category, commitmentCount }) =>
-        buildPlanCardFromThread(thread, triage, category, commitmentCount),
-      );
-
-    return scored;
-  }, [
-    threads,
-    triageMap,
-    categoryMap,
-    commitments,
-    doneThreads,
-    snoozedThreads,
-    settings.maxItems,
-    dismissedThreads,
-    shownHistory,
-    pendingThreadIds,
-  ]);
+  const candidates = useMemo(
+    () =>
+      computeBriefCandidates({
+        threads,
+        triageMap,
+        categoryMap,
+        commitments,
+        doneThreads,
+        snoozedThreads,
+        dismissedThreads,
+        shownHistory,
+        pendingThreadIds,
+        maxItems: settings.maxItems,
+      }),
+    [
+      threads,
+      triageMap,
+      categoryMap,
+      commitments,
+      doneThreads,
+      snoozedThreads,
+      settings.maxItems,
+      dismissedThreads,
+      shownHistory,
+      pendingThreadIds,
+    ],
+  );
 
   useEffect(() => {
     setSettings(loadMorningSettings());
@@ -1109,7 +1139,10 @@ export function MorningBriefing() {
 
     hasAutoOpened.current = today;
     window.localStorage.setItem(getMorningStorageKey(), "1");
-    openBriefSession({ recordShownForNew: !hasPending });
+    // Navigate to the dedicated brief page instead of opening the dialog.
+    // The seen key is already written above, so this fires at most once per day
+    // and never loops (the effect is gated to pathname === "/inbox").
+    router.push("/brief");
   }, [
     pathname,
     settings,
@@ -1118,7 +1151,7 @@ export function MorningBriefing() {
     categoryLoading,
     threads.length,
     candidates.length,
-    openBriefSession,
+    router,
   ]);
 
   const minimize = () => {

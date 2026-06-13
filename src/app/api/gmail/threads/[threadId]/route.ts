@@ -6,6 +6,8 @@ import {
   markThreadAsUnread,
   archiveGmailThread,
   trashGmailThread,
+  unarchiveGmailThread,
+  untrashGmailThread,
 } from "@/lib/gmail";
 
 export async function GET(
@@ -61,7 +63,7 @@ export async function POST(
 
   const { threadId } = await params;
   const { action } = (await request.json()) as {
-    action: "mark-read" | "mark-unread" | "archive" | "trash";
+    action: "mark-read" | "mark-unread" | "archive" | "unarchive" | "trash" | "untrash";
   };
 
   try {
@@ -75,8 +77,14 @@ export async function POST(
       case "archive":
         await archiveGmailThread(session.accessToken, threadId);
         break;
+      case "unarchive":
+        await unarchiveGmailThread(session.accessToken, threadId);
+        break;
       case "trash":
         await trashGmailThread(session.accessToken, threadId);
+        break;
+      case "untrash":
+        await untrashGmailThread(session.accessToken, threadId);
         break;
       default:
         return NextResponse.json({ error: "Unknown action" }, { status: 400 });

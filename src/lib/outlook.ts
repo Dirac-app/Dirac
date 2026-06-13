@@ -374,6 +374,40 @@ export async function trashOutlookMessage(
 }
 
 /**
+ * Move a message from the Archive folder back to the inbox (undo archive).
+ */
+export async function unarchiveOutlookMessage(
+  accessToken: string,
+  messageId: string,
+): Promise<void> {
+  await fetch(`${GRAPH_BASE}/messages/${messageId}/move`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ destinationId: "inbox" }),
+  });
+}
+
+/**
+ * Move a message from the Deleted Items folder back to the inbox (undo trash).
+ */
+export async function untrashOutlookMessage(
+  accessToken: string,
+  messageId: string,
+): Promise<void> {
+  await fetch(`${GRAPH_BASE}/messages/${messageId}/move`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ destinationId: "inbox" }),
+  });
+}
+
+/**
  * Send a reply to a message.
  */
 export async function sendOutlookReply(

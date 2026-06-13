@@ -60,6 +60,53 @@ function buildSubject(key: ReminderKey, endLabel: string): string {
   return `Your Dirac trial ended`;
 }
 
+/** Shared inline styles for the email design system */
+const F = `-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif`;
+
+/** Wraps content in a consistent light-mode email shell */
+function emailShell(body: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Dirac</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f5f5f5;-webkit-text-size-adjust:100%;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f5f5f5;">
+    <tr>
+      <td align="center" style="padding:40px 16px 32px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;">
+
+          <!-- Wordmark -->
+          <tr>
+            <td style="padding:0 0 18px;">
+              <span style="font-family:${F};font-size:13px;font-weight:700;letter-spacing:0.06em;color:#FF8A3D;">DIRAC</span>
+            </td>
+          </tr>
+
+          <!-- Card -->
+          <tr>
+            <td style="background-color:#ffffff;border:1px solid #e4e4e7;border-radius:6px;padding:32px 32px 28px;">
+              ${body}
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:20px 0 0;font-family:${F};font-size:11px;color:#a1a1aa;text-align:center;line-height:1.6;">
+              Dirac &middot; Your intelligent inbox
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
 function buildBody(
   user: TrialUser,
   key: ReminderKey,
@@ -71,108 +118,107 @@ function buildBody(
   const emails = user.emails_processed_count ?? 0;
   const drafts = user.ai_drafts_count ?? 0;
 
-  const statsHtml =
-    emails > 0 || drafts > 0
-      ? `<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#d4d4d8;">
-          So far you&rsquo;ve sent <strong style="color:#fafafa;">${emails}</strong> email${emails === 1 ? "" : "s"} through Dirac and drafted <strong style="color:#fafafa;">${drafts}</strong> AI repl${drafts === 1 ? "y" : "ies"}.
-        </p>`
-      : `<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#d4d4d8;">
-          You&rsquo;ve started triaging with Dirac &mdash; your inbox setup is in place.
-        </p>`;
-
-  let headline: string;
-  let opener: string;
-  if (key === "day_12") {
-    headline = "2 days left on your trial";
-    opener = `Your trial runs through <strong style="color:#fafafa;">${endDateLabel}</strong>.`;
-  } else if (key === "day_14") {
-    headline = "Last day of your trial";
-    opener = `Access ends after <strong style="color:#fafafa;">${endDateLabel}</strong>.`;
-  } else {
-    headline = "Your trial has ended";
-    opener = `Your access ended on <strong style="color:#fafafa;">${endDateLabel}</strong>.`;
-  }
-
-  const closing = `Losing this on ${endDateLabel}. $20/mo to keep it.`;
-
-  const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="color-scheme" content="dark" />
-  <title>Dirac</title>
-</head>
-<body style="margin:0;padding:0;background-color:#050505;-webkit-text-size-adjust:100%;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#050505;background-image:linear-gradient(rgba(255,138,61,0.07) 1px, transparent 1px),linear-gradient(90deg, rgba(255,138,61,0.07) 1px, transparent 1px);background-size:28px 28px;">
-    <tr>
-      <td align="center" style="padding:40px 16px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;">
-          <tr>
-            <td style="padding:0 0 20px;">
-              <span style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.2em;text-transform:uppercase;color:#FF8A3D;">Dirac</span>
-            </td>
-          </tr>
-          <tr>
-            <td style="background-color:#0a0a0a;border:1px solid #27272a;padding:32px 28px;">
-              <p style="margin:0 0 8px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:13px;color:#a1a1aa;">Hi ${name},</p>
-              <h1 style="margin:0 0 20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:22px;font-weight:600;letter-spacing:-0.02em;line-height:1.3;color:#fafafa;">${headline}</h1>
-              <p style="margin:0 0 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#d4d4d8;">${opener}</p>
-              ${statsHtml}
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0 24px;">
-                <tr>
-                  <td style="border-left:2px solid #FF8A3D;padding:12px 0 12px 16px;">
-                    <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:15px;line-height:1.55;color:#fafafa;font-weight:500;">${closing}</p>
-                  </td>
-                </tr>
-              </table>
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;">
-                <tr>
-                  <td style="background-color:#fafafa;border-radius:2px;">
-                    <a href="${upgradeUrl}" style="display:inline-block;padding:12px 22px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;color:#0a0a0a;text-decoration:none;">Keep Dirac &mdash; $20/mo</a>
-                  </td>
-                </tr>
-              </table>
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td style="border:1px solid rgba(255,138,61,0.45);border-radius:2px;">
-                    <a href="${feedbackUrl}" style="display:inline-block;padding:11px 20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:13px;font-weight:500;color:#FF8A3D;text-decoration:none;">Share quick feedback</a>
-                  </td>
-                </tr>
-              </table>
-              <p style="margin:20px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:12px;line-height:1.5;color:#71717a;">Whether you stay or not, a short note helps us improve Dirac &mdash; we read every one.</p>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:20px 4px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:12px;color:#52525b;text-align:center;">
-              Dirac &middot; Your intelligent inbox
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
-
-  const openerText = opener.replace(/<[^>]+>/g, "");
+  // Stats line — shown inside the accent callout
   const statsText =
     emails > 0 || drafts > 0
-      ? `So far you've sent ${emails} email${emails === 1 ? "" : "s"} through Dirac and drafted ${drafts} AI repl${drafts === 1 ? "y" : "ies"}.`
+      ? `You&rsquo;ve processed <strong>${emails}</strong> email${emails === 1 ? "" : "s"} and drafted <strong>${drafts}</strong> AI repl${drafts === 1 ? "y" : "ies"} through Dirac.`
+      : `You&rsquo;ve started triaging with Dirac &mdash; your inbox setup is in place.`;
+
+  const statsPlain =
+    emails > 0 || drafts > 0
+      ? `You've processed ${emails} email${emails === 1 ? "" : "s"} and drafted ${drafts} AI repl${drafts === 1 ? "y" : "ies"} through Dirac.`
       : `You've started triaging with Dirac — your inbox setup is in place.`;
+
+  let headline: string;
+  let openerHtml: string;
+  let openerPlain: string;
+  let ctaLabel: string;
+
+  if (key === "day_12") {
+    headline = "2 days left on your Dirac trial";
+    openerHtml = `Quick note &mdash; your trial runs through <strong>${endDateLabel}</strong> (2 days left).`;
+    openerPlain = `Quick note — your trial runs through ${endDateLabel} (2 days left).`;
+    ctaLabel = "Keep Dirac &rarr; $20/mo";
+  } else if (key === "day_14") {
+    headline = "Today is your last day";
+    openerHtml = `Your Dirac trial ends <strong>today, ${endDateLabel}</strong>.`;
+    openerPlain = `Your Dirac trial ends today, ${endDateLabel}.`;
+    ctaLabel = "Keep access &rarr; $20/mo";
+  } else {
+    headline = "Your trial has ended";
+    openerHtml = `Your Dirac access ended on <strong>${endDateLabel}</strong>.`;
+    openerPlain = `Your Dirac access ended on ${endDateLabel}.`;
+    ctaLabel = "Reactivate Dirac &rarr;";
+  }
+
+  const htmlBody = `
+    <!-- Greeting -->
+    <p style="margin:0 0 6px;font-family:${F};font-size:13px;color:#71717a;">Hi ${name},</p>
+
+    <!-- Headline -->
+    <h1 style="margin:0 0 20px;font-family:${F};font-size:22px;font-weight:700;letter-spacing:-0.02em;line-height:1.25;color:#111111;">${headline}</h1>
+
+    <!-- Opener -->
+    <p style="margin:0 0 20px;font-family:${F};font-size:15px;line-height:1.65;color:#3f3f46;">${openerHtml}</p>
+
+    <!-- Stats callout -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
+      <tr>
+        <td style="background-color:#fff7ed;border-left:3px solid #FF8A3D;border-radius:0 4px 4px 0;padding:12px 16px;">
+          <p style="margin:0;font-family:${F};font-size:14px;line-height:1.55;color:#3f3f46;">${statsText}</p>
+        </td>
+      </tr>
+    </table>
+
+    <!-- Closing line -->
+    <p style="margin:0 0 24px;font-family:${F};font-size:14px;line-height:1.55;color:#3f3f46;">
+      ${key === "day_15"
+        ? `If you want to pick up where you left off, your inbox and history are still here.`
+        : `Losing this on ${endDateLabel}. Upgrade to keep everything.`
+      }
+    </p>
+
+    <!-- Primary CTA -->
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;">
+      <tr>
+        <td style="background-color:#FF8A3D;border-radius:5px;">
+          <a href="${upgradeUrl}" style="display:inline-block;padding:12px 24px;font-family:${F};font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">${ctaLabel}</a>
+        </td>
+      </tr>
+    </table>
+
+    <!-- Secondary CTA -->
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
+      <tr>
+        <td>
+          <a href="${feedbackUrl}" style="font-family:${F};font-size:13px;color:#71717a;text-decoration:underline;text-underline-offset:2px;">Share quick feedback</a>
+        </td>
+      </tr>
+    </table>
+
+    <!-- Note -->
+    <p style="margin:0;font-family:${F};font-size:12px;line-height:1.6;color:#a1a1aa;">
+      Whether you stay or not, a quick note helps us improve Dirac &mdash; we read every one.
+    </p>`;
+
+  const html = emailShell(htmlBody);
 
   const text = `Hi ${name},
 
 ${headline}
-${openerText}
 
-${statsText}
+${openerPlain}
 
-${closing}
+${statsPlain}
 
-Keep Dirac: ${upgradeUrl}
+${key === "day_15"
+    ? `If you want to pick up where you left off, your inbox and history are still here.`
+    : `Losing this on ${endDateLabel}. Upgrade to keep everything.`
+  }
 
-Share feedback (helps us improve, super appreciated!): ${feedbackUrl}
+${ctaLabel.replace(/&rarr;|&mdash;/g, "→").replace(/&[a-z]+;/g, "")}: ${upgradeUrl}
+
+Share feedback: ${feedbackUrl}
 
 — Dirac`;
 

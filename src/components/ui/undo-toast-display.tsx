@@ -8,18 +8,24 @@
 import { useEffect, useState, useCallback } from "react";
 import { UndoToast } from "./undo-toast";
 import { useAppState } from "@/lib/store";
-import { getInverseAction, type UndoableActionType } from "@/lib/undo";
+import type { SnoozeState } from "@/lib/types";
+import type { DiracThread } from "@/lib/types";
 
 export function UndoToastDisplay() {
   const {
     currentUndo,
+    performUndo,
     dismissUndo,
-    // These would need to be exposed from the app state for full restore
-    // For now we just show the toast and allow dismiss
-  } = useAppState() as {
-    currentUndo: { action: { id: string; type: UndoableActionType; threadId: string; threadSubject?: string }; timeLeft: number } | null;
-    dismissUndo: () => void;
-  };
+    unarchiveThread,
+    untrashThread,
+    toggleStarred,
+    markThreadRead,
+    markThreadUnread,
+    markDone,
+    unmarkDone,
+    snoozeThread,
+    unsnoozeThread,
+  } = useAppState();
   
   const [visible, setVisible] = useState(false);
   const [timeLeft, setTimeLeft] = useState(5000);
@@ -57,11 +63,94 @@ export function UndoToastDisplay() {
   }, [timeLeft, visible, dismissUndo]);
 
   const handleUndo = useCallback(() => {
-    // In a full implementation, this would call the appropriate restore function
-    // For now we just dismiss the toast
-    dismissUndo();
+    const action = performUndo();
     setVisible(false);
-  }, [dismissUndo]);
+    if (!action) return;
+
+    switch (action.type) {
+      case "archive":
+        unarchiveThread(action.threadId, action.metadata?.thread as DiracThread | undefined);
+        break;
+      case "trash":
+        untrashThread(action.threadId, action.metadata?.thread as DiracThread | undefined);
+        break;
+      case "star":
+      case "unstar":
+        // skipUndo=true to avoid pushing a new undo entry for the inverse
+        toggleStarred(action.threadId, true);
+        break;
+      case "markRead":
+        markThreadUnread(action.threadId);
+        break;
+      case "markUnread":
+        // skipUndo=true to avoid loop
+        markThreadRead(action.threadId, true);
+        break;
+      case "markDone":
+        unmarkDone(action.threadId);
+        break;
+      case "unmarkDone":
+        // skipUndo=true to avoid loop
+        markDone(action.threadId, true);
+        break;
+      case "snooze":
+        unsnoozeThread(action.threadId);
+        break;
+      case "unsnooze": {
+        const snoozeState = action.metadata?.snooze as SnoozeState | undefined;
+        if (snoozeState) {
+          // skipUndo=true to avoid loop
+          snoozeThread(action.threadId, snoozeState, true);
+        }
+        break;
+      }
+      case "batch_archive": {
+        const threadIds = action.metadata?.threadIds as string[] | undefined;
+        const savedThreads = action.metadata?.threads as DiracThread[] | undefined;
+        if (threadIds) {
+          threadIds.forEach((id, i) =>
+            unarchiveThread(id, savedThreads?.[i]),
+          );
+        }
+        break;
+      }
+      case "batch_star": {
+        const threadIds = action.metadata?.threadIds as string[] | undefined;
+        if (threadIds) {
+          // skipUndo=true to avoid cascading new undo entries
+          threadIds.forEach((id) => toggleStarred(id, true));
+        }
+        break;
+      }
+      case "bundle": {
+        // Emit a custom event so BriefView can un-bundle the group
+        const bundleKey = action.metadata?.bundleKey as string | undefined;
+        const threadIds = action.metadata?.threadIds as string[] | undefined;
+        if (bundleKey !== undefined) {
+          window.dispatchEvent(
+            new CustomEvent("dirac:undo-bundle", {
+              detail: { bundleKey, threadIds },
+            }),
+          );
+        }
+        break;
+      }
+      // "delete" is intentionally omitted — permanent deletes cannot be reversed
+      default:
+        break;
+    }
+  }, [
+    performUndo,
+    unarchiveThread,
+    untrashThread,
+    toggleStarred,
+    markThreadRead,
+    markThreadUnread,
+    markDone,
+    unmarkDone,
+    snoozeThread,
+    unsnoozeThread,
+  ]);
 
   const handleDismiss = useCallback(() => {
     dismissUndo();
