@@ -212,31 +212,31 @@ export function loadMorningSettings(): MorningBriefSettings {
 export function buildSummary(thread: DiracThread, triage?: TriageCategory, commitmentCount = 0) {
   if (triage === "needs_reply") {
     return commitmentCount > 0
-      ? `Needs your response and has ${commitmentCount} active commitment${commitmentCount !== 1 ? "s" : ""}.`
-      : "Looks like active work that probably needs your reply.";
+      ? `${thread.participants[0]?.name ?? "They"} need${commitmentCount > 1 ? "s" : ""} a reply — ${commitmentCount} open commitment${commitmentCount !== 1 ? "s" : ""} attached.`
+      : `${thread.participants[0]?.name ?? "They"} sent this and it looks like it needs a reply.`;
   }
   if (triage === "waiting_on") {
-    return "Currently blocked on them replying, so this is more tracking than action.";
+    return `You're waiting on ${thread.participants[0]?.name ?? "them"} — no action needed yet.`;
   }
   if (thread.isUrgent) {
-    return "This thread is flagged as urgent and should be reviewed early.";
+    return `Flagged urgent from ${thread.participants[0]?.name ?? "this sender"} — worth a quick read now.`;
   }
-  return thread.snippet?.trim()
-    ? thread.snippet.slice(0, 120) + (thread.snippet.length > 120 ? "…" : "")
-    : "Likely low-touch or informational.";
+  // For low-signal FYI threads: return empty so the AI summary fills in, or the
+  // card renders without a fallback summary rather than showing the raw snippet.
+  return "";
 }
 
 export function buildPlan(thread: DiracThread, triage?: TriageCategory, category?: FounderCategory, commitmentCount = 0) {
   if (triage === "needs_reply") {
-    if (category === "customer") return "Draft a short, reassuring reply and clear the open asks.";
-    if (category === "investor") return "Send a concise response and clarify whether this needs a meeting or a pass.";
-    if (category === "outreach") return "Decide quickly: decline, ask one qualifying question, or archive.";
-    if (commitmentCount > 0) return "Reply with clear ownership and close any loose commitments.";
-    return "Draft a concise reply, then decide whether to keep it active or mark it done.";
+    if (category === "customer") return "Reply and close any open asks — keep it short.";
+    if (category === "investor") return "Send a quick response — yes, no, or ask one clarifying question.";
+    if (category === "outreach") return "Decide now: decline, ask one qualifying question, or archive.";
+    if (commitmentCount > 0) return "Reply with clear ownership and close the loose commitments.";
+    return "Draft a concise reply and either keep it active or close it out.";
   }
-  if (triage === "waiting_on") return "Leave this in tracking mode and only nudge if it has gone stale.";
-  if (thread.isUrgent) return "Review first, decide whether to respond now or explicitly defer it.";
-  return "Skim once, then archive, mark done, or leave for later if it still matters.";
+  if (triage === "waiting_on") return "No reply needed — nudge only if it's gone stale.";
+  if (thread.isUrgent) return "Read it now and decide: respond immediately or explicitly defer.";
+  return "Skim once and see if you need to save it.";
 }
 
 export function buildPlanCardFromThread(
@@ -573,8 +573,8 @@ export function PlanCardContent({
             return null;
           })()}
 
-          {/* Divider + plan */}
-          <div className="pt-2 border-t border-white/8">
+          {/* Divider + plan — only show top border when there is content above */}
+          <div className={cn("border-white/8", (plan.aiSummary?.trim() || plan.summary || plan.planLoading) ? "pt-2 border-t" : "")}>
             <p className="mb-1.5 font-mono text-[9px] tracking-[0.16em] text-white/28 uppercase">
               Recommended action
             </p>
