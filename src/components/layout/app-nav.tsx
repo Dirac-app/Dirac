@@ -201,7 +201,7 @@ export function AppNav() {
             <TooltipTrigger asChild>
               <button
                 data-tour="morning-brief"
-                onClick={() => window.open("/brief", "_blank")}
+                onClick={() => window.open("/brief", "dirac-brief")}
                 className={cn(
                   "relative flex h-8 w-8 items-center justify-center text-[#FF8A3D] transition-colors hover:bg-[#FF8A3D]/10 touch-target",
                   pathname === "/brief" && "rounded-lg ring-2 ring-[#FF8A3D]/40",
@@ -306,7 +306,7 @@ export function AppNav() {
           <button
             type="button"
             data-tour="morning-brief"
-            onClick={() => window.open("/brief", "_blank")}
+            onClick={() => window.open("/brief", "dirac-brief")}
             className={cn(
               "relative flex h-9 w-9 items-center justify-center text-[#FF8A3D] touch-target rounded-lg",
               pathname === "/brief" && "ring-2 ring-[#FF8A3D]/40",
