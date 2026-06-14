@@ -563,12 +563,12 @@ export function SignupFlow() {
               </p>
             </div>
 
-            <label className="mt-6 flex cursor-pointer items-start gap-3">
+            <label className="mt-6 flex cursor-pointer items-center gap-3">
               <input
                 type="checkbox"
                 checked={gmailConsentChecked}
                 onChange={(e) => setGmailConsentChecked(e.target.checked)}
-                className="mt-0.5 h-4 w-4 shrink-0 accent-[#FF8A3D]"
+                className="h-5 w-5 shrink-0 accent-[#FF8A3D]"
               />
               <span className="text-sm text-zinc-400">
                 I understand — connect my Gmail to Dirac.
