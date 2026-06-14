@@ -902,14 +902,33 @@ export function BriefView() {
     }
 
     const toShow = resolveBriefPlansForOpen(pending, candidates);
+    const byId = new Map(threads.map((t) => [t.id, t]));
 
     if (!store?.cards.length && candidates.length > 0) {
+      // First open of the day — persist candidates as the day's queue
       savePendingBrief(candidates);
-      const byId = new Map(threads.map((t) => [t.id, t]));
       recordShownBriefing(candidates, byId);
+      setPlans(candidates);
+    } else {
+      // Returning to a brief that already has cards. Merge in any fresh
+      // high-priority threads (urgent / needs_reply / waiting_on) that arrived
+      // since the last open and aren't already in the brief.
+      const inBrief = new Set(toShow.map((p) => p.threadId));
+      const freshUrgent = candidates.filter(
+        (c) =>
+          !inBrief.has(c.threadId) &&
+          (c.urgent || c.triage === "needs_reply" || c.triage === "waiting_on"),
+      );
+      if (freshUrgent.length > 0) {
+        const merged = [...toShow, ...freshUrgent];
+        savePendingBrief(merged);
+        recordShownBriefing(freshUrgent, byId);
+        setPlans(merged);
+      } else {
+        setPlans(toShow);
+      }
     }
 
-    setPlans(toShow);
     setRevealed(true);
   }, [
     threadsLoading,

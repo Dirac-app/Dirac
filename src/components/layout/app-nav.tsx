@@ -66,14 +66,27 @@ export function AppNav() {
     setHasUnseenBrief(computeHasUnseenBrief());
 
     const refresh = () => setHasUnseenBrief(computeHasUnseenBrief());
+    // Cross-tab sync: the native storage event fires in all *other* tabs when
+    // localStorage changes. This keeps the pulse in sync when /brief is opened
+    // in a separate tab or window.
+    const handleStorage = (e: StorageEvent) => {
+      if (
+        e.key?.startsWith("dirac_morning_brief_seen_") ||
+        e.key === "dirac_brief_pending"
+      ) {
+        setHasUnseenBrief(computeHasUnseenBrief());
+      }
+    };
     window.addEventListener(MORNING_BRIEF_PENDING_CHANGED, refresh);
     window.addEventListener("dirac:brief-seen", refresh);
     // Keep the old minimized listener so the modal's emit doesn't throw
     window.addEventListener("dirac:morning-brief-minimized", refresh);
+    window.addEventListener("storage", handleStorage);
     return () => {
       window.removeEventListener(MORNING_BRIEF_PENDING_CHANGED, refresh);
       window.removeEventListener("dirac:brief-seen", refresh);
       window.removeEventListener("dirac:morning-brief-minimized", refresh);
+      window.removeEventListener("storage", handleStorage);
     };
   }, []);
 

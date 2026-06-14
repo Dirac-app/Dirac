@@ -337,10 +337,10 @@ export function syncPendingStoreAfterHydrate(
     }
     const thread = threads.find((t) => t.id === stored.threadId);
     if (!thread) {
-      // Inbox still loading — keep queued IDs until threads arrive.
-      if (threads.length === 0) {
-        kept.push(stored);
-      }
+      // Thread not in current fetch window (pagination gap) — preserve the
+      // stored card so it survives re-opens. Only dealt-with threads (done /
+      // snoozed / dismissed) are dropped, handled by isExcludedFromPendingBrief above.
+      kept.push(stored);
       continue;
     }
     const h = hydratedById.get(stored.threadId);
