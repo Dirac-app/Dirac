@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { EmailFrame } from "@/components/inbox/email-frame";
 import { useRouter } from "next/navigation";
 import { format, formatDistanceToNow } from "date-fns";
 import {
@@ -187,10 +188,9 @@ function ExpandedThread({ thread, defaultExpanded = true }: { thread: DiracThrea
                           </p>
                         )}
                         {msg.bodyHtml ? (
-                          <div
-                            className="mt-3 prose prose-sm max-w-none text-foreground prose-a:text-primary [&_img]:max-w-full"
-                            dangerouslySetInnerHTML={{ __html: msg.bodyHtml }}
-                          />
+                          <div className="mt-3">
+                            <EmailFrame html={msg.bodyHtml} />
+                          </div>
                         ) : (
                           <div className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
                             {msg.bodyText || "(no content)"}

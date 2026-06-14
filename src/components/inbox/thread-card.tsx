@@ -346,10 +346,6 @@ export function ThreadCard({
                 {initials}
               </span>
             )}
-            {/* Unread indicator — dot on the avatar */}
-            {thread.isUnread && !isBulkSelected && (
-              <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-background" />
-            )}
           </div>
 
           {/* Content */}

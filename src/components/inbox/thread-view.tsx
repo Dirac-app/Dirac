@@ -34,6 +34,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { useAppState } from "@/lib/store";
 import { Button } from "@/components/ui/button";
+import { EmailFrame } from "@/components/inbox/email-frame";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -423,10 +424,9 @@ export function ThreadView() {
                     )}
 
                     {msg.bodyHtml ? (
-                      <div
-                        className="mt-3 prose prose-sm max-w-none text-foreground prose-a:text-primary [&_img]:max-w-full"
-                        dangerouslySetInnerHTML={{ __html: msg.bodyHtml }}
-                      />
+                      <div className="mt-3">
+                        <EmailFrame html={msg.bodyHtml} />
+                      </div>
                     ) : (
                       <div className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
                         {msg.bodyText || "(no content)"}
