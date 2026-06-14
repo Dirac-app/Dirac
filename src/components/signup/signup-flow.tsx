@@ -349,9 +349,9 @@ export function SignupFlow() {
           user_role: userRole,
           email_volume: emailVolume,
           main_pain_point: mainPainPoint,
-          user_role_other: userRoleOther || null,
-          email_volume_other: emailVolumeOther || null,
-          main_pain_point_other: mainPainPointOther || null,
+          ...(userRoleOther ? { user_role_other: userRoleOther } : {}),
+          ...(emailVolumeOther ? { email_volume_other: emailVolumeOther } : {}),
+          ...(mainPainPointOther ? { main_pain_point_other: mainPainPointOther } : {}),
         }),
       });
       if (!res.ok) throw new Error("Save failed");
