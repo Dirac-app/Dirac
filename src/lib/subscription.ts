@@ -14,7 +14,7 @@ export function isTrialExpired(trialStartDate: string): boolean {
 }
 
 /**
- * Returns the effective subscription status, expiring trials when past 14 days.
+ * Returns the effective subscription status, expiring trials when past 7 days.
  */
 export async function resolveSubscriptionStatus(user: AppUser): Promise<SubscriptionStatus> {
   if (user.subscription_status === "active") return "active";

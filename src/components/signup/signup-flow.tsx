@@ -342,8 +342,8 @@ export function SignupFlow() {
     setSavingAnswers(true);
     setError(null);
     try {
-      const res = await fetch("/api/user/onboarding/questions", {
-        method: "POST",
+      const res = await fetch("/api/user/onboarding", {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_role: userRole,

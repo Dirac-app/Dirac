@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { provisionUserIfNeeded } from "@/lib/provision-user";
+import { ensureUserRowIfNeeded } from "@/lib/provision-user";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -32,9 +32,9 @@ export async function GET(request: Request) {
 
     if (user) {
       try {
-        await provisionUserIfNeeded(user);
+        await ensureUserRowIfNeeded(user);
       } catch (err) {
-        console.error("[auth/callback] provisionUserIfNeeded:", err);
+        console.error("[auth/callback] ensureUserRowIfNeeded:", err);
         return NextResponse.redirect(`${origin}/signup?error=provision`);
       }
     }

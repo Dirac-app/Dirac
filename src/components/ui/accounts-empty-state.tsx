@@ -5,15 +5,27 @@ import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 
+// Full Gmail scopes required for inbox access — must be explicit on the recovery path
+const GMAIL_SCOPE = [
+  "openid",
+  "email",
+  "profile",
+  "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/gmail.send",
+  "https://www.googleapis.com/auth/gmail.modify",
+].join(" ");
+
 export function AccountsEmptyState() {
   function connectGmail() {
     const returnPath =
       typeof window !== "undefined"
         ? window.location.pathname + window.location.search
         : "/inbox";
-    void signIn("google", {
-      callbackUrl: `/auth/complete?next=${encodeURIComponent(returnPath)}`,
-    });
+    void signIn(
+      "google",
+      { callbackUrl: `/auth/complete?next=${encodeURIComponent(returnPath)}` },
+      { scope: GMAIL_SCOPE, access_type: "offline", prompt: "consent" },
+    );
   }
 
   return (
@@ -24,7 +36,7 @@ export function AccountsEmptyState() {
       <div>
         <p className="text-base font-medium text-foreground">No accounts connected</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Connect Gmail to load your inbox. One Google sign-in grants inbox access.
+          Your Gmail needs to be reconnected. Click below to grant inbox access.
         </p>
       </div>
       <div className="flex flex-col gap-2 sm:flex-row">
