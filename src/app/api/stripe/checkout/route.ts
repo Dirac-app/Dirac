@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type Stripe from "stripe";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getStripe } from "@/lib/stripe";
 import { getUserById } from "@/lib/users-db";
@@ -18,15 +19,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const appUser = await getUserById(authUser.id);
-  if (!appUser?.stripe_customer_id) {
-    return NextResponse.json({ error: "Billing account not found" }, { status: 400 });
-  }
-
   const { searchParams } = new URL(request.url);
   const plan = searchParams.get("plan");
+  // signup=true: create customer if needed, add trial period, use signup redirect URLs
+  const isSignup = searchParams.get("signup") === "true";
+
   if (plan !== "monthly" && plan !== "annual") {
     return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
+  }
+
+  const appUser = await getUserById(authUser.id);
+  if (!appUser) {
+    return NextResponse.json({ error: "User not found" }, { status: 400 });
+  }
+
+  if (!isSignup && !appUser.stripe_customer_id) {
+    return NextResponse.json({ error: "Billing account not found" }, { status: 400 });
   }
 
   const envKey = PLANS[plan];
@@ -41,14 +49,39 @@ export async function POST(request: Request) {
     new URL(request.url).origin;
 
   const stripe = getStripe();
-  const session = await stripe.checkout.sessions.create({
-    customer: appUser.stripe_customer_id,
+
+  // For signup: create customer now so we have the ID for metadata
+  let customerId = appUser.stripe_customer_id;
+  if (!customerId) {
+    const customer = await stripe.customers.create({
+      email: appUser.email,
+      name: appUser.name ?? undefined,
+      metadata: { supabase_user_id: authUser.id },
+    });
+    customerId = customer.id;
+  }
+
+  const sessionParams: Stripe.Checkout.SessionCreateParams = {
+    customer: customerId,
     mode: "subscription",
     line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${origin}/inbox?billing=success`,
-    cancel_url: `${origin}/upgrade?billing=cancelled`,
     allow_promotion_codes: true,
-  });
+    metadata: { supabase_user_id: authUser.id },
+  };
+
+  if (isSignup) {
+    sessionParams.subscription_data = {
+      trial_period_days: 7,
+      metadata: { supabase_user_id: authUser.id },
+    };
+    sessionParams.success_url = `${origin}/signup?payment=success&session_id={CHECKOUT_SESSION_ID}`;
+    sessionParams.cancel_url = `${origin}/signup?payment=cancelled`;
+  } else {
+    sessionParams.success_url = `${origin}/inbox?billing=success`;
+    sessionParams.cancel_url = `${origin}/upgrade?billing=cancelled`;
+  }
+
+  const session = await stripe.checkout.sessions.create(sessionParams);
 
   if (!session.url) {
     return NextResponse.json({ error: "Could not create checkout session" }, { status: 500 });

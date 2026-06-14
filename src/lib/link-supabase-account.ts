@@ -35,12 +35,11 @@ export async function linkSupabaseAccount(request: NextRequest): Promise<LinkSup
     };
   }
 
-  if (jwt.provider !== "google" || !jwt.accessToken || jwt.error) {
+  if (jwt.provider !== "google" || jwt.error) {
     return {
       ok: false,
-      reason: "gmail_not_connected",
-      message:
-        "Gmail access was not granted. Sign in again with Google and approve inbox permissions.",
+      reason: "google_session_invalid",
+      message: "Google sign-in session is invalid or expired. Please sign in again.",
     };
   }
 

@@ -5,7 +5,7 @@ import {
   type SubscriptionStatus,
 } from "@/lib/users-db";
 
-export const TRIAL_DAYS = 14;
+export const TRIAL_DAYS = 7;
 
 export function isTrialExpired(trialStartDate: string): boolean {
   const start = new Date(trialStartDate).getTime();

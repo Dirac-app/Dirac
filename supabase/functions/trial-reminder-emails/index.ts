@@ -1,14 +1,13 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const TRIAL_DAYS = 14;
-const REMINDER_KEYS = ["day_12", "day_14", "day_15"] as const;
+const TRIAL_DAYS = 7;
+const REMINDER_KEYS = ["day_4", "day_6"] as const;
 type ReminderKey = (typeof REMINDER_KEYS)[number];
 
 const REMINDER_DAY_OFFSET: Record<ReminderKey, number> = {
-  day_12: 12,
-  day_14: 14,
-  day_15: 15,
+  day_4: 4,
+  day_6: 6,
 };
 
 interface TrialUser {
@@ -16,11 +15,11 @@ interface TrialUser {
   email: string;
   name: string | null;
   trial_start_date: string;
-  emails_processed_count: number;
-  ai_drafts_count: number;
   trial_reminders_sent: string[];
   subscription_status: string;
 }
+
+// ── Date helpers ──────────────────────────────────────────────────────────────
 
 function utcDateOnly(iso: string): string {
   return iso.slice(0, 10);
@@ -37,14 +36,34 @@ function trialEndDateOnly(trialStart: string): string {
 }
 
 function formatLongDate(dateOnly: string): string {
-  const d = new Date(`${dateOnly}T12:00:00.000Z`);
-  return d.toLocaleDateString("en-US", {
+  return new Date(`${dateOnly}T12:00:00.000Z`).toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
     day: "numeric",
     year: "numeric",
     timeZone: "UTC",
   });
+}
+
+function todayUtc(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function isTrialExpiredByTimestamp(trialStart: string): boolean {
+  const start = new Date(trialStart).getTime();
+  const cutoff = start + TRIAL_DAYS * 24 * 60 * 60 * 1000;
+  return Date.now() > cutoff;
+}
+
+function reminderKeyForUser(user: TrialUser, today: string): ReminderKey | null {
+  if (!user.trial_start_date) return null;
+  const start = utcDateOnly(user.trial_start_date);
+  const sent = new Set(user.trial_reminders_sent ?? []);
+  for (const key of REMINDER_KEYS) {
+    const target = addDays(start, REMINDER_DAY_OFFSET[key]);
+    if (target === today && !sent.has(key)) return key;
+  }
+  return null;
 }
 
 function firstName(user: TrialUser): string {
@@ -54,16 +73,11 @@ function firstName(user: TrialUser): string {
   return local.charAt(0).toUpperCase() + local.slice(1);
 }
 
-function buildSubject(key: ReminderKey, endLabel: string): string {
-  if (key === "day_12") return `2 days left on Dirac — ends ${endLabel}`;
-  if (key === "day_14") return `Last day of your Dirac trial!`;
-  return `Your Dirac trial ended`;
-}
+// ── Design tokens ─────────────────────────────────────────────────────────────
 
-/** Shared inline styles for the email design system */
 const F = `-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif`;
+const ORANGE = `#FF8A3D`;
 
-/** Wraps content in a consistent light-mode email shell */
 function emailShell(body: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -78,24 +92,22 @@ function emailShell(body: string): string {
       <td align="center" style="padding:40px 16px 32px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;">
 
-          <!-- Wordmark -->
           <tr>
             <td style="padding:0 0 18px;">
-              <span style="font-family:${F};font-size:13px;font-weight:700;letter-spacing:0.06em;color:#FF8A3D;">DIRAC</span>
+              <span style="font-family:${F};font-size:13px;font-weight:700;letter-spacing:0.06em;color:${ORANGE};">DIRAC</span>
             </td>
           </tr>
 
-          <!-- Card -->
           <tr>
             <td style="background-color:#ffffff;border:1px solid #e4e4e7;border-radius:6px;padding:32px 32px 28px;">
               ${body}
             </td>
           </tr>
 
-          <!-- Footer -->
           <tr>
             <td style="padding:20px 0 0;font-family:${F};font-size:11px;color:#a1a1aa;text-align:center;line-height:1.6;">
-              Dirac &middot; Your intelligent inbox
+              Dirac &middot; Your intelligent inbox &middot;
+              <a href="${`{APP_URL}`}/settings" style="color:#a1a1aa;text-decoration:underline;text-underline-offset:2px;">Manage subscription</a>
             </td>
           </tr>
 
@@ -107,123 +119,176 @@ function emailShell(body: string): string {
 </html>`;
 }
 
-function buildBody(
+// ── Email builders ────────────────────────────────────────────────────────────
+
+function buildDay4Email(
   user: TrialUser,
-  key: ReminderKey,
-  upgradeUrl: string,
-  feedbackUrl: string,
-  endDateLabel: string,
-): { html: string; text: string } {
+  inboxUrl: string,
+  chargeDate: string,
+): { subject: string; html: string; text: string } {
   const name = firstName(user);
-  const emails = user.emails_processed_count ?? 0;
-  const drafts = user.ai_drafts_count ?? 0;
 
-  // Stats line — shown inside the accent callout
-  const statsText =
-    emails > 0 || drafts > 0
-      ? `You&rsquo;ve processed <strong>${emails}</strong> email${emails === 1 ? "" : "s"} and drafted <strong>${drafts}</strong> AI repl${drafts === 1 ? "y" : "ies"} through Dirac.`
-      : `You&rsquo;ve started triaging with Dirac &mdash; your inbox setup is in place.`;
+  const tips = [
+    {
+      n: "1",
+      label: "Morning Brief",
+      detail: "Tap the sunrise icon each morning. It summarises what needs you, what can wait, and gives you a clear plan.",
+    },
+    {
+      n: "2",
+      label: "AI drafts",
+      detail: "Open a thread → Reply → tap the sparkle icon. Dirac writes the first draft in your tone — edit and send.",
+    },
+    {
+      n: "3",
+      label: "Snooze",
+      detail: "Right-click (or hold on mobile) any thread to snooze it. It reappears at exactly the right time.",
+    },
+  ];
 
-  const statsPlain =
-    emails > 0 || drafts > 0
-      ? `You've processed ${emails} email${emails === 1 ? "" : "s"} and drafted ${drafts} AI repl${drafts === 1 ? "y" : "ies"} through Dirac.`
-      : `You've started triaging with Dirac — your inbox setup is in place.`;
-
-  let headline: string;
-  let openerHtml: string;
-  let openerPlain: string;
-  let ctaLabel: string;
-
-  if (key === "day_12") {
-    headline = "2 days left on your Dirac trial";
-    openerHtml = `Quick note &mdash; your trial runs through <strong>${endDateLabel}</strong> (2 days left).`;
-    openerPlain = `Quick note — your trial runs through ${endDateLabel} (2 days left).`;
-    ctaLabel = "Keep Dirac &rarr; $20/mo";
-  } else if (key === "day_14") {
-    headline = "Today is your last day";
-    openerHtml = `Your Dirac trial ends <strong>today, ${endDateLabel}</strong>.`;
-    openerPlain = `Your Dirac trial ends today, ${endDateLabel}.`;
-    ctaLabel = "Keep access &rarr; $20/mo";
-  } else {
-    headline = "Your trial has ended";
-    openerHtml = `Your Dirac access ended on <strong>${endDateLabel}</strong>.`;
-    openerPlain = `Your Dirac access ended on ${endDateLabel}.`;
-    ctaLabel = "Reactivate Dirac &rarr;";
-  }
+  const tipsHtml = tips
+    .map(
+      (t) => `
+      <tr>
+        <td style="padding:0 0 16px;vertical-align:top;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+            <tr>
+              <td style="width:28px;vertical-align:top;padding-top:1px;">
+                <span style="display:inline-block;width:22px;height:22px;border-radius:50%;background-color:#fff7ed;border:1px solid #fed7aa;font-family:${F};font-size:11px;font-weight:700;color:${ORANGE};text-align:center;line-height:20px;">${t.n}</span>
+              </td>
+              <td style="vertical-align:top;padding-left:10px;">
+                <p style="margin:0 0 2px;font-family:${F};font-size:14px;font-weight:600;color:#111111;">${t.label}</p>
+                <p style="margin:0;font-family:${F};font-size:13px;line-height:1.55;color:#71717a;">${t.detail}</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>`,
+    )
+    .join("");
 
   const htmlBody = `
-    <!-- Greeting -->
     <p style="margin:0 0 6px;font-family:${F};font-size:13px;color:#71717a;">Hi ${name},</p>
 
-    <!-- Headline -->
-    <h1 style="margin:0 0 20px;font-family:${F};font-size:22px;font-weight:700;letter-spacing:-0.02em;line-height:1.25;color:#111111;">${headline}</h1>
-
-    <!-- Opener -->
-    <p style="margin:0 0 20px;font-family:${F};font-size:15px;line-height:1.65;color:#3f3f46;">${openerHtml}</p>
-
-    <!-- Stats callout -->
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
-      <tr>
-        <td style="background-color:#fff7ed;border-left:3px solid #FF8A3D;border-radius:0 4px 4px 0;padding:12px 16px;">
-          <p style="margin:0;font-family:${F};font-size:14px;line-height:1.55;color:#3f3f46;">${statsText}</p>
-        </td>
-      </tr>
-    </table>
-
-    <!-- Closing line -->
-    <p style="margin:0 0 24px;font-family:${F};font-size:14px;line-height:1.55;color:#3f3f46;">
-      ${key === "day_15"
-        ? `If you want to pick up where you left off, your inbox and history are still here.`
-        : `Losing this on ${endDateLabel}. Upgrade to keep everything.`
-      }
+    <h1 style="margin:0 0 8px;font-family:${F};font-size:22px;font-weight:700;letter-spacing:-0.02em;line-height:1.25;color:#111111;">A few things worth knowing.</h1>
+    <p style="margin:0 0 28px;font-family:${F};font-size:15px;line-height:1.6;color:#3f3f46;">
+      You&rsquo;re 4 days in. Here are the features that save the most time.
     </p>
 
-    <!-- Primary CTA -->
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;">
-      <tr>
-        <td style="background-color:#FF8A3D;border-radius:5px;">
-          <a href="${upgradeUrl}" style="display:inline-block;padding:12px 24px;font-family:${F};font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">${ctaLabel}</a>
-        </td>
-      </tr>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 28px;">
+      ${tipsHtml}
     </table>
 
-    <!-- Secondary CTA -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
+      <tr><td style="height:1px;background-color:#f4f4f5;"></td></tr>
+    </table>
+
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
       <tr>
-        <td>
-          <a href="${feedbackUrl}" style="font-family:${F};font-size:13px;color:#71717a;text-decoration:underline;text-underline-offset:2px;">Share quick feedback</a>
+        <td style="background-color:${ORANGE};border-radius:5px;">
+          <a href="${inboxUrl}" style="display:inline-block;padding:12px 24px;font-family:${F};font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">Open Dirac &rarr;</a>
         </td>
       </tr>
     </table>
 
-    <!-- Note -->
-    <p style="margin:0;font-family:${F};font-size:12px;line-height:1.6;color:#a1a1aa;">
-      Whether you stay or not, a quick note helps us improve Dirac &mdash; we read every one.
-    </p>`;
+    <p style="margin:0 0 20px;font-family:${F};font-size:13px;line-height:1.55;color:#a1a1aa;">
+      Your trial ends on <strong style="color:#3f3f46;">${chargeDate}</strong>. Your card won&rsquo;t be charged until then.
+    </p>
+
+    <p style="margin:0;font-family:${F};font-size:14px;color:#3f3f46;">&mdash; Peter</p>`;
 
   const html = emailShell(htmlBody);
 
   const text = `Hi ${name},
 
-${headline}
+A few things worth knowing.
 
-${openerPlain}
+You're 4 days in. Here are the features that save the most time.
 
-${statsPlain}
+1. Morning Brief
+   Tap the sunrise icon each morning. It summarises what needs you, what can wait, and gives you a clear plan.
 
-${key === "day_15"
-    ? `If you want to pick up where you left off, your inbox and history are still here.`
-    : `Losing this on ${endDateLabel}. Upgrade to keep everything.`
-  }
+2. AI drafts
+   Open a thread → Reply → tap the sparkle icon. Dirac writes the first draft in your tone — edit and send.
 
-${ctaLabel.replace(/&rarr;|&mdash;/g, "→").replace(/&[a-z]+;/g, "")}: ${upgradeUrl}
+3. Snooze
+   Right-click (or hold on mobile) any thread to snooze it. It reappears at exactly the right time.
 
-Share feedback: ${feedbackUrl}
+Open Dirac: ${inboxUrl}
 
-— Dirac`;
+Your trial ends on ${chargeDate}. Your card won't be charged until then.
 
-  return { html, text };
+— Peter`;
+
+  return { subject: "4 days in — a few things worth knowing", html, text };
 }
+
+function buildDay6Email(
+  user: TrialUser,
+  inboxUrl: string,
+  settingsUrl: string,
+  chargeDate: string,
+  chargeDateLong: string,
+): { subject: string; html: string; text: string } {
+  const name = firstName(user);
+
+  const htmlBody = `
+    <p style="margin:0 0 6px;font-family:${F};font-size:13px;color:#71717a;">Hi ${name},</p>
+
+    <h1 style="margin:0 0 8px;font-family:${F};font-size:22px;font-weight:700;letter-spacing:-0.02em;line-height:1.25;color:#111111;">Your trial ends tomorrow.</h1>
+    <p style="margin:0 0 24px;font-family:${F};font-size:15px;line-height:1.6;color:#3f3f46;">
+      If you&rsquo;re happy with Dirac, there&rsquo;s nothing to do &mdash; your card on file will be charged on <strong>${chargeDateLong}</strong> and access continues seamlessly.
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
+      <tr>
+        <td style="background-color:#fff7ed;border:1px solid #fed7aa;border-radius:5px;padding:14px 18px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td style="width:14px;vertical-align:top;padding-top:2px;">
+                <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background-color:${ORANGE};margin-top:4px;"></span>
+              </td>
+              <td style="vertical-align:top;padding-left:10px;">
+                <p style="margin:0 0 4px;font-family:${F};font-size:13px;font-weight:600;color:#111111;">Charging tomorrow &mdash; ${chargeDateLong}</p>
+                <p style="margin:0;font-family:${F};font-size:13px;line-height:1.5;color:#71717a;">
+                  Want to cancel? Go to <a href="${settingsUrl}" style="color:${ORANGE};text-decoration:none;font-weight:500;">Settings &rarr; Billing</a> before midnight, or just reply to this email and I&rsquo;ll handle it.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
+      <tr>
+        <td style="background-color:${ORANGE};border-radius:5px;">
+          <a href="${inboxUrl}" style="display:inline-block;padding:12px 24px;font-family:${F};font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">Open Dirac &rarr;</a>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin:0;font-family:${F};font-size:14px;color:#3f3f46;">&mdash; Peter</p>`;
+
+  const html = emailShell(htmlBody);
+
+  const text = `Hi ${name},
+
+Your trial ends tomorrow.
+
+If you're happy with Dirac, there's nothing to do — your card on file will be charged on ${chargeDateLong} and access continues seamlessly.
+
+Charging tomorrow — ${chargeDateLong}
+Want to cancel? Go to Settings → Billing before midnight, or reply to this email and I'll handle it.
+
+Open Dirac: ${inboxUrl}
+
+— Peter`;
+
+  return { subject: `Your Dirac trial ends tomorrow — ${chargeDate}`, html, text };
+}
+
+// ── Resend sender ─────────────────────────────────────────────────────────────
 
 async function sendResend(
   apiKey: string,
@@ -241,7 +306,6 @@ async function sendResend(
     },
     body: JSON.stringify({ from, to, subject, html, text }),
   });
-
   if (!res.ok) {
     const err = await res.text();
     return { ok: false, error: err };
@@ -249,28 +313,7 @@ async function sendResend(
   return { ok: true };
 }
 
-function todayUtc(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function reminderKeyForUser(user: TrialUser, today: string): ReminderKey | null {
-  if (!user.trial_start_date) return null;
-  const start = utcDateOnly(user.trial_start_date);
-  const sent = new Set(user.trial_reminders_sent ?? []);
-
-  for (const key of REMINDER_KEYS) {
-    const target = addDays(start, REMINDER_DAY_OFFSET[key]);
-    if (target === today && !sent.has(key)) return key;
-  }
-  return null;
-}
-
-/** Matches app logic in src/lib/subscription.ts (14 × 24h after trial_start_date). */
-function isTrialExpiredByTimestamp(trialStart: string): boolean {
-  const start = new Date(trialStart).getTime();
-  const cutoff = start + TRIAL_DAYS * 24 * 60 * 60 * 1000;
-  return Date.now() > cutoff;
-}
+// ── Entry point ───────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
   const cronSecret = Deno.env.get("TRIAL_REMINDER_CRON_SECRET");
@@ -282,7 +325,7 @@ Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const resendKey = Deno.env.get("RESEND_API_KEY");
-  const fromEmail = Deno.env.get("RESEND_FROM_EMAIL") ?? "Dirac <billing@notifications.dirac.app>";
+  const fromEmail = Deno.env.get("RESEND_FROM_EMAIL") ?? "Peter @ Dirac <peter@dirac.app>";
   const appUrl = (Deno.env.get("APP_URL") ?? "https://app.dirac.app").replace(/\/$/, "");
 
   if (!supabaseUrl || !serviceKey || !resendKey) {
@@ -294,9 +337,7 @@ Deno.serve(async (req) => {
 
   const { data: users, error } = await supabase
     .from("users")
-    .select(
-      "id, email, name, trial_start_date, emails_processed_count, ai_drafts_count, trial_reminders_sent, subscription_status",
-    )
+    .select("id, email, name, trial_start_date, trial_reminders_sent, subscription_status")
     .not("trial_start_date", "is", null)
     .neq("subscription_status", "active");
 
@@ -313,7 +354,7 @@ Deno.serve(async (req) => {
     error?: string;
   }[] = [];
 
-  // Flip trialing → expired in DB when past 14 days (emails alone never did this).
+  // Safety net: flip trialing → expired when Stripe hasn't done it yet
   for (const row of (users ?? []) as TrialUser[]) {
     if (row.subscription_status !== "trialing" || !row.trial_start_date) continue;
     if (!isTrialExpiredByTimestamp(row.trial_start_date)) continue;
@@ -333,16 +374,31 @@ Deno.serve(async (req) => {
     if (!expireErr) row.subscription_status = "expired";
   }
 
+  // Send scheduled reminder emails
   for (const row of (users ?? []) as TrialUser[]) {
     const key = reminderKeyForUser(row, today);
     if (!key) continue;
 
-    const endDate = trialEndDateOnly(row.trial_start_date);
-    const endLabel = formatLongDate(endDate);
-    const upgradeUrl = `${appUrl}/upgrade`;
-    const feedbackUrl = `${appUrl}/trial-feedback?reminder=${key}`;
-    const subject = buildSubject(key, endLabel);
-    const { html, text } = buildBody(row, key, upgradeUrl, feedbackUrl, endLabel);
+    const endDateOnly = trialEndDateOnly(row.trial_start_date);
+    const chargeDateLong = formatLongDate(endDateOnly);
+    const inboxUrl = `${appUrl}/inbox`;
+    const settingsUrl = `${appUrl}/settings`;
+
+    let subject: string;
+    let html: string;
+    let text: string;
+
+    if (key === "day_4") {
+      ({ subject, html, text } = buildDay4Email(row, inboxUrl, chargeDateLong));
+    } else {
+      ({ subject, html, text } = buildDay6Email(
+        row,
+        inboxUrl,
+        settingsUrl,
+        endDateOnly,
+        chargeDateLong,
+      ));
+    }
 
     const sent = await sendResend(resendKey, fromEmail, row.email, subject, html, text);
     if (!sent.ok) {
@@ -351,22 +407,17 @@ Deno.serve(async (req) => {
     }
 
     const nextSent = Array.from(new Set([...(row.trial_reminders_sent ?? []), key]));
-    const patch: { trial_reminders_sent: string[]; subscription_status?: string } = {
-      trial_reminders_sent: nextSent,
-    };
-    if (key === "day_15" || isTrialExpiredByTimestamp(row.trial_start_date)) {
-      patch.subscription_status = "expired";
-    }
     const { error: updateErr } = await supabase
       .from("users")
-      .update(patch)
+      .update({ trial_reminders_sent: nextSent })
       .eq("id", row.id);
 
-    if (updateErr) {
-      results.push({ userId: row.id, key, ok: false, error: updateErr.message });
-    } else {
-      results.push({ userId: row.id, key, ok: true });
-    }
+    results.push({
+      userId: row.id,
+      key,
+      ok: !updateErr,
+      error: updateErr?.message,
+    });
   }
 
   return new Response(

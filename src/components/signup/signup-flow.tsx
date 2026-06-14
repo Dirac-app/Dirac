@@ -16,6 +16,15 @@ import { fireSignupConfetti } from "@/lib/signup-confetti";
 const STEP_STORAGE_KEY = "dirac_signup_step";
 const OAUTH_PENDING_KEY = "dirac_signup_oauth_pending";
 
+const GMAIL_SCOPE = [
+  "openid",
+  "email",
+  "profile",
+  "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/gmail.send",
+  "https://www.googleapis.com/auth/gmail.modify",
+].join(" ");
+
 function markOAuthPending(): void {
   try {
     sessionStorage.setItem(OAUTH_PENDING_KEY, "1");
@@ -69,12 +78,6 @@ const PAIN_OPTIONS: { value: MainPainPoint; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 
-const SETUP_ITEMS = [
-  "Connecting your inbox...",
-  "Analysing your writing style...",
-  "Preparing your Morning Brief...",
-] as const;
-
 function GoogleIcon() {
   return (
     <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden>
@@ -106,16 +109,16 @@ const fadeUp = {
 
 const AUTH_REASON_MESSAGES: Record<string, string> = {
   no_nextauth_jwt:
-    "Google session was not found on the server. On Vercel, set AUTH_SECRET or NEXTAUTH_SECRET (not TESTER_JWT_SECRET) and NEXTAUTH_URL=https://app.dirac.app.",
+    "Google session was not found on the server. On Vercel, set AUTH_SECRET or NEXTAUTH_SECRET and NEXTAUTH_URL=https://app.dirac.app.",
   missing_auth_secret:
     "Server is missing AUTH_SECRET / NEXTAUTH_SECRET. Add it in Vercel → Project → Environment Variables.",
   missing_google_id_token:
     "Google did not return an ID token. Try signing in again.",
-  id_token_exchange_failed: "Could not link your Google account to Dirac. Check Supabase Google provider settings.",
+  id_token_exchange_failed:
+    "Could not link your Google account to Dirac. Check Supabase Google provider settings.",
   supabase_user_missing: "Account link did not complete. Please try again.",
   provision_failed: "We could not finish setting up your account. Please try again.",
-  gmail_not_connected:
-    "Gmail wasn't connected. Sign in again with Google and approve inbox access.",
+  google_session_invalid: "Sign-in session is invalid. Please sign in again.",
 };
 
 function authErrorMessage(reason: string | null): string {
@@ -138,6 +141,7 @@ export function SignupFlow() {
   const [booting, setBooting] = useState(true);
   const [authLoading, setAuthLoading] = useState(false);
   const [linkingAccount, setLinkingAccount] = useState(false);
+  const [verifyingPayment, setVerifyingPayment] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [emailVolume, setEmailVolume] = useState<EmailVolume | null>(null);
@@ -156,10 +160,8 @@ export function SignupFlow() {
     (emailVolume !== "other" || emailVolumeOther.trim().length > 0) &&
     (mainPainPoint !== "other" || mainPainPointOther.trim().length > 0);
 
-  const [checkIndex, setCheckIndex] = useState(-1);
-  const [checksDone, setChecksDone] = useState(false);
-  const [showReadyNote, setShowReadyNote] = useState(false);
-  const [showSetupCta, setShowSetupCta] = useState(false);
+  // Step 4 (Gmail connect) — consent checkbox
+  const [gmailConsentChecked, setGmailConsentChecked] = useState(false);
   const [googleConnected, setGoogleConnected] = useState(false);
 
   const persistStep = useCallback((s: Step) => {
@@ -185,16 +187,10 @@ export function SignupFlow() {
       clearOAuthPending();
       const msg = authErrorMessage(reason);
       setError(msg);
-      console.error("[signup] auth error", { reason, message: msg });
     }
     if (params.get("error") === "provision") {
       clearOAuthPending();
       setError("We could not finish setting up your account. Please try again.");
-    }
-
-    function celebrateGoogleSignup() {
-      setGoogleConnected(true);
-      void fireSignupConfetti();
     }
 
     async function boot() {
@@ -206,120 +202,159 @@ export function SignupFlow() {
       } = await supabase.auth.getSession();
 
       const hasGmail = gmailReady(session);
+      const afterGmail = params.get("after") === "gmail";
+      const paymentSuccess = params.get("payment") === "success";
+      const paymentCancelled = params.get("payment") === "cancelled";
+      const stripeSessionId = params.get("session_id");
 
-      // Supabase billing row without Gmail tokens — must re-auth with NextAuth.
-      if (supabaseSession && nextAuthStatus === "authenticated" && !hasGmail) {
-        setStep(1);
-        setError(authErrorMessage("gmail_not_connected"));
+      // --- Returning from Gmail OAuth (step 4 → step 5) ---
+      if (afterGmail && nextAuthStatus === "authenticated" && hasGmail && supabaseSession) {
+        goToStep(5);
         setBooting(false);
         return;
       }
 
-      if (supabaseSession && !hasGmail && nextAuthStatus === "unauthenticated") {
-        setStep(1);
-        setError(
-          "Your account exists but Gmail isn't connected. Sign in with Google below to link your inbox.",
-        );
+      // --- Returning from Stripe checkout (step 3 → step 4) ---
+      if (paymentSuccess && stripeSessionId && nextAuthStatus === "authenticated" && supabaseSession) {
+        setVerifyingPayment(true);
+        try {
+          const res = await fetch(`/api/stripe/verify-payment?session_id=${stripeSessionId}`);
+          if (res.ok) {
+            goToStep(4);
+            setBooting(false);
+            setVerifyingPayment(false);
+            return;
+          }
+          setError("Could not verify payment. If you were charged, please contact support.");
+        } catch {
+          setError("Network error verifying payment. Please try again.");
+        }
+        setVerifyingPayment(false);
+        goToStep(3);
         setBooting(false);
         return;
       }
 
-      if (nextAuthStatus === "authenticated" && hasGmail && !supabaseSession) {
+      // --- Payment cancelled ---
+      if (paymentCancelled) {
+        goToStep(3);
+        setBooting(false);
+        return;
+      }
+
+      // --- NextAuth authenticated but no Supabase session — link accounts ---
+      // Happens right after the first Google sign-in (step 1 callback)
+      if (nextAuthStatus === "authenticated" && !supabaseSession) {
         setLinkingAccount(true);
         try {
           const res = await fetch("/api/auth/link-supabase", { method: "POST" });
-          const data = (await res.json()) as { ok?: boolean; reason?: string; error?: string };
+          const data = (await res.json()) as { ok?: boolean; reason?: string };
           if (res.ok) {
             await supabase.auth.getSession();
-            setStep(2);
-            persistStep(2);
-            setError(null);
-            if (consumeOAuthPending()) celebrateGoogleSignup();
+            if (consumeOAuthPending()) {
+              setGoogleConnected(true);
+              void fireSignupConfetti();
+            }
+            goToStep(2);
             setBooting(false);
             setLinkingAccount(false);
             return;
           }
           clearOAuthPending();
-          const msg = authErrorMessage(data.reason ?? reason);
-          setError(msg);
-          console.error("[signup] link-supabase failed", data);
+          setError(authErrorMessage(data.reason ?? null));
           setStep(1);
-          setBooting(false);
-          setLinkingAccount(false);
-          return;
-        } catch (err) {
+        } catch {
           clearOAuthPending();
-          console.error("[signup] link-supabase network error", err);
-          setError("Network error while linking your account. Please try again.");
+          setError("Network error while linking account. Please try again.");
           setStep(1);
-          setBooting(false);
-          setLinkingAccount(false);
-          return;
         }
+        setBooting(false);
+        setLinkingAccount(false);
+        return;
       }
 
-      if (supabaseSession && hasGmail) {
+      // --- Both sessions present — resume from saved step ---
+      if (supabaseSession && nextAuthStatus === "authenticated") {
+        // Check if already fully onboarded
         try {
-          const res = await fetch("/api/user/profile");
-          if (res.ok) {
-            const profile = (await res.json()) as { onboarding_completed_at: string | null };
+          const profileRes = await fetch("/api/user/profile");
+          if (profileRes.ok) {
+            const profile = (await profileRes.json()) as {
+              onboarding_completed_at?: string | null;
+              stripe_customer_id?: string | null;
+            };
             if (profile.onboarding_completed_at) {
               router.replace("/inbox");
               return;
             }
-            const saved = Number(localStorage.getItem(STEP_STORAGE_KEY));
-            if (saved >= 2 && saved <= 5) {
-              setStep(saved as Step);
+            // Resume at the right step, guarded by payment status
+            const hasPayment = !!profile.stripe_customer_id;
+            const savedStep = Number(localStorage.getItem(STEP_STORAGE_KEY));
+            let targetStep: Step;
+            if (savedStep >= 2 && savedStep <= 5) {
+              // Don't let them skip payment — enforce step 3 if payment not done
+              if (savedStep >= 4 && !hasPayment) {
+                targetStep = 3;
+              } else {
+                targetStep = savedStep as Step;
+              }
             } else {
-              setStep(2);
+              targetStep = hasPayment ? 4 : 2;
             }
-          } else {
-            setStep(2);
+            goToStep(targetStep);
+            setBooting(false);
+            return;
           }
         } catch {
-          setStep(2);
+          /* ignore, fall through */
         }
-        if (consumeOAuthPending()) celebrateGoogleSignup();
+
+        const savedStep = Number(localStorage.getItem(STEP_STORAGE_KEY));
+        goToStep(savedStep >= 2 && savedStep <= 5 ? (savedStep as Step) : 2);
         setBooting(false);
         return;
       }
 
+      // No session at all
       setStep(1);
       setBooting(false);
     }
 
     void boot();
-  }, [nextAuthStatus, session, router, persistStep]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nextAuthStatus, session]);
 
   async function handleGoogleSignup() {
     setAuthLoading(true);
     setError(null);
     markOAuthPending();
-    persistStep(2);
-    await signIn("google", {
-      callbackUrl: `/auth/complete?next=${encodeURIComponent("/signup")}`,
-    });
-    setAuthLoading(false);
+    // Explicitly pin to basic scopes — Gmail is NOT requested here.
+    // Gmail scopes are only requested in step 4 via handleConnectGmail.
+    await signIn(
+      "google",
+      { callbackUrl: "/signup" },
+      { scope: "openid email profile", prompt: "select_account" },
+    );
   }
 
   async function handleSaveQuestions() {
-    if (!answersComplete || !userRole || !emailVolume || !mainPainPoint) return;
+    if (!answersComplete) return;
     setSavingAnswers(true);
     setError(null);
     try {
-      const res = await fetch("/api/user/onboarding", {
-        method: "PATCH",
+      const res = await fetch("/api/user/onboarding/questions", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_role: userRole,
           email_volume: emailVolume,
           main_pain_point: mainPainPoint,
-          ...(userRole === "other" && { user_role_other: userRoleOther.trim() }),
-          ...(emailVolume === "other" && { email_volume_other: emailVolumeOther.trim() }),
-          ...(mainPainPoint === "other" && { main_pain_point_other: mainPainPointOther.trim() }),
+          user_role_other: userRoleOther || null,
+          email_volume_other: emailVolumeOther || null,
+          main_pain_point_other: mainPainPointOther || null,
         }),
       });
-      if (!res.ok) throw new Error("Failed to save");
+      if (!res.ok) throw new Error("Save failed");
       goToStep(3);
     } catch {
       setError("Could not save your answers. Please try again.");
@@ -328,43 +363,20 @@ export function SignupFlow() {
     }
   }
 
-  useEffect(() => {
-    if (step !== 4) return;
-
-    setCheckIndex(-1);
-    setChecksDone(false);
-    setShowReadyNote(false);
-    setShowSetupCta(false);
-
-    void fetch("/api/user/onboarding/setup", { method: "POST" }).catch((err) => {
-      console.error("[signup] setup:", err);
-    });
-
-    const timers: ReturnType<typeof setTimeout>[] = [];
-
-    SETUP_ITEMS.forEach((_, i) => {
-      timers.push(
-        setTimeout(() => {
-          setCheckIndex(i);
-        }, i * 800),
-      );
-    });
-
-    timers.push(
-      setTimeout(() => {
-        setChecksDone(true);
-        setShowReadyNote(true);
-      }, SETUP_ITEMS.length * 800 + 400),
+  async function handleConnectGmail() {
+    setAuthLoading(true);
+    setError(null);
+    persistStep(4);
+    await signIn(
+      "google",
+      { callbackUrl: "/signup?after=gmail" },
+      {
+        scope: GMAIL_SCOPE,
+        access_type: "offline",
+        prompt: "consent",
+      },
     );
-
-    timers.push(
-      setTimeout(() => {
-        setShowSetupCta(true);
-      }, SETUP_ITEMS.length * 800 + 900),
-    );
-
-    return () => timers.forEach(clearTimeout);
-  }, [step]);
+  }
 
   async function handleOpenInbox() {
     try {
@@ -376,11 +388,15 @@ export function SignupFlow() {
     router.push("/inbox");
   }
 
-  if (booting || nextAuthStatus === "loading" || linkingAccount) {
+  if (booting || nextAuthStatus === "loading" || linkingAccount || verifyingPayment) {
     return (
       <SignupShell>
         <p className="text-center text-sm text-zinc-500">
-          {linkingAccount ? "Connecting your Google account…" : "Loading…"}
+          {linkingAccount
+            ? "Connecting your Google account…"
+            : verifyingPayment
+              ? "Confirming your payment…"
+              : "Loading…"}
         </p>
       </SignupShell>
     );
@@ -389,39 +405,65 @@ export function SignupFlow() {
   return (
     <SignupShell>
       <AnimatePresence mode="wait">
+
+        {/* ── Step 1: Sign in with Google (basic scopes) ── */}
         {step === 1 && (
           <motion.div key="s1" {...fadeUp} transition={{ duration: 0.35 }}>
+
+            {/* Founding badge */}
+            <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-[#FF8A3D]/30 bg-[#FF8A3D]/8 px-3.5 py-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#FF8A3D]" aria-hidden />
+              <span className="text-xs font-medium tracking-wide text-[#FF8A3D]">
+                Founding members — first 100 only
+              </span>
+            </div>
+
             <h1 className="text-4xl font-semibold tracking-tight text-white">
               Your inbox, handled.
             </h1>
-            <p className="mt-4 text-base leading-relaxed text-zinc-400">
-              Join founders who&apos;ve stopped letting email run their day.
+            <p className="mt-3 text-base leading-relaxed text-zinc-400">
+              A decision-first inbox for founders who move fast on email.
             </p>
+
+            {/* Feature list */}
+            <ul className="mt-7 space-y-2.5">
+              {[
+                "AI triage, summaries, and reply drafts in your voice",
+                "Morning Brief — daily priority list with a plan",
+                "Snooze, archive, and act on threads in seconds",
+              ].map((item) => (
+                <li key={item} className="flex items-start gap-2.5 text-sm text-zinc-400">
+                  <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-[#FF8A3D]" aria-hidden />
+                  {item}
+                </li>
+              ))}
+            </ul>
+
+            {/* Divider */}
+            <div className="my-8 h-px bg-zinc-800" />
 
             <button
               type="button"
-              onClick={handleGoogleSignup}
+              onClick={() => void handleGoogleSignup()}
               disabled={authLoading}
-              className="mt-10 flex w-full items-center justify-center gap-2.5 bg-white px-4 py-3.5 text-sm font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-60"
+              className="flex w-full items-center justify-center gap-2.5 bg-white px-4 py-3.5 text-sm font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-60"
             >
               <GoogleIcon />
-              {authLoading ? "Redirecting…" : "Sign up & connect Google"}
+              {authLoading ? "Redirecting…" : "Continue with Google"}
             </button>
 
             <p className="mt-4 text-center text-xs text-zinc-500">
-              14-day free trial · No credit card required
-            </p>
-            <p className="mt-1 text-center text-[11px] text-zinc-600">
-              Data stays local while Dirac learns your inbox.
+              7-day free trial · Cancel anytime · Card required
             </p>
 
             {error && <p className="mt-4 text-center text-sm text-[#FF8A3D]">{error}</p>}
           </motion.div>
         )}
 
+        {/* ── Step 2: Survey questions ── */}
         {step === 2 && (
           <motion.div key="s2" {...fadeUp} transition={{ duration: 0.35 }}>
-            <ProgressStep current={1} />
+            <ProgressStep current={1} total={3} />
             <AnimatePresence>
               {googleConnected && (
                 <motion.p
@@ -468,7 +510,7 @@ export function SignupFlow() {
                   onChange={setMainPainPoint}
                   otherText={mainPainPointOther}
                   onOtherTextChange={setMainPainPointOther}
-                  otherPlaceholder="What’s the main problem?"
+                  otherPlaceholder="What's the main problem?"
                 />
               </div>
             </div>
@@ -476,7 +518,7 @@ export function SignupFlow() {
             <button
               type="button"
               disabled={!answersComplete || savingAnswers}
-              onClick={handleSaveQuestions}
+              onClick={() => void handleSaveQuestions()}
               className="mt-10 w-full border border-[#FF8A3D] bg-[#FF8A3D]/10 px-4 py-3.5 text-sm font-medium text-white transition-opacity disabled:border-zinc-800 disabled:bg-transparent disabled:text-zinc-600"
             >
               {savingAnswers ? "Saving…" : "Continue"}
@@ -486,73 +528,74 @@ export function SignupFlow() {
           </motion.div>
         )}
 
+        {/* ── Step 3: Payment (Stripe Checkout) ── */}
         {step === 3 && (
           <motion.div key="s3" {...fadeUp} transition={{ duration: 0.35 }}>
-            <ProgressStep current={2} />
-            <SignupPricing onContinue={() => goToStep(4)} />
+            <ProgressStep current={2} total={3} />
+            <SignupPricing />
+            {error && <p className="mt-4 text-center text-sm text-[#FF8A3D]">{error}</p>}
           </motion.div>
         )}
 
+        {/* ── Step 4: Connect Gmail ── */}
         {step === 4 && (
           <motion.div key="s4" {...fadeUp} transition={{ duration: 0.35 }}>
-            <ProgressStep current={3} />
-            <h1 className="text-3xl font-semibold tracking-tight text-white">Setting up your Dirac.</h1>
+            <ProgressStep current={3} total={3} />
+            <h1 className="text-3xl font-semibold tracking-tight text-white">
+              Connect your inbox.
+            </h1>
+            <p className="mt-3 text-sm leading-relaxed text-zinc-400">
+              Dirac needs Gmail access to read, triage, and draft replies on your behalf.
+            </p>
 
-            <ul className="mt-10 space-y-4">
-              {SETUP_ITEMS.map((label, i) => {
-                const done = checksDone || checkIndex > i;
-                const active = checkIndex === i && !checksDone;
-                return (
-                  <motion.li
-                    key={label}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={
-                      active || done ? { opacity: 1, y: 0 } : { opacity: 0.35, y: 0 }
-                    }
-                    transition={{ duration: 0.35 }}
-                    className="text-sm text-zinc-300"
-                  >
-                    {done ? (
-                      <span>
-                        {label.replace("...", "")}{" "}
-                        <span className="text-[#FF8A3D]">✓</span>
-                      </span>
-                    ) : (
-                      label
-                    )}
-                  </motion.li>
-                );
-              })}
-            </ul>
+            {/* Founder note about unverified app warning */}
+            <div className="mt-8 rounded-sm border border-zinc-800/80 bg-zinc-950/40 px-4 py-4 text-sm leading-relaxed text-zinc-400">
+              <p className="font-medium text-zinc-300">You&apos;ll see an &ldquo;unverified app&rdquo; warning from Google.</p>
+              <p className="mt-2 text-zinc-500">
+                Dirac is currently in review. To continue:
+              </p>
+              <ol className="mt-2 space-y-1 pl-4 text-zinc-500 list-decimal">
+                <li>Click <span className="font-medium text-zinc-300">Advanced</span></li>
+                <li>Click <span className="font-medium text-zinc-300">Go to Dirac (unsafe)</span></li>
+              </ol>
+              <p className="mt-3 text-zinc-600 text-xs">
+                Your data is used only to run Dirac — never sold or shared.
+              </p>
+            </div>
 
-            <AnimatePresence>
-              {showReadyNote && (
-                <motion.p
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="mt-8 text-sm font-medium text-zinc-300"
-                >
-                  Your inbox is ready.
-                </motion.p>
-              )}
-            </AnimatePresence>
+            <label className="mt-6 flex cursor-pointer items-start gap-3">
+              <input
+                type="checkbox"
+                checked={gmailConsentChecked}
+                onChange={(e) => setGmailConsentChecked(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-[#FF8A3D]"
+              />
+              <span className="text-sm text-zinc-400">
+                I understand — connect my Gmail to Dirac.
+              </span>
+            </label>
 
             <AnimatePresence>
-              {showSetupCta && (
+              {gmailConsentChecked && (
                 <motion.button
                   type="button"
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
-                  onClick={() => goToStep(5)}
-                  className="mt-8 w-full border border-[#FF8A3D] bg-[#FF8A3D]/10 px-4 py-3.5 text-sm font-medium text-white"
+                  onClick={() => void handleConnectGmail()}
+                  disabled={authLoading}
+                  className="mt-6 flex w-full items-center justify-center gap-2.5 bg-white px-4 py-3.5 text-sm font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-60"
                 >
-                  Go to my inbox →
+                  <GoogleIcon />
+                  {authLoading ? "Redirecting…" : "Connect Gmail →"}
                 </motion.button>
               )}
             </AnimatePresence>
+
+            {error && <p className="mt-4 text-center text-sm text-[#FF8A3D]">{error}</p>}
           </motion.div>
         )}
 
+        {/* ── Step 5: You're in ── */}
         {step === 5 && (
           <motion.div key="s5" {...fadeUp} transition={{ duration: 0.35 }}>
             <h1 className="text-4xl font-semibold tracking-tight text-white">You&apos;re in.</h1>
@@ -585,13 +628,14 @@ export function SignupFlow() {
 
             <button
               type="button"
-              onClick={handleOpenInbox}
+              onClick={() => void handleOpenInbox()}
               className="mt-8 w-full bg-white px-4 py-3.5 text-sm font-medium text-black transition-opacity hover:opacity-90"
             >
               Open my inbox →
             </button>
           </motion.div>
         )}
+
       </AnimatePresence>
     </SignupShell>
   );

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
 
 const BENEFITS = [
@@ -9,15 +10,42 @@ const BENEFITS = [
 ] as const;
 
 interface SignupPricingProps {
-  onContinue: () => void;
+  /** Called when Stripe checkout redirects away (loading state). Caller can show a spinner. */
+  onCheckoutRedirecting?: () => void;
 }
 
-export function SignupPricing({ onContinue }: SignupPricingProps) {
+export function SignupPricing({ onCheckoutRedirecting }: SignupPricingProps) {
+  const [loading, setLoading] = useState<"monthly" | "annual" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function startCheckout(plan: "monthly" | "annual") {
+    setLoading(plan);
+    setError(null);
+    try {
+      const res = await fetch(`/api/stripe/checkout?plan=${plan}&signup=true`, {
+        method: "POST",
+      });
+      const data = (await res.json()) as { url?: string; error?: string };
+      if (!res.ok || !data.url) {
+        setError(data.error ?? "Could not start checkout. Please try again.");
+        setLoading(null);
+        return;
+      }
+      onCheckoutRedirecting?.();
+      window.location.href = data.url;
+    } catch {
+      setError("Network error. Please try again.");
+      setLoading(null);
+    }
+  }
+
   return (
     <div>
-      <h1 className="text-3xl font-semibold tracking-tight text-white">Simple, professional pricing.</h1>
+      <h1 className="text-3xl font-semibold tracking-tight text-white">
+        Start your free trial.
+      </h1>
       <p className="mt-3 text-sm leading-relaxed text-zinc-400">
-        So you know what Dirac costs before you start — no surprises later.
+        7 days free — card required, nothing charged until day 8.
       </p>
 
       <ul className="mt-8 space-y-2.5">
@@ -36,30 +64,45 @@ export function SignupPricing({ onContinue }: SignupPricingProps) {
       </ul>
 
       <div className="mt-8 grid grid-cols-2 gap-3">
-        <div className="border border-zinc-800 bg-zinc-950/50 px-4 py-4">
+        {/* Monthly */}
+        <button
+          type="button"
+          onClick={() => void startCheckout("monthly")}
+          disabled={loading !== null}
+          className="border border-zinc-800 bg-zinc-950/50 px-4 py-5 text-left transition-colors hover:border-zinc-700 disabled:opacity-60"
+        >
           <p className="text-xs font-medium tracking-wide text-zinc-500 uppercase">Monthly</p>
           <p className="mt-2 text-2xl font-semibold tracking-tight text-white">$20</p>
           <p className="text-xs text-zinc-500">per month</p>
-        </div>
-        <div className="border border-[#FF8A3D]/35 bg-[#FF8A3D]/5 px-4 py-4">
+          <p className="mt-3 text-xs font-medium text-zinc-400">
+            {loading === "monthly" ? "Redirecting…" : "Start free trial →"}
+          </p>
+        </button>
+
+        {/* Annual — recommended */}
+        <button
+          type="button"
+          onClick={() => void startCheckout("annual")}
+          disabled={loading !== null}
+          className="border border-[#FF8A3D]/35 bg-[#FF8A3D]/5 px-4 py-5 text-left transition-colors hover:border-[#FF8A3D]/60 disabled:opacity-60"
+        >
           <p className="text-xs font-medium tracking-wide text-[#FF8A3D] uppercase">Annual</p>
           <p className="mt-2 text-2xl font-semibold tracking-tight text-white">$200</p>
-          <p className="text-xs text-zinc-500">per year</p>
-        </div>
+          <p className="text-xs text-zinc-500">per year · save $40</p>
+          <p className="mt-3 text-xs font-medium text-[#FF8A3D]">
+            {loading === "annual" ? "Redirecting…" : "Start free trial →"}
+          </p>
+        </button>
       </div>
 
-      <p className="mt-6 rounded-sm border border-zinc-800/80 bg-zinc-950/40 px-3.5 py-3 text-sm leading-relaxed text-zinc-300">
-        You get a{" "}
-        <span className="font-medium text-white">14-day free trial</span> with full access — no credit card required.
+      <p className="mt-5 text-center text-[11px] text-zinc-600">
+        7-day free trial · Cancel anytime · You won&apos;t be charged today
+      </p>
+      <p className="mt-1 text-center text-[11px] text-zinc-600">
+        Limited to first 100 founding users.
       </p>
 
-      <button
-        type="button"
-        onClick={onContinue}
-        className="mt-8 w-full bg-white px-4 py-3.5 text-sm font-medium text-black transition-opacity hover:opacity-90"
-      >
-        Continue to inbox →
-      </button>
+      {error && <p className="mt-4 text-center text-sm text-[#FF8A3D]">{error}</p>}
     </div>
   );
 }

@@ -150,7 +150,7 @@ export function buildWelcomeEmail({ name, email, inboxUrl }: WelcomeEmailParams)
 
     <!-- Trial note -->
     <p style="margin:0 0 20px;font-family:${F};font-size:13px;line-height:1.55;color:#a1a1aa;">
-      You have <strong style="color:#3f3f46;">14 days free</strong>. No card required. If you have any questions, just reply to this email.
+      You have <strong style="color:#3f3f46;">7 days free</strong>. Your card won&rsquo;t be charged until day 8. Cancel anytime before then from Settings &rarr; Billing. Questions? Just reply here.
     </p>
 
     <!-- Sign-off -->
@@ -177,12 +177,152 @@ Dirac is a decision-first inbox built for people who live in email. Here are thr
 
 Open my inbox: ${inboxUrl}
 
-You have 14 days free. No card required. If you have any questions, just reply to this email.
+You have 7 days free. Your card won't be charged until day 8. Cancel anytime from Settings → Billing. Questions? Just reply here.
 
 — Dirac`;
 
   return {
-    subject: "Welcome to Dirac — your inbox is ready",
+    subject: "Welcome to Dirac — your 7-day trial starts now",
+    html,
+    text,
+  };
+}
+
+// ── Cancel during trial ───────────────────────────────────────────────────────
+
+interface CancelDuringTrialParams {
+  name: string | null;
+  email: string;
+  trialEndDate: string; // formatted long date e.g. "Monday, June 30, 2026"
+  reactivateUrl: string;
+}
+
+export function buildCancelDuringTrialEmail({
+  name,
+  email,
+  trialEndDate,
+  reactivateUrl,
+}: CancelDuringTrialParams): { subject: string; html: string; text: string } {
+  const firstName = getFirstName(name ?? email);
+
+  const bodyHtml = `
+    <p style="margin:0 0 6px;font-family:${F};font-size:13px;color:#71717a;">Hi ${firstName},</p>
+
+    <h1 style="margin:0 0 8px;font-family:${F};font-size:22px;font-weight:700;letter-spacing:-0.02em;line-height:1.25;color:#111111;">No hard feelings.</h1>
+    <p style="margin:0 0 24px;font-family:${F};font-size:15px;line-height:1.6;color:#3f3f46;">
+      You&rsquo;ve cancelled your Dirac trial. Your access will continue until <strong>${trialEndDate}</strong> &mdash; nothing changes until then.
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
+      <tr>
+        <td style="background-color:#f9fafb;border:1px solid #e4e4e7;border-radius:5px;padding:14px 18px;">
+          <p style="margin:0;font-family:${F};font-size:13px;line-height:1.55;color:#3f3f46;">
+            Your card <strong>won&rsquo;t be charged</strong>. If you change your mind before ${trialEndDate}, you can reactivate below and pick up right where you left off.
+          </p>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
+      <tr>
+        <td style="border:1px solid #e4e4e7;border-radius:5px;">
+          <a href="${reactivateUrl}" style="display:inline-block;padding:11px 22px;font-family:${F};font-size:14px;font-weight:600;color:#111111;text-decoration:none;">Reactivate &rarr;</a>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin:0 0 20px;font-family:${F};font-size:13px;line-height:1.55;color:#71717a;">
+      Was there something we could have done better? Just reply here &mdash; I read every message.
+    </p>
+
+    <p style="margin:0;font-family:${F};font-size:14px;color:#3f3f46;">&mdash; Peter</p>`;
+
+  const html = emailShell(bodyHtml);
+
+  const text = `Hi ${firstName},
+
+No hard feelings.
+
+You've cancelled your Dirac trial. Your access will continue until ${trialEndDate} — nothing changes until then.
+
+Your card won't be charged. If you change your mind before ${trialEndDate}, reactivate here: ${reactivateUrl}
+
+Was there something we could have done better? Just reply here — I read every message.
+
+— Peter`;
+
+  return {
+    subject: "You've cancelled your Dirac trial",
+    html,
+    text,
+  };
+}
+
+// ── Cancel after trial (active subscription) ──────────────────────────────────
+
+interface CancelAfterTrialParams {
+  name: string | null;
+  email: string;
+  reactivateUrl: string;
+}
+
+export function buildCancelAfterTrialEmail({
+  name,
+  email,
+  reactivateUrl,
+}: CancelAfterTrialParams): { subject: string; html: string; text: string } {
+  const firstName = getFirstName(name ?? email);
+
+  const bodyHtml = `
+    <p style="margin:0 0 6px;font-family:${F};font-size:13px;color:#71717a;">Hi ${firstName},</p>
+
+    <h1 style="margin:0 0 8px;font-family:${F};font-size:22px;font-weight:700;letter-spacing:-0.02em;line-height:1.25;color:#111111;">Your subscription has been cancelled.</h1>
+    <p style="margin:0 0 24px;font-family:${F};font-size:15px;line-height:1.6;color:#3f3f46;">
+      Access will continue until the end of your current billing period. After that, your inbox history and settings stay safe &mdash; everything will be here if you come back.
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
+      <tr>
+        <td style="background-color:#f9fafb;border:1px solid #e4e4e7;border-radius:5px;padding:14px 18px;">
+          <p style="margin:0;font-family:${F};font-size:13px;line-height:1.55;color:#3f3f46;">
+            You can reactivate anytime from <strong>Settings &rarr; Billing</strong>. No new setup needed.
+          </p>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
+      <tr>
+        <td style="border:1px solid #e4e4e7;border-radius:5px;">
+          <a href="${reactivateUrl}" style="display:inline-block;padding:11px 22px;font-family:${F};font-size:14px;font-weight:600;color:#111111;text-decoration:none;">Reactivate &rarr;</a>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin:0 0 20px;font-family:${F};font-size:13px;line-height:1.55;color:#71717a;">
+      Why did you cancel? I&rsquo;d genuinely like to know &mdash; just reply here.
+    </p>
+
+    <p style="margin:0;font-family:${F};font-size:14px;color:#3f3f46;">&mdash; Peter</p>`;
+
+  const html = emailShell(bodyHtml);
+
+  const text = `Hi ${firstName},
+
+Your subscription has been cancelled.
+
+Access will continue until the end of your current billing period. After that, your inbox history and settings stay safe — everything will be here if you come back.
+
+You can reactivate anytime from Settings → Billing. No new setup needed.
+
+Reactivate: ${reactivateUrl}
+
+Why did you cancel? I'd genuinely like to know — just reply here.
+
+— Peter`;
+
+  return {
+    subject: "Your Dirac subscription has been cancelled",
     html,
     text,
   };
