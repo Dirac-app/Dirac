@@ -87,40 +87,48 @@ Repeat steps in **live mode** before launch and use live `price_...` IDs in prod
 
 ---
 
-## 3b. Promo codes (e.g. 50% off)
+## 3b. Promo codes
 
-Dirac supports promotion codes on **signup** (`/signup` step 3) and **upgrade** (`/upgrade`). Users can enter a code in the app (pre-applied at Checkout) or on Stripe’s hosted Checkout page (`allow_promotion_codes` is enabled).
+Dirac has **two plan-specific codes** (configured in Stripe — no extra env vars required):
 
-### Create the coupon (Dashboard)
+| Plan | Code | Discount |
+|------|------|----------|
+| **Monthly** | `TRYDIRAC50` | 50% off for **2 months** |
+| **Annual** | `TRYDIRAC25` | 25% off (**first year** invoice) |
 
-1. [Stripe Dashboard → Coupons](https://dashboard.stripe.com/coupons) → **+ New**.
-2. **Type**: Percentage → **50%**.
-3. **Duration** (pick one):
-   - **Forever** — 50% off every invoice (good for founding users).
-   - **Once** — 50% off the first paid invoice only (after the 7-day trial).
-   - **Repeating** — e.g. 50% off for 12 months.
-4. Save → note the coupon ID (`coupon_...`).
+The app validates that each code is used with the matching plan. Wrong combo → clear error before Checkout.
 
-### Create the customer-facing code
+Optional env overrides (only if you rename codes in Stripe):
 
-1. Open the coupon → **Promotion codes** → **+ Add promotion code**.
-2. **Code**: e.g. `FOUNDER50` (case-insensitive for customers; Dirac uppercases input).
-3. Optional: **Expires**, **Limit redemptions** (e.g. 100 for founding users).
-4. Save.
+```bash
+STRIPE_MONTHLY_PROMO_CODE=TRYDIRAC50
+STRIPE_ANNUAL_PROMO_CODE=TRYDIRAC25
+```
 
-Repeat in **live mode** before sharing the code publicly.
+### Monthly coupon — `TRYDIRAC50`
 
-### How it behaves with the free trial
+1. [Stripe → Coupons](https://dashboard.stripe.com/coupons) → **+ New**.
+2. **50%** off · **Duration**: **Repeating** → **2 months**.
+3. **Apply to specific products** → select **Dirac Monthly** only (recommended).
+4. **Promotion codes** → add code `TRYDIRAC50`.
 
-Signup Checkout uses a **7-day Stripe trial**. The promo applies when billing starts:
+### Annual coupon — `TRYDIRAC25`
 
-| Coupon duration | Effect |
-|-----------------|--------|
-| **Forever** | After trial: $10/mo or $100/yr (50% of list price), ongoing |
-| **Once** | First invoice after trial at 50% off, then full price |
-| **Repeating (12 mo)** | 50% off for 12 billing cycles, then full price |
+1. **+ New** coupon.
+2. **25%** off · **Duration**: **Once** (first invoice after trial).
+3. **Apply to specific products** → select **Dirac Annual** only (recommended).
+4. **Promotion codes** → add code `TRYDIRAC25`.
 
-No extra env vars — codes live in Stripe. Test with a **test mode** code before going live.
+Repeat both in **live mode** before sharing publicly.
+
+### After the 7-day trial
+
+| Plan | With code | Then |
+|------|-----------|------|
+| Monthly + `TRYDIRAC50` | $10/mo for 2 months | $20/mo |
+| Annual + `TRYDIRAC25` | $150 first year | $200/yr on renewal |
+
+Codes are looked up from Stripe at runtime — the string name only needs to match what you created in the Dashboard.
 
 ---
 

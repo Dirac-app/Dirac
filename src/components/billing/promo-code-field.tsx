@@ -1,6 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import {
+  DEFAULT_ANNUAL_PROMO_CODE,
+  DEFAULT_MONTHLY_PROMO_CODE,
+} from "@/lib/stripe-promo-config";
 
 interface PromoCodeFieldProps {
   value: string;
@@ -67,7 +71,7 @@ export function PromoCodeField({ value, onChange, disabled }: PromoCodeFieldProp
             }
           }}
           disabled={disabled || checking}
-          placeholder="e.g. FOUNDER50"
+          placeholder="TRYDIRAC50 or TRYDIRAC25"
           autoComplete="off"
           spellCheck={false}
           className="min-w-0 flex-1 border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:border-zinc-600 focus:outline-none disabled:opacity-60"
@@ -81,6 +85,9 @@ export function PromoCodeField({ value, onChange, disabled }: PromoCodeFieldProp
           {checking ? "…" : "Apply"}
         </button>
       </div>
+      <p className="mt-1 text-[11px] text-zinc-600">
+        Monthly: {DEFAULT_MONTHLY_PROMO_CODE} · Annual: {DEFAULT_ANNUAL_PROMO_CODE}
+      </p>
       {appliedSummary && (
         <p className="mt-1.5 text-xs text-emerald-400">{appliedSummary} — applied at checkout</p>
       )}

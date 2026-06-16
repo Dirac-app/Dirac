@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getStripe } from "@/lib/stripe";
-import { resolvePromotionCode } from "@/lib/stripe-promo";
+import { resolvePromotionCode, validatePromoForCheckout } from "@/lib/stripe-promo";
 import { getUserById } from "@/lib/users-db";
 
 const PLANS = {
@@ -85,6 +85,10 @@ export async function POST(request: Request) {
         { error: "Invalid or expired promo code" },
         { status: 400 },
       );
+    }
+    const promoCheck = await validatePromoForCheckout(stripe, promo, plan, priceId);
+    if (!promoCheck.ok) {
+      return NextResponse.json({ error: promoCheck.error }, { status: 400 });
     }
     sessionParams.discounts = [{ promotion_code: promo.id }];
   }
