@@ -87,6 +87,43 @@ Repeat steps in **live mode** before launch and use live `price_...` IDs in prod
 
 ---
 
+## 3b. Promo codes (e.g. 50% off)
+
+Dirac supports promotion codes on **signup** (`/signup` step 3) and **upgrade** (`/upgrade`). Users can enter a code in the app (pre-applied at Checkout) or on Stripe’s hosted Checkout page (`allow_promotion_codes` is enabled).
+
+### Create the coupon (Dashboard)
+
+1. [Stripe Dashboard → Coupons](https://dashboard.stripe.com/coupons) → **+ New**.
+2. **Type**: Percentage → **50%**.
+3. **Duration** (pick one):
+   - **Forever** — 50% off every invoice (good for founding users).
+   - **Once** — 50% off the first paid invoice only (after the 7-day trial).
+   - **Repeating** — e.g. 50% off for 12 months.
+4. Save → note the coupon ID (`coupon_...`).
+
+### Create the customer-facing code
+
+1. Open the coupon → **Promotion codes** → **+ Add promotion code**.
+2. **Code**: e.g. `FOUNDER50` (case-insensitive for customers; Dirac uppercases input).
+3. Optional: **Expires**, **Limit redemptions** (e.g. 100 for founding users).
+4. Save.
+
+Repeat in **live mode** before sharing the code publicly.
+
+### How it behaves with the free trial
+
+Signup Checkout uses a **7-day Stripe trial**. The promo applies when billing starts:
+
+| Coupon duration | Effect |
+|-----------------|--------|
+| **Forever** | After trial: $10/mo or $100/yr (50% of list price), ongoing |
+| **Once** | First invoice after trial at 50% off, then full price |
+| **Repeating (12 mo)** | 50% off for 12 billing cycles, then full price |
+
+No extra env vars — codes live in Stripe. Test with a **test mode** code before going live.
+
+---
+
 ## 4. API keys (secret only)
 
 Dirac does **not** use `pk_test_...` / `pk_live_...` because payment UI runs on **Stripe Hosted Checkout**, not Stripe.js in the browser.

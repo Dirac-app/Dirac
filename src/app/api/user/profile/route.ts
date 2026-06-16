@@ -7,7 +7,16 @@ export async function GET() {
   const auth = await requireSupabaseUser();
   if (auth.response) return auth.response;
 
-  await ensureUserRowIfNeeded(auth.user);
+  try {
+    await ensureUserRowIfNeeded(auth.user);
+  } catch (err) {
+    console.error("[user/profile] ensureUserRowIfNeeded:", err);
+    return NextResponse.json(
+      { error: "Could not finish account setup.", reason: "provision_failed" },
+      { status: 500 },
+    );
+  }
+
   const profile = await getUserById(auth.user.id);
   if (!profile) {
     return NextResponse.json({ error: "Profile not found" }, { status: 404 });
@@ -19,5 +28,6 @@ export async function GET() {
     shown_tooltips: profile.shown_tooltips,
     onboarding_completed_at: profile.onboarding_completed_at,
     subscription_status: profile.subscription_status,
+    stripe_customer_id: profile.stripe_customer_id,
   });
 }

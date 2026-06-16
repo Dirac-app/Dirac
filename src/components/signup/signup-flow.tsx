@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -171,6 +171,77 @@ function authErrorMessage(reason: string | null): string {
   return `Sign-in failed (${reason}). Please try again.`;
 }
 
+type SignupProfile = {
+  onboarding_completed_at?: string | null;
+  stripe_customer_id?: string | null;
+};
+
+async function fetchSignupProfile(): Promise<{ ok: true; profile: SignupProfile } | { ok: false }> {
+  try {
+    const res = await fetch("/api/user/profile");
+    if (!res.ok) return { ok: false };
+    return { ok: true, profile: (await res.json()) as SignupProfile };
+  } catch {
+    return { ok: false };
+  }
+}
+
+async function retryProvision(): Promise<boolean> {
+  try {
+    const res = await fetch("/api/auth/provision", { method: "POST" });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureSignupAccountReady(options: {
+  supabase: ReturnType<typeof createSupabaseBrowserClient>;
+  nextAuthAuthenticated: boolean;
+}): Promise<
+  | { ok: true; profile: SignupProfile }
+  | { ok: false; message: string }
+> {
+  let profileResult = await fetchSignupProfile();
+  if (profileResult.ok) return profileResult;
+
+  if (await retryProvision()) {
+    profileResult = await fetchSignupProfile();
+    if (profileResult.ok) return profileResult;
+  }
+
+  if (options.nextAuthAuthenticated) {
+    try {
+      const linkRes = await fetch("/api/auth/link-supabase", { method: "POST" });
+      const data = (await linkRes.json()) as { ok?: boolean; reason?: string };
+      if (linkRes.ok) {
+        await options.supabase.auth.getSession();
+        profileResult = await fetchSignupProfile();
+        if (profileResult.ok) return profileResult;
+      } else if (data.reason === "provision_failed") {
+        await options.supabase.auth.getSession();
+        if (await retryProvision()) {
+          profileResult = await fetchSignupProfile();
+          if (profileResult.ok) return profileResult;
+        }
+        return { ok: false, message: authErrorMessage("provision_failed") };
+      } else if (data.reason) {
+        return { ok: false, message: authErrorMessage(data.reason) };
+      }
+    } catch {
+      /* fall through */
+    }
+  } else if (await retryProvision()) {
+    profileResult = await fetchSignupProfile();
+    if (profileResult.ok) return profileResult;
+  }
+
+  return {
+    ok: false,
+    message: "We could not finish setting up your account. Please try again.",
+  };
+}
+
 function gmailReady(session: Session | null | undefined): boolean {
   return Boolean(session?.gmailConnected && session?.accessToken && !session?.error);
 }
@@ -178,6 +249,7 @@ function gmailReady(session: Session | null | undefined): boolean {
 export function SignupFlow() {
   const router = useRouter();
   const { data: session, status: nextAuthStatus } = useSession();
+  const bootRunRef = useRef(0);
   const [step, setStep] = useState<Step>(0);
   const [introIndex, setIntroIndex] = useState(0);
   const [booting, setBooting] = useState(true);
@@ -264,6 +336,9 @@ export function SignupFlow() {
     async function boot() {
       if (nextAuthStatus === "loading") return;
 
+      const runId = ++bootRunRef.current;
+      const stale = () => runId !== bootRunRef.current;
+
       const supabase = createSupabaseBrowserClient();
       const {
         data: { session: supabaseSession },
@@ -319,6 +394,17 @@ export function SignupFlow() {
 
       // --- Returning from Microsoft account sign-in (step 1 → 2) ---
       if (afterMicrosoft && supabaseSession) {
+        const ready = await ensureSignupAccountReady({
+          supabase,
+          nextAuthAuthenticated: false,
+        });
+        if (stale()) return;
+        if (!ready.ok) {
+          setError(ready.message);
+          goToStep(1);
+          setBooting(false);
+          return;
+        }
         if (consumeOAuthPending()) {
           try {
             localStorage.setItem(AUTH_PROVIDER_KEY, "microsoft");
@@ -364,60 +450,51 @@ export function SignupFlow() {
       // --- Google sign-in: link NextAuth → Supabase ---
       if (nextAuthStatus === "authenticated" && !supabaseSession) {
         setLinkingAccount(true);
-        try {
-          const res = await fetch("/api/auth/link-supabase", { method: "POST" });
-          const data = (await res.json()) as { ok?: boolean; reason?: string };
-          if (res.ok) {
-            await supabase.auth.getSession();
-            if (consumeOAuthPending()) {
-              try {
-                localStorage.setItem(AUTH_PROVIDER_KEY, "google");
-              } catch {
-                /* ignore */
-              }
-              setGoogleConnected(true);
-              void fireSignupConfetti();
-            }
-            goToStep(2);
-            setBooting(false);
-            setLinkingAccount(false);
-            return;
-          }
-          clearOAuthPending();
-          setError(authErrorMessage(data.reason ?? null));
-          setStep(1);
-        } catch {
-          clearOAuthPending();
-          setError("Network error while linking account. Please try again.");
-          setStep(1);
-        }
-        setBooting(false);
+        const ready = await ensureSignupAccountReady({
+          supabase,
+          nextAuthAuthenticated: true,
+        });
+        if (stale()) return;
         setLinkingAccount(false);
+        if (!ready.ok) {
+          clearOAuthPending();
+          setError(ready.message);
+          goToStep(1);
+          setBooting(false);
+          return;
+        }
+        if (consumeOAuthPending()) {
+          try {
+            localStorage.setItem(AUTH_PROVIDER_KEY, "google");
+          } catch {
+            /* ignore */
+          }
+          setGoogleConnected(true);
+          void fireSignupConfetti();
+        }
+        goToStep(2);
+        setBooting(false);
         return;
       }
 
       // --- Supabase session present — resume (Google + Microsoft signups) ---
       if (supabaseSession) {
-        try {
-          const profileRes = await fetch("/api/user/profile");
-          if (profileRes.ok) {
-            const profile = (await profileRes.json()) as {
-              onboarding_completed_at?: string | null;
-              stripe_customer_id?: string | null;
-            };
-            if (profile.onboarding_completed_at) {
-              router.replace("/inbox");
-              return;
-            }
-            goToStep(resolveResumeStep(!!profile.stripe_customer_id));
-            setBooting(false);
-            return;
-          }
-        } catch {
-          /* ignore, fall through */
+        const ready = await ensureSignupAccountReady({
+          supabase,
+          nextAuthAuthenticated: nextAuthStatus === "authenticated",
+        });
+        if (stale()) return;
+        if (!ready.ok) {
+          setError(ready.message);
+          goToStep(1);
+          setBooting(false);
+          return;
         }
-
-        goToStep(resolveResumeStep(false));
+        if (ready.profile.onboarding_completed_at) {
+          router.replace("/inbox");
+          return;
+        }
+        goToStep(resolveResumeStep(!!ready.profile.stripe_customer_id));
         setBooting(false);
         return;
       }

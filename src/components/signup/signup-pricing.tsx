@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
+import { PromoCodeField } from "@/components/billing/promo-code-field";
 
 const BENEFITS = [
   "Unlimited Ai usage. Triage, bulk actions, and more.",
@@ -17,6 +18,7 @@ interface SignupPricingProps {
 export function SignupPricing({ onCheckoutRedirecting }: SignupPricingProps) {
   const [loading, setLoading] = useState<"monthly" | "annual" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [promoCode, setPromoCode] = useState("");
 
   async function startCheckout(plan: "monthly" | "annual") {
     setLoading(plan);
@@ -24,6 +26,10 @@ export function SignupPricing({ onCheckoutRedirecting }: SignupPricingProps) {
     try {
       const res = await fetch(`/api/stripe/checkout?plan=${plan}&signup=true`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...(promoCode.trim() ? { promoCode: promoCode.trim() } : {}),
+        }),
       });
       const data = (await res.json()) as { url?: string; error?: string };
       if (!res.ok || !data.url) {
@@ -94,6 +100,12 @@ export function SignupPricing({ onCheckoutRedirecting }: SignupPricingProps) {
           </p>
         </button>
       </div>
+
+      <PromoCodeField
+        value={promoCode}
+        onChange={setPromoCode}
+        disabled={loading !== null}
+      />
 
       <p className="mt-1 text-center text-[11px] text-zinc-600">
         Limited to first 100 founding users.
