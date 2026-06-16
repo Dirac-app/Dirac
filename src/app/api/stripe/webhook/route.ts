@@ -7,70 +7,29 @@ import {
   getUserByStripeCustomerId,
 } from "@/lib/users-db";
 import {
-  buildCancelDuringTrialEmail,
-  buildCancelAfterTrialEmail,
-  sendEmail,
-} from "@/lib/email-utils";
+  sendUserCancellationGoodbyeEmail,
+  formatTrialEndDate,
+  subscriptionCancelledDuringTrial,
+} from "@/lib/cancellation-email";
 
 export const runtime = "nodejs";
 
 async function sendCancellationEmail(
   customerId: string,
-  duringTrial: boolean,
   subscription: Stripe.Subscription,
 ): Promise<void> {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) return;
+  if (subscription.metadata?.dirac_cancel_email_sent === "1") return;
 
   const appUser = await getUserByStripeCustomerId(customerId);
   if (!appUser?.email) return;
 
-  const appUrl = (
-    process.env.NEXT_PUBLIC_APP_URL ??
-    process.env.NEXTAUTH_URL ??
-    "https://app.dirac.app"
-  ).replace(/\/$/, "");
+  const duringTrial = subscriptionCancelledDuringTrial(subscription);
 
-  const reactivateUrl = `${appUrl}/settings`;
-
-  let subject: string;
-  let html: string;
-  let text: string;
-
-  if (duringTrial) {
-    // Show trial end date so they know when access stops
-    const trialEndMs = (subscription.trial_end ?? 0) * 1000;
-    const trialEndDate =
-      trialEndMs > 0
-        ? new Date(trialEndMs).toLocaleDateString("en-US", {
-            weekday: "long",
-            month: "long",
-            day: "numeric",
-            year: "numeric",
-          })
-        : "the end of your trial";
-
-    ({ subject, html, text } = buildCancelDuringTrialEmail({
-      name: appUser.name,
-      email: appUser.email,
-      trialEndDate,
-      reactivateUrl,
-    }));
-  } else {
-    ({ subject, html, text } = buildCancelAfterTrialEmail({
-      name: appUser.name,
-      email: appUser.email,
-      reactivateUrl,
-    }));
-  }
-
-  const result = await sendEmail({
-    apiKey,
-    from: "Peter @ Dirac <peter@dirac.app>",
-    to: appUser.email,
-    subject,
-    html,
-    text,
+  const result = await sendUserCancellationGoodbyeEmail({
+    name: appUser.name,
+    email: appUser.email,
+    duringTrial,
+    trialEndDate: formatTrialEndDate(subscription.trial_end),
   });
 
   if (!result.ok) {
@@ -146,12 +105,9 @@ export async function POST(request: Request) {
 
         await updateSubscriptionStatusByStripeCustomer(customerId, "expired");
 
-        // Send cancellation email only for intentional cancels (not payment failures)
-        const cancelledDuringTrial = subscription.status === "trialing";
-        const cancelledAfterTrial = subscription.status === "active";
-        if (cancelledDuringTrial || cancelledAfterTrial) {
-          void sendCancellationEmail(customerId, cancelledDuringTrial, subscription);
-        }
+        // Backup goodbye email for cancels outside our app (Stripe dashboard, etc.)
+        if (subscription.cancellation_details?.reason === "payment_failed") break;
+        void sendCancellationEmail(customerId, subscription);
         break;
       }
       default:

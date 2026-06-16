@@ -101,7 +101,7 @@ function getRedirectUri(): string {
   return `${base}/api/oauth/outlook/callback`;
 }
 
-export function getOutlookAuthUrl(): string {
+export function getOutlookAuthUrl(state?: string): string {
   const params = new URLSearchParams({
     client_id: process.env.AZURE_CLIENT_ID!,
     response_type: "code",
@@ -109,6 +109,7 @@ export function getOutlookAuthUrl(): string {
     scope: "openid email profile User.Read Mail.Read Mail.Send Mail.ReadWrite offline_access",
     response_mode: "query",
   });
+  if (state) params.set("state", state);
   return `${MS_AUTH_BASE}/authorize?${params.toString()}`;
 }
 

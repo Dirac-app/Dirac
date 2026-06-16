@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { format, formatDistanceToNow, getHours } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -76,16 +76,13 @@ export interface MorningPlanCard {
 
 export interface MorningBriefSettings {
   enabled: boolean;
-  weekdaysOnly: boolean;
-  morningOnly: boolean;
-  maxItems: number;
+  /** "page" opens /brief (default). "modal" opens the inline dialog. */
+  briefMode: "page" | "modal";
 }
 
 const DEFAULT_SETTINGS: MorningBriefSettings = {
   enabled: true,
-  weekdaysOnly: false,
-  morningOnly: true,
-  maxItems: 5,
+  briefMode: "page",
 };
 
 export function todayKey() {
@@ -203,7 +200,11 @@ export function loadMorningSettings(): MorningBriefSettings {
   try {
     const raw = window.localStorage.getItem(MORNING_BRIEF_SETTINGS_KEY);
     if (!raw) return DEFAULT_SETTINGS;
-    return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<MorningBriefSettings>) };
+    const parsed = JSON.parse(raw) as Partial<MorningBriefSettings>;
+    return {
+      enabled: parsed.enabled ?? DEFAULT_SETTINGS.enabled,
+      briefMode: parsed.briefMode ?? DEFAULT_SETTINGS.briefMode,
+    };
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -414,6 +415,57 @@ export function PlanCardSkeleton({ index }: { index: number }) {
   );
 }
 
+// ── Plan card status badges (aligned with inbox thread-card) ─────────────
+
+const BRIEF_STATUS_BADGE: Record<string, string> = {
+  urgent: "bg-rose-400/15 text-rose-300",
+  needs_reply: "bg-sky-400/15 text-sky-300",
+  waiting_on: "bg-indigo-400/15 text-indigo-300",
+  fyi: "bg-zinc-500/10 text-zinc-400",
+  automated: "bg-zinc-500/8 text-zinc-500",
+  commit: "bg-amber-400/12 text-amber-300/70",
+};
+
+function getPlanCardStatusBadges(plan: MorningPlanCard) {
+  const badges: { key: string; label: string; className: string }[] = [];
+
+  if (plan.urgent) {
+    badges.push({
+      key: "urgent",
+      label: "Urgent",
+      className: BRIEF_STATUS_BADGE.urgent,
+    });
+  }
+
+  if (plan.triage && TRIAGE_LABELS[plan.triage]) {
+    badges.push({
+      key: `triage-${plan.triage}`,
+      label: TRIAGE_LABELS[plan.triage],
+      className: BRIEF_STATUS_BADGE[plan.triage] ?? BRIEF_STATUS_BADGE.fyi,
+    });
+  }
+
+  if (plan.commitmentCount > 0) {
+    badges.push({
+      key: "commit",
+      label: `${plan.commitmentCount} commit${plan.commitmentCount !== 1 ? "s" : ""}`,
+      className: BRIEF_STATUS_BADGE.commit,
+    });
+  }
+
+  return badges;
+}
+
+function getPlanCardPinClass(plan: MorningPlanCard): string {
+  if (plan.urgent) return "text-rose-400";
+  if (plan.triage === "needs_reply") return "text-sky-400";
+  if (plan.triage === "waiting_on") return "text-indigo-400";
+  if (plan.triage === "fyi") return "text-zinc-400";
+  if (plan.triage === "automated") return "text-zinc-500";
+  if (plan.commitmentCount > 0) return "text-amber-400";
+  return "text-white/25";
+}
+
 // ── Real plan card — dossier page aesthetic ────────────────────────────────
 
 export function PlanCardContent({
@@ -437,55 +489,8 @@ export function PlanCardContent({
   onDismiss: () => void;
   onPlanChange: (val: string) => void;
 }) {
-  // Derive chip label: triage is more informative than bare "URGENT";
-  // only fall back to URGENT when there's no triage status.
-  const chipInfo = (() => {
-    if (plan.triage === "needs_reply") {
-      return {
-        chipBg:    plan.urgent ? "bg-rose-500/20" : "bg-sky-500/15",
-        chipText:  plan.urgent ? "text-rose-300"  : "text-sky-300",
-        chipLabel: "REPLY NEEDED",
-        pinClass:  plan.urgent ? "text-rose-400"  : "text-sky-400",
-        cardBg:    "#000000",
-        insetBg:   "#0a0a0a",
-      };
-    }
-    if (plan.triage === "waiting_on") {
-      return {
-        chipBg:    plan.urgent ? "bg-rose-500/15" : "bg-indigo-500/15",
-        chipText:  plan.urgent ? "text-rose-300"  : "text-indigo-300",
-        chipLabel: "WAITING ON",
-        pinClass:  plan.urgent ? "text-rose-400"  : "text-indigo-400",
-        cardBg:    "#000000",
-        insetBg:   "#0a0a0a",
-      };
-    }
-    if (plan.urgent) {
-      return {
-        chipBg:    "bg-rose-500/20",
-        chipText:  "text-rose-300",
-        chipLabel: "URGENT",
-        pinClass:  "text-rose-400",
-        cardBg:    "#000000",
-        insetBg:   "#0a0a0a",
-      };
-    }
-    // Informational / FYI threads
-    return {
-      chipBg:    "",
-      chipText:  "",
-      chipLabel: plan.category === "customer"  ? "CUSTOMER"
-               : plan.category === "investor"  ? "INVESTOR"
-               : plan.category === "outreach"  ? "OUTREACH"
-               : plan.commitmentCount > 0      ? "ACTION DUE"
-               : null,
-      pinClass:  "text-white/25",
-      cardBg:    "#000000",
-      insetBg:   "#0a0a0a",
-    };
-  })();
-
-  const state = { ...chipInfo };
+  const statusBadges = getPlanCardStatusBadges(plan);
+  const pinClass = getPlanCardPinClass(plan);
 
   return (
     <motion.div
@@ -494,23 +499,33 @@ export function PlanCardContent({
       exit={{ opacity: 0, y: -4, scale: 0.98 }}
       transition={{ duration: 0.35, delay: index * 0.08, ease: [0.25, 0.1, 0.25, 1] }}
       className="relative rounded-lg border border-white/8 overflow-hidden"
-      style={{ background: state.cardBg }}
+      style={{ background: "#000000" }}
     >
-      {/* Pin — top-right, colored by state */}
+      {/* Pin — top-right, colored by primary status */}
       <div className="absolute top-2.5 right-3 z-10">
         <Pin
-          className={cn("h-5 w-5 -rotate-45 drop-shadow", state.pinClass)}
+          className={cn("h-5 w-5 -rotate-45 drop-shadow", pinClass)}
           strokeWidth={2}
         />
       </div>
 
       <div className="px-4 pt-4 pb-3">
-        {/* Row 1: triage chip + subject */}
-        <div className="pr-7 space-y-1">
-          {state.chipLabel && (
-            <span className={cn("inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 font-mono text-[9px] font-bold tracking-[0.16em]", state.chipBg, state.chipText)}>
-              {state.chipLabel}
-            </span>
+        {/* Row 1: status tags + subject */}
+        <div className="pr-7 space-y-1.5">
+          {statusBadges.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {statusBadges.map((badge) => (
+                <span
+                  key={badge.key}
+                  className={cn(
+                    "inline-flex items-center rounded-sm px-1.5 py-0.5 font-mono text-[9px] font-semibold tracking-[0.08em]",
+                    badge.className,
+                  )}
+                >
+                  {badge.label}
+                </span>
+              ))}
+            </div>
           )}
           <h3 className="text-[15px] font-medium leading-snug text-white/92 line-clamp-2">
             {plan.subject}
@@ -533,26 +548,19 @@ export function PlanCardContent({
           </button>
         </div>
 
-        {/* Row 3: category + commitment chips (skip category if it's already the chipLabel) */}
-        {(plan.category || plan.commitmentCount > 0) && (
+        {/* Row 3: sender-type category (founder category) */}
+        {plan.category && (
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {plan.category && state.chipLabel !== plan.category?.toUpperCase() && (
-              <span className={cn("rounded-sm px-1.5 py-0.5 font-mono text-[9px] font-semibold tracking-[0.12em]", FOUNDER_CATEGORY_COLORS[plan.category])}>
-                {FOUNDER_CATEGORY_LABELS[plan.category].toUpperCase()}
-              </span>
-            )}
-            {plan.commitmentCount > 0 && (
-              <span className="rounded-sm bg-amber-400/12 px-1.5 py-0.5 font-mono text-[9px] font-semibold tracking-[0.12em] text-amber-300/70">
-                {plan.commitmentCount} COMMIT{plan.commitmentCount !== 1 ? "S" : ""}
-              </span>
-            )}
+            <span className={cn("rounded-sm px-1.5 py-0.5 font-mono text-[9px] font-semibold tracking-[0.12em]", FOUNDER_CATEGORY_COLORS[plan.category])}>
+              {FOUNDER_CATEGORY_LABELS[plan.category]}
+            </span>
           </div>
         )}
 
         {/* Inset dossier block */}
         <div
           className="mt-3 rounded border border-white/6 px-3 py-2.5 space-y-2"
-          style={{ background: state.insetBg }}
+          style={{ background: "#0a0a0a" }}
         >
           {/* Summary — AI when available, heuristic while loading / as fallback */}
           {(() => {
@@ -668,7 +676,6 @@ export interface ComputeBriefCandidatesArgs {
   dismissedThreads: Record<string, string>;
   shownHistory: Record<string, ShownRecord>;
   pendingThreadIds: Set<string>;
-  maxItems: number;
 }
 
 export function computeBriefCandidates({
@@ -681,7 +688,6 @@ export function computeBriefCandidates({
   dismissedThreads,
   shownHistory,
   pendingThreadIds,
-  maxItems,
 }: ComputeBriefCandidatesArgs): MorningPlanCard[] {
   const today = todayKey();
   const nowMs = Date.now();
@@ -747,7 +753,6 @@ export function computeBriefCandidates({
       return item.score > 0;
     })
     .sort((a, b) => b.score - a.score)
-    .slice(0, maxItems)
     .map(({ thread, triage, category, commitmentCount }) =>
       buildPlanCardFromThread(thread, triage, category, commitmentCount),
     );
@@ -847,7 +852,6 @@ export function MorningBriefing() {
         dismissedThreads,
         shownHistory,
         pendingThreadIds,
-        maxItems: settings.maxItems,
       }),
     [
       threads,
@@ -856,7 +860,6 @@ export function MorningBriefing() {
       commitments,
       doneThreads,
       snoozedThreads,
-      settings.maxItems,
       dismissedThreads,
       shownHistory,
       pendingThreadIds,
@@ -1079,7 +1082,13 @@ export function MorningBriefing() {
 
   useEffect(() => {
     function handleOpen() {
-      openBriefSession({ recordShownForNew: true });
+      const currentSettings = loadMorningSettings();
+      if (currentSettings.briefMode === "modal") {
+        openBriefSession({ recordShownForNew: true });
+      } else {
+        // Page mode: navigate to /brief (page marks itself as seen on mount)
+        router.push("/brief");
+      }
     }
     function handleReopen() {
       // Re-open from the minimized state via the nav button
@@ -1098,7 +1107,7 @@ export function MorningBriefing() {
       window.removeEventListener("dirac:reopen-morning-briefing", handleReopen);
       window.removeEventListener("storage", handleStorage);
     };
-  }, [openBriefSession]);
+  }, [openBriefSession, router]);
 
   useEffect(() => {
     if (open) notifyBlockingModalOpened("morning-briefing");
@@ -1119,13 +1128,7 @@ export function MorningBriefing() {
       return;
     }
 
-    const now = new Date();
-    const isWeekday = now.getDay() >= 1 && now.getDay() <= 5;
-    const isMorning = getHours(now) < 12;
-
     const today = todayKey();
-    if (settings.weekdaysOnly && !isWeekday) return;
-    if (settings.morningOnly && !isMorning) return;
 
     // Already shown today in this JS session (including overnight-open tabs — date mismatch = new day)
     if (hasAutoOpened.current === today) return;
@@ -1138,11 +1141,14 @@ export function MorningBriefing() {
     if (!hasPending && candidates.length === 0) return;
 
     hasAutoOpened.current = today;
-    window.localStorage.setItem(getMorningStorageKey(), "1");
-    // Navigate to the dedicated brief page instead of opening the dialog.
-    // The seen key is already written above, so this fires at most once per day
-    // and never loops (the effect is gated to pathname === "/inbox").
-    router.push("/brief");
+    if (settings.briefMode === "modal") {
+      openBriefSession({ recordShownForNew: true });
+    } else {
+      // Page mode: write the seen key now so the effect never loops,
+      // then navigate. The page also writes it on mount for extra safety.
+      window.localStorage.setItem(getMorningStorageKey(), "1");
+      router.push("/brief");
+    }
   }, [
     pathname,
     settings,
@@ -1152,6 +1158,7 @@ export function MorningBriefing() {
     threads.length,
     candidates.length,
     router,
+    openBriefSession,
   ]);
 
   const minimize = () => {
@@ -1233,7 +1240,7 @@ export function MorningBriefing() {
     setOpen(false);
   };
 
-  const skeletonCount = Math.min(plans.length || 3, settings.maxItems);
+  const skeletonCount = plans.length || 3;
   const briefTime = format(new Date(), "h:mm a").toUpperCase();
 
   // Inline SVG grain data URL — subtle paper noise

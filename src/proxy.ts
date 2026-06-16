@@ -37,9 +37,11 @@ function isAppPath(pathname: string): boolean {
 /** Paths reachable while subscription_status is expired (billing + auth only). */
 const EXPIRED_ALLOW_PREFIXES = [
   "/upgrade",
+  "/account",
   "/trial-feedback",
   "/api/stripe",
   "/api/user/trial-feedback",
+  "/api/user/billing",
   "/auth/",
   "/api/auth/",
 ];

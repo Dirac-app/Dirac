@@ -14,7 +14,13 @@ import type { EmailVolume, MainPainPoint, UserRole } from "@/lib/users-db";
 import { fireSignupConfetti } from "@/lib/signup-confetti";
 
 const STEP_STORAGE_KEY = "dirac_signup_step";
+const INTRO_SEEN_KEY = "dirac_signup_intro_seen";
 const OAUTH_PENDING_KEY = "dirac_signup_oauth_pending";
+const AUTH_PROVIDER_KEY = "dirac_signup_auth_provider";
+const EMAIL_PROVIDER_KEY = "dirac_signup_email_provider";
+
+type AuthProvider = "google" | "microsoft";
+type EmailProvider = "gmail" | "microsoft";
 
 const GMAIL_SCOPE = [
   "openid",
@@ -53,7 +59,31 @@ function clearOAuthPending(): void {
   }
 }
 
-type Step = 1 | 2 | 3 | 4 | 5;
+type Step = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+/** Step 0 — tap-through intro (one sentence per screen). */
+const INTRO_SCREENS = [
+  "Welcome to Dirac!",
+  "Your inbox isn't your to-do list — it's everyone else's priorities landing in your lap.",
+  "Most founders start the day just figuring out what actually needs them.",
+  "The average founder spends 11+ hours a week on email — about 28% of the workweek.",
+] as const;
+
+function hasSeenIntro(): boolean {
+  try {
+    return localStorage.getItem(INTRO_SEEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markIntroSeen(): void {
+  try {
+    localStorage.setItem(INTRO_SEEN_KEY, "1");
+  } catch {
+    /* ignore */
+  }
+}
 
 const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
   { value: "founder_ceo", label: "Founder / CEO" },
@@ -101,6 +131,17 @@ function GoogleIcon() {
   );
 }
 
+function MicrosoftIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden>
+      <rect x="1" y="1" width="10" height="10" fill="#F25022" />
+      <rect x="13" y="1" width="10" height="10" fill="#7FBA00" />
+      <rect x="1" y="13" width="10" height="10" fill="#00A4EF" />
+      <rect x="13" y="13" width="10" height="10" fill="#FFB900" />
+    </svg>
+  );
+}
+
 const fadeUp = {
   initial: { opacity: 0, y: 12 },
   animate: { opacity: 1, y: 0 },
@@ -137,7 +178,8 @@ function gmailReady(session: Session | null | undefined): boolean {
 export function SignupFlow() {
   const router = useRouter();
   const { data: session, status: nextAuthStatus } = useSession();
-  const [step, setStep] = useState<Step>(1);
+  const [step, setStep] = useState<Step>(0);
+  const [introIndex, setIntroIndex] = useState(0);
   const [booting, setBooting] = useState(true);
   const [authLoading, setAuthLoading] = useState(false);
   const [linkingAccount, setLinkingAccount] = useState(false);
@@ -160,9 +202,12 @@ export function SignupFlow() {
     (emailVolume !== "other" || emailVolumeOther.trim().length > 0) &&
     (mainPainPoint !== "other" || mainPainPointOther.trim().length > 0);
 
-  // Step 4 (Gmail connect) — consent checkbox
+  // Step 5 (connect) — Gmail consent checkbox
   const [gmailConsentChecked, setGmailConsentChecked] = useState(false);
   const [googleConnected, setGoogleConnected] = useState(false);
+  const [microsoftConnected, setMicrosoftConnected] = useState(false);
+  const [emailProvider, setEmailProvider] = useState<EmailProvider | null>(null);
+  const [outlookConnected, setOutlookConnected] = useState(false);
 
   const persistStep = useCallback((s: Step) => {
     try {
@@ -175,9 +220,32 @@ export function SignupFlow() {
   const goToStep = useCallback(
     (s: Step) => {
       setStep(s);
-      persistStep(s);
+      if (s >= 1) persistStep(s);
+      if (s >= 2) markIntroSeen();
     },
     [persistStep],
+  );
+
+  const advanceIntro = useCallback(() => {
+    if (introIndex < INTRO_SCREENS.length - 1) {
+      setIntroIndex((i) => i + 1);
+      return;
+    }
+    markIntroSeen();
+    setStep(1);
+  }, [introIndex]);
+
+  const chooseEmailProvider = useCallback(
+    (provider: EmailProvider) => {
+      setEmailProvider(provider);
+      try {
+        localStorage.setItem(EMAIL_PROVIDER_KEY, provider);
+      } catch {
+        /* ignore */
+      }
+      goToStep(5);
+    },
+    [goToStep],
   );
 
   useEffect(() => {
@@ -203,19 +271,70 @@ export function SignupFlow() {
 
       const hasGmail = gmailReady(session);
       const afterGmail = params.get("after") === "gmail";
+      const afterOutlook = params.get("after") === "outlook";
+      const afterMicrosoft = params.get("after") === "microsoft";
+      const outlookStatus = params.get("outlook");
       const paymentSuccess = params.get("payment") === "success";
       const paymentCancelled = params.get("payment") === "cancelled";
       const stripeSessionId = params.get("session_id");
 
-      // --- Returning from Gmail OAuth (step 4 → step 5) ---
-      if (afterGmail && nextAuthStatus === "authenticated" && hasGmail && supabaseSession) {
+      const savedEmail = localStorage.getItem(EMAIL_PROVIDER_KEY) as EmailProvider | null;
+      if (savedEmail === "gmail" || savedEmail === "microsoft") {
+        setEmailProvider(savedEmail);
+      }
+      const savedAuth = localStorage.getItem(AUTH_PROVIDER_KEY) as AuthProvider | null;
+      if (savedAuth === "microsoft") setMicrosoftConnected(true);
+      if (savedAuth === "google") setGoogleConnected(true);
+
+      function resolveResumeStep(hasPayment: boolean): Step {
+        const savedStep = Number(localStorage.getItem(STEP_STORAGE_KEY));
+        if (savedStep >= 2 && savedStep <= 6) {
+          if (savedStep >= 4 && !hasPayment) return 3;
+          if (savedStep === 5 && !localStorage.getItem(EMAIL_PROVIDER_KEY)) return 4;
+          return savedStep as Step;
+        }
+        return hasPayment ? 4 : 2;
+      }
+
+      // --- Returning from Outlook OAuth (step 5 → 6) ---
+      if (afterOutlook && outlookStatus === "connected" && supabaseSession) {
+        setOutlookConnected(true);
+        goToStep(6);
+        setBooting(false);
+        return;
+      }
+      if (afterOutlook && outlookStatus === "error") {
+        setError("Could not connect Microsoft. Please try again.");
         goToStep(5);
         setBooting(false);
         return;
       }
 
-      // --- Returning from Stripe checkout (step 3 → step 4) ---
-      if (paymentSuccess && stripeSessionId && nextAuthStatus === "authenticated" && supabaseSession) {
+      // --- Returning from Gmail OAuth (step 5 → 6) ---
+      if (afterGmail && nextAuthStatus === "authenticated" && hasGmail && supabaseSession) {
+        goToStep(6);
+        setBooting(false);
+        return;
+      }
+
+      // --- Returning from Microsoft account sign-in (step 1 → 2) ---
+      if (afterMicrosoft && supabaseSession) {
+        if (consumeOAuthPending()) {
+          try {
+            localStorage.setItem(AUTH_PROVIDER_KEY, "microsoft");
+          } catch {
+            /* ignore */
+          }
+          setMicrosoftConnected(true);
+          void fireSignupConfetti();
+        }
+        goToStep(2);
+        setBooting(false);
+        return;
+      }
+
+      // --- Returning from Stripe checkout (step 3 → step 4: provider choice) ---
+      if (paymentSuccess && stripeSessionId && supabaseSession) {
         setVerifyingPayment(true);
         try {
           const res = await fetch(`/api/stripe/verify-payment?session_id=${stripeSessionId}`);
@@ -242,8 +361,7 @@ export function SignupFlow() {
         return;
       }
 
-      // --- NextAuth authenticated but no Supabase session — link accounts ---
-      // Happens right after the first Google sign-in (step 1 callback)
+      // --- Google sign-in: link NextAuth → Supabase ---
       if (nextAuthStatus === "authenticated" && !supabaseSession) {
         setLinkingAccount(true);
         try {
@@ -252,6 +370,11 @@ export function SignupFlow() {
           if (res.ok) {
             await supabase.auth.getSession();
             if (consumeOAuthPending()) {
+              try {
+                localStorage.setItem(AUTH_PROVIDER_KEY, "google");
+              } catch {
+                /* ignore */
+              }
               setGoogleConnected(true);
               void fireSignupConfetti();
             }
@@ -273,9 +396,8 @@ export function SignupFlow() {
         return;
       }
 
-      // --- Both sessions present — resume from saved step ---
-      if (supabaseSession && nextAuthStatus === "authenticated") {
-        // Check if already fully onboarded
+      // --- Supabase session present — resume (Google + Microsoft signups) ---
+      if (supabaseSession) {
         try {
           const profileRes = await fetch("/api/user/profile");
           if (profileRes.ok) {
@@ -287,21 +409,7 @@ export function SignupFlow() {
               router.replace("/inbox");
               return;
             }
-            // Resume at the right step, guarded by payment status
-            const hasPayment = !!profile.stripe_customer_id;
-            const savedStep = Number(localStorage.getItem(STEP_STORAGE_KEY));
-            let targetStep: Step;
-            if (savedStep >= 2 && savedStep <= 5) {
-              // Don't let them skip payment — enforce step 3 if payment not done
-              if (savedStep >= 4 && !hasPayment) {
-                targetStep = 3;
-              } else {
-                targetStep = savedStep as Step;
-              }
-            } else {
-              targetStep = hasPayment ? 4 : 2;
-            }
-            goToStep(targetStep);
+            goToStep(resolveResumeStep(!!profile.stripe_customer_id));
             setBooting(false);
             return;
           }
@@ -309,14 +417,20 @@ export function SignupFlow() {
           /* ignore, fall through */
         }
 
-        const savedStep = Number(localStorage.getItem(STEP_STORAGE_KEY));
-        goToStep(savedStep >= 2 && savedStep <= 5 ? (savedStep as Step) : 2);
+        goToStep(resolveResumeStep(false));
         setBooting(false);
         return;
       }
 
-      // No session at all
-      setStep(1);
+      // No session — show intro once, then sign-in
+      const savedSignupStep = Number(localStorage.getItem(STEP_STORAGE_KEY));
+      if (!hasSeenIntro() && !(savedSignupStep >= 2)) {
+        setIntroIndex(0);
+        setStep(0);
+      } else {
+        if (savedSignupStep >= 2) markIntroSeen();
+        setStep(1);
+      }
       setBooting(false);
     }
 
@@ -324,17 +438,38 @@ export function SignupFlow() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nextAuthStatus, session]);
 
+  useEffect(() => {
+    if (step === 5 && !emailProvider) {
+      goToStep(4);
+    }
+  }, [step, emailProvider, goToStep]);
+
   async function handleGoogleSignup() {
     setAuthLoading(true);
     setError(null);
     markOAuthPending();
-    // Explicitly pin to basic scopes — Gmail is NOT requested here.
-    // Gmail scopes are only requested in step 4 via handleConnectGmail.
     await signIn(
       "google",
       { callbackUrl: "/signup" },
       { scope: "openid email profile", prompt: "select_account" },
     );
+  }
+
+  async function handleMicrosoftSignup() {
+    setAuthLoading(true);
+    setError(null);
+    markOAuthPending();
+    const supabase = createSupabaseBrowserClient();
+    const next = encodeURIComponent("/signup?after=microsoft");
+    const redirectTo = `${window.location.origin}/auth/callback?next=${next}`;
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      provider: "azure",
+      options: { redirectTo, scopes: "email profile openid" },
+    });
+    if (oauthError) {
+      setAuthLoading(false);
+      setError("Could not start Microsoft sign-in. Please try again.");
+    }
   }
 
   async function handleSaveQuestions() {
@@ -366,7 +501,7 @@ export function SignupFlow() {
   async function handleConnectGmail() {
     setAuthLoading(true);
     setError(null);
-    persistStep(4);
+    persistStep(5);
     await signIn(
       "google",
       { callbackUrl: "/signup?after=gmail" },
@@ -378,10 +513,20 @@ export function SignupFlow() {
     );
   }
 
+  function handleConnectOutlook() {
+    setAuthLoading(true);
+    setError(null);
+    persistStep(5);
+    const returnTo = encodeURIComponent("/signup?after=outlook");
+    window.location.href = `/api/oauth/outlook?returnTo=${returnTo}`;
+  }
+
   async function handleOpenInbox() {
     try {
       await fetch("/api/user/onboarding/complete", { method: "POST" });
       localStorage.removeItem(STEP_STORAGE_KEY);
+      localStorage.removeItem(AUTH_PROVIDER_KEY);
+      localStorage.removeItem(EMAIL_PROVIDER_KEY);
     } catch (err) {
       console.error("[signup] complete:", err);
     }
@@ -405,6 +550,35 @@ export function SignupFlow() {
   return (
     <SignupShell>
       <AnimatePresence mode="wait">
+
+        {/* ── Step 0: Intro tap-through ── */}
+        {step === 0 && (
+          <motion.button
+            key={`intro-${introIndex}`}
+            type="button"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.35 }}
+            onClick={advanceIntro}
+            className="flex min-h-[min(420px,55vh)] w-full cursor-pointer flex-col items-start justify-center border-0 bg-transparent p-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF8A3D]/50"
+            aria-label="Continue"
+          >
+            <p className="text-2xl font-medium leading-snug tracking-tight text-white sm:text-3xl">
+              {INTRO_SCREENS[introIndex]}
+            </p>
+            <div className="mt-10 flex gap-1.5" aria-hidden>
+              {INTRO_SCREENS.map((_, i) => (
+                <span
+                  key={i}
+                  className={`h-1 rounded-full transition-all ${
+                    i === introIndex ? "w-6 bg-[#FF8A3D]" : "w-1.5 bg-zinc-700"
+                  }`}
+                />
+              ))}
+            </div>
+          </motion.button>
+        )}
 
         {/* ── Step 1: Sign in with Google (basic scopes) ── */}
         {step === 1 && (
@@ -452,6 +626,16 @@ export function SignupFlow() {
               {authLoading ? "Redirecting…" : "Continue with Google"}
             </button>
 
+            <button
+              type="button"
+              onClick={() => void handleMicrosoftSignup()}
+              disabled={authLoading}
+              className="mt-3 flex w-full items-center justify-center gap-2.5 border border-zinc-700 bg-zinc-950/40 px-4 py-3.5 text-sm font-medium text-white transition-colors hover:border-zinc-600 hover:bg-zinc-900/60 disabled:opacity-60"
+            >
+              <MicrosoftIcon />
+              Continue with Microsoft
+            </button>
+
             <p className="mt-4 text-center text-xs text-zinc-500">
               7-day free trial · Cancel anytime · Card required
             </p>
@@ -465,13 +649,15 @@ export function SignupFlow() {
           <motion.div key="s2" {...fadeUp} transition={{ duration: 0.35 }}>
             <ProgressStep current={1} total={3} />
             <AnimatePresence>
-              {googleConnected && (
+              {(googleConnected || microsoftConnected) && (
                 <motion.p
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   className="mb-4 text-sm font-medium text-[#FF8A3D]"
                 >
-                  Google connected — you&apos;re signed in.
+                  {microsoftConnected
+                    ? "Microsoft connected — you're signed in."
+                    : "Google connected — you're signed in."}
                 </motion.p>
               )}
             </AnimatePresence>
@@ -537,15 +723,55 @@ export function SignupFlow() {
           </motion.div>
         )}
 
-        {/* ── Step 4: Connect Gmail ── */}
+        {/* ── Step 4: Choose email provider ── */}
         {step === 4 && (
           <motion.div key="s4" {...fadeUp} transition={{ duration: 0.35 }}>
             <ProgressStep current={3} total={3} />
             <h1 className="text-3xl font-semibold tracking-tight text-white">
-              Connect your inbox.
+              Which email do you use?
             </h1>
             <p className="mt-3 text-sm leading-relaxed text-zinc-400">
-              Dirac needs Gmail access to read, triage, and draft replies on your behalf.
+              Pick the inbox you want Dirac to connect to. One connection — that&apos;s the whole setup.
+            </p>
+
+            <div className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => chooseEmailProvider("gmail")}
+                className="flex flex-col items-start gap-3 border border-zinc-800 bg-zinc-950/40 px-4 py-5 text-left transition-colors hover:border-zinc-600"
+              >
+                <GoogleIcon />
+                <div>
+                  <p className="text-sm font-medium text-white">I use Gmail</p>
+                  <p className="mt-1 text-xs text-zinc-500">Google Workspace or @gmail.com</p>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => chooseEmailProvider("microsoft")}
+                className="flex flex-col items-start gap-3 border border-zinc-800 bg-zinc-950/40 px-4 py-5 text-left transition-colors hover:border-zinc-600"
+              >
+                <MicrosoftIcon />
+                <div>
+                  <p className="text-sm font-medium text-white">I use Microsoft</p>
+                  <p className="mt-1 text-xs text-zinc-500">Outlook, Microsoft 365, Hotmail</p>
+                </div>
+              </button>
+            </div>
+
+            {error && <p className="mt-4 text-center text-sm text-[#FF8A3D]">{error}</p>}
+          </motion.div>
+        )}
+
+        {/* ── Step 5: Connect inbox (Gmail or Microsoft) ── */}
+        {step === 5 && emailProvider === "gmail" && (
+          <motion.div key="s5-gmail" {...fadeUp} transition={{ duration: 0.35 }}>
+            <ProgressStep current={3} total={3} />
+            <h1 className="text-3xl font-semibold tracking-tight text-white">
+              Connect your inbox. That&apos;s the whole setup.
+            </h1>
+            <p className="mt-3 text-sm leading-relaxed text-zinc-400">
+              Dirac needs Gmail access to read, triage, and draft replies.
             </p>
 
             {/* Founder note about unverified app warning */}
@@ -577,17 +803,24 @@ export function SignupFlow() {
 
             <AnimatePresence>
               {gmailConsentChecked && (
-                <motion.button
-                  type="button"
+                <motion.div
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
-                  onClick={() => void handleConnectGmail()}
-                  disabled={authLoading}
-                  className="mt-6 flex w-full items-center justify-center gap-2.5 bg-white px-4 py-3.5 text-sm font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-60"
+                  className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-6"
                 >
-                  <GoogleIcon />
-                  {authLoading ? "Redirecting…" : "Connect Gmail →"}
-                </motion.button>
+                  <p className="text-sm leading-relaxed text-zinc-500 sm:flex-1">
+                    Nervous about handing this over? That&apos;s good. Dirac will earn that trust from you.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void handleConnectGmail()}
+                    disabled={authLoading}
+                    className="flex w-full shrink-0 items-center justify-center gap-2.5 bg-white px-4 py-3.5 text-sm font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-60 sm:w-auto"
+                  >
+                    <GoogleIcon />
+                    {authLoading ? "Redirecting…" : "Connect Gmail →"}
+                  </button>
+                </motion.div>
               )}
             </AnimatePresence>
 
@@ -595,9 +828,38 @@ export function SignupFlow() {
           </motion.div>
         )}
 
-        {/* ── Step 5: You're in ── */}
-        {step === 5 && (
-          <motion.div key="s5" {...fadeUp} transition={{ duration: 0.35 }}>
+        {step === 5 && emailProvider === "microsoft" && (
+          <motion.div key="s5-microsoft" {...fadeUp} transition={{ duration: 0.35 }}>
+            <ProgressStep current={3} total={3} />
+            <h1 className="text-3xl font-semibold tracking-tight text-white">
+              Connect your inbox. That&apos;s the whole setup.
+            </h1>
+            <p className="mt-3 text-sm leading-relaxed text-zinc-400">
+              Dirac needs Outlook access to read, triage, and draft replies.
+            </p>
+
+            <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-6">
+              <p className="text-sm leading-relaxed text-zinc-500 sm:flex-1">
+                Nervous about handing this over? That&apos;s good. Dirac will earn that trust from you.
+              </p>
+              <button
+                type="button"
+                onClick={handleConnectOutlook}
+                disabled={authLoading || outlookConnected}
+                className="flex w-full shrink-0 items-center justify-center gap-2.5 bg-white px-4 py-3.5 text-sm font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-60 sm:w-auto"
+              >
+                <MicrosoftIcon />
+                {outlookConnected ? "Connected" : authLoading ? "Redirecting…" : "Connect Microsoft →"}
+              </button>
+            </div>
+
+            {error && <p className="mt-4 text-center text-sm text-[#FF8A3D]">{error}</p>}
+          </motion.div>
+        )}
+
+        {/* ── Step 6: You're in ── */}
+        {step === 6 && (
+          <motion.div key="s6" {...fadeUp} transition={{ duration: 0.35 }}>
             <h1 className="text-4xl font-semibold tracking-tight text-white">You&apos;re in.</h1>
 
             <ul className="mt-10 space-y-3">

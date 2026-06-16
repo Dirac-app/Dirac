@@ -86,8 +86,8 @@ function emailShell(body: string): string {
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Dirac</title>
 </head>
-<body style="margin:0;padding:0;background-color:#f5f5f5;-webkit-text-size-adjust:100%;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f5f5f5;">
+<body style="margin:0;padding:0;background-color:#0a0a0a;-webkit-text-size-adjust:100%;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#0a0a0a;">
     <tr>
       <td align="center" style="padding:40px 16px 32px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;">
@@ -99,15 +99,15 @@ function emailShell(body: string): string {
           </tr>
 
           <tr>
-            <td style="background-color:#ffffff;border:1px solid #e4e4e7;border-radius:6px;padding:32px 32px 28px;">
+            <td style="background-color:#111111;border:1px solid #262626;border-radius:8px;padding:32px 32px 28px;">
               ${body}
             </td>
           </tr>
 
           <tr>
-            <td style="padding:20px 0 0;font-family:${F};font-size:11px;color:#a1a1aa;text-align:center;line-height:1.6;">
-              Dirac &middot; Your intelligent inbox &middot;
-              <a href="${`{APP_URL}`}/settings" style="color:#a1a1aa;text-decoration:underline;text-underline-offset:2px;">Manage subscription</a>
+            <td style="padding:24px 0 0;font-family:${F};font-size:11px;color:#52525b;text-align:center;line-height:1.8;">
+              &mdash; Peter | Founder of Dirac<br/>
+              Questions or issues? Email <a href="mailto:peter@dirac.app" style="color:#71717a;text-decoration:underline;text-underline-offset:2px;">peter@dirac.app</a>
             </td>
           </tr>
 
@@ -154,10 +154,10 @@ function buildDay4Email(
           <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
             <tr>
               <td style="width:28px;vertical-align:top;padding-top:1px;">
-                <span style="display:inline-block;width:22px;height:22px;border-radius:50%;background-color:#fff7ed;border:1px solid #fed7aa;font-family:${F};font-size:11px;font-weight:700;color:${ORANGE};text-align:center;line-height:20px;">${t.n}</span>
+                <span style="display:inline-block;width:22px;height:22px;border-radius:50%;background-color:#1a1a1a;border:1px solid #3f3f46;font-family:${F};font-size:11px;font-weight:700;color:${ORANGE};text-align:center;line-height:20px;">${t.n}</span>
               </td>
               <td style="vertical-align:top;padding-left:10px;">
-                <p style="margin:0 0 2px;font-family:${F};font-size:14px;font-weight:600;color:#111111;">${t.label}</p>
+                <p style="margin:0 0 2px;font-family:${F};font-size:14px;font-weight:600;color:#f4f4f5;">${t.label}</p>
                 <p style="margin:0;font-family:${F};font-size:13px;line-height:1.55;color:#71717a;">${t.detail}</p>
               </td>
             </tr>
@@ -170,8 +170,8 @@ function buildDay4Email(
   const htmlBody = `
     <p style="margin:0 0 6px;font-family:${F};font-size:13px;color:#71717a;">Hi ${name},</p>
 
-    <h1 style="margin:0 0 8px;font-family:${F};font-size:22px;font-weight:700;letter-spacing:-0.02em;line-height:1.25;color:#111111;">A few things worth knowing.</h1>
-    <p style="margin:0 0 28px;font-family:${F};font-size:15px;line-height:1.6;color:#3f3f46;">
+    <h1 style="margin:0 0 8px;font-family:${F};font-size:22px;font-weight:700;letter-spacing:-0.02em;line-height:1.25;color:#f4f4f5;">A few things worth knowing.</h1>
+    <p style="margin:0 0 28px;font-family:${F};font-size:15px;line-height:1.6;color:#a1a1aa;">
       You&rsquo;re 4 days in. Here are the features that save the most time.
     </p>
 
@@ -180,7 +180,7 @@ function buildDay4Email(
     </table>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
-      <tr><td style="height:1px;background-color:#f4f4f5;"></td></tr>
+      <tr><td style="height:1px;background-color:#262626;"></td></tr>
     </table>
 
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
@@ -191,11 +191,11 @@ function buildDay4Email(
       </tr>
     </table>
 
-    <p style="margin:0 0 20px;font-family:${F};font-size:13px;line-height:1.55;color:#a1a1aa;">
-      Your trial ends on <strong style="color:#3f3f46;">${chargeDate}</strong>. Your card won&rsquo;t be charged until then.
+    <p style="margin:0 0 20px;font-family:${F};font-size:13px;line-height:1.55;color:#71717a;">
+      Your trial ends on <strong style="color:#a1a1aa;">${chargeDate}</strong>. Your card won&rsquo;t be charged until then.
     </p>
 
-    <p style="margin:0;font-family:${F};font-size:14px;color:#3f3f46;">&mdash; Peter</p>`;
+    <p style="margin:0;font-family:${F};font-size:14px;color:#a1a1aa;">&mdash; Peter | Founder of Dirac</p>`;
 
   const html = emailShell(htmlBody);
 
@@ -235,21 +235,21 @@ function buildDay6Email(
   const htmlBody = `
     <p style="margin:0 0 6px;font-family:${F};font-size:13px;color:#71717a;">Hi ${name},</p>
 
-    <h1 style="margin:0 0 8px;font-family:${F};font-size:22px;font-weight:700;letter-spacing:-0.02em;line-height:1.25;color:#111111;">Your trial ends tomorrow.</h1>
-    <p style="margin:0 0 24px;font-family:${F};font-size:15px;line-height:1.6;color:#3f3f46;">
-      If you&rsquo;re happy with Dirac, there&rsquo;s nothing to do &mdash; your card on file will be charged on <strong>${chargeDateLong}</strong> and access continues seamlessly.
+    <h1 style="margin:0 0 8px;font-family:${F};font-size:22px;font-weight:700;letter-spacing:-0.02em;line-height:1.25;color:#f4f4f5;">Your trial ends tomorrow.</h1>
+    <p style="margin:0 0 24px;font-family:${F};font-size:15px;line-height:1.6;color:#a1a1aa;">
+      If you&rsquo;re happy with Dirac, there&rsquo;s nothing to do &mdash; your card on file will be charged on <strong style="color:#f4f4f5;">${chargeDateLong}</strong> and access continues seamlessly.
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
       <tr>
-        <td style="background-color:#fff7ed;border:1px solid #fed7aa;border-radius:5px;padding:14px 18px;">
+        <td style="background-color:#1a1a1a;border:1px solid #3f3f46;border-radius:5px;padding:14px 18px;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
             <tr>
               <td style="width:14px;vertical-align:top;padding-top:2px;">
                 <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background-color:${ORANGE};margin-top:4px;"></span>
               </td>
               <td style="vertical-align:top;padding-left:10px;">
-                <p style="margin:0 0 4px;font-family:${F};font-size:13px;font-weight:600;color:#111111;">Charging tomorrow &mdash; ${chargeDateLong}</p>
+                <p style="margin:0 0 4px;font-family:${F};font-size:13px;font-weight:600;color:#f4f4f5;">Charging tomorrow &mdash; ${chargeDateLong}</p>
                 <p style="margin:0;font-family:${F};font-size:13px;line-height:1.5;color:#71717a;">
                   Want to cancel? Go to <a href="${settingsUrl}" style="color:${ORANGE};text-decoration:none;font-weight:500;">Settings &rarr; Billing</a> before midnight, or just reply to this email and I&rsquo;ll handle it.
                 </p>
@@ -268,7 +268,7 @@ function buildDay6Email(
       </tr>
     </table>
 
-    <p style="margin:0;font-family:${F};font-size:14px;color:#3f3f46;">&mdash; Peter</p>`;
+    <p style="margin:0;font-family:${F};font-size:14px;color:#a1a1aa;">&mdash; Peter | Founder of Dirac</p>`;
 
   const html = emailShell(htmlBody);
 

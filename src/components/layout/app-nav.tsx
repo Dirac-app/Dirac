@@ -15,6 +15,7 @@ import {
   Bookmark,
   Users,
   X,
+  CircleUser,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAppState } from "@/lib/store";
@@ -38,6 +39,7 @@ const NAV_LINKS = [
   { href: "/senders", label: "Senders", icon: Users },
   { href: "/clips", label: "Clip library", icon: Bookmark },
   { href: "/activity", label: "Activity", icon: Activity },
+  { href: "/account", label: "Account", icon: CircleUser },
   { href: "/settings", label: "Settings", icon: Settings },
 ] as const;
 
@@ -201,7 +203,14 @@ export function AppNav() {
             <TooltipTrigger asChild>
               <button
                 data-tour="morning-brief"
-                onClick={() => window.open("/brief", "dirac-brief")}
+                onClick={() => {
+                  const s = loadMorningSettings();
+                  if (s.briefMode === "modal") {
+                    window.dispatchEvent(new CustomEvent("dirac:open-morning-briefing"));
+                  } else {
+                    window.open("/brief", "dirac-brief");
+                  }
+                }}
                 className={cn(
                   "relative flex h-8 w-8 items-center justify-center text-[#FF8A3D] transition-colors hover:bg-[#FF8A3D]/10 touch-target",
                   pathname === "/brief" && "rounded-lg ring-2 ring-[#FF8A3D]/40",
@@ -306,7 +315,14 @@ export function AppNav() {
           <button
             type="button"
             data-tour="morning-brief"
-            onClick={() => window.open("/brief", "dirac-brief")}
+            onClick={() => {
+              const s = loadMorningSettings();
+              if (s.briefMode === "modal") {
+                window.dispatchEvent(new CustomEvent("dirac:open-morning-briefing"));
+              } else {
+                window.open("/brief", "dirac-brief");
+              }
+            }}
             className={cn(
               "relative flex h-9 w-9 items-center justify-center text-[#FF8A3D] touch-target rounded-lg",
               pathname === "/brief" && "ring-2 ring-[#FF8A3D]/40",

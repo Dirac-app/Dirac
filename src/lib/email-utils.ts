@@ -21,9 +21,9 @@ export function emailShell(bodyHtml: string): string {
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Dirac</title>
 </head>
-<body style="margin:0;padding:0;background-color:#f5f5f5;-webkit-text-size-adjust:100%;">
+<body style="margin:0;padding:0;background-color:#0a0a0a;-webkit-text-size-adjust:100%;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-    style="background-color:#f5f5f5;">
+    style="background-color:#0a0a0a;">
     <tr>
       <td align="center" style="padding:40px 16px 32px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
@@ -38,15 +38,16 @@ export function emailShell(bodyHtml: string): string {
 
           <!-- Card -->
           <tr>
-            <td style="background-color:#ffffff;border:1px solid #e4e4e7;border-radius:6px;padding:32px 32px 28px;">
+            <td style="background-color:#111111;border:1px solid #262626;border-radius:8px;padding:32px 32px 28px;">
               ${bodyHtml}
             </td>
           </tr>
 
           <!-- Footer -->
           <tr>
-            <td style="padding:20px 0 0;font-family:${F};font-size:11px;color:#a1a1aa;text-align:center;line-height:1.6;">
-              Dirac &middot; Your intelligent inbox
+            <td style="padding:24px 0 0;font-family:${F};font-size:11px;color:#52525b;text-align:center;line-height:1.8;">
+              &mdash; Peter | Founder of Dirac<br/>
+              Questions or issues? Email <a href="mailto:peter@dirac.app" style="color:#71717a;text-decoration:underline;text-underline-offset:2px;">peter@dirac.app</a>
             </td>
           </tr>
 
@@ -106,10 +107,10 @@ export function buildWelcomeEmail({ name, email, inboxUrl }: WelcomeEmailParams)
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
           <tr>
             <td style="width:28px;vertical-align:top;padding-top:1px;">
-              <span style="display:inline-block;width:22px;height:22px;border-radius:50%;background-color:#fff7ed;border:1px solid #fed7aa;font-family:${F};font-size:11px;font-weight:700;color:${ORANGE};text-align:center;line-height:20px;">${s.n}</span>
+              <span style="display:inline-block;width:22px;height:22px;border-radius:50%;background-color:#1a1a1a;border:1px solid #3f3f46;font-family:${F};font-size:11px;font-weight:700;color:${ORANGE};text-align:center;line-height:20px;">${s.n}</span>
             </td>
             <td style="vertical-align:top;padding-left:10px;">
-              <p style="margin:0 0 2px;font-family:${F};font-size:14px;font-weight:600;color:#111111;">${s.label}</p>
+              <p style="margin:0 0 2px;font-family:${F};font-size:14px;font-weight:600;color:#f4f4f5;">${s.label}</p>
               <p style="margin:0;font-family:${F};font-size:13px;line-height:1.55;color:#71717a;">${s.detail}</p>
             </td>
           </tr>
@@ -124,8 +125,8 @@ export function buildWelcomeEmail({ name, email, inboxUrl }: WelcomeEmailParams)
     <p style="margin:0 0 6px;font-family:${F};font-size:13px;color:#71717a;">Hi ${firstName},</p>
 
     <!-- Headline -->
-    <h1 style="margin:0 0 8px;font-family:${F};font-size:24px;font-weight:700;letter-spacing:-0.025em;line-height:1.2;color:#111111;">Your inbox is ready.</h1>
-    <p style="margin:0 0 28px;font-family:${F};font-size:15px;line-height:1.6;color:#3f3f46;">
+    <h1 style="margin:0 0 8px;font-family:${F};font-size:24px;font-weight:700;letter-spacing:-0.025em;line-height:1.2;color:#f4f4f5;">Your inbox is ready.</h1>
+    <p style="margin:0 0 28px;font-family:${F};font-size:15px;line-height:1.6;color:#a1a1aa;">
       Dirac is a decision-first inbox built for people who live in email. Here are three things worth trying today.
     </p>
 
@@ -136,7 +137,7 @@ export function buildWelcomeEmail({ name, email, inboxUrl }: WelcomeEmailParams)
 
     <!-- Divider -->
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
-      <tr><td style="height:1px;background-color:#f4f4f5;"></td></tr>
+      <tr><td style="height:1px;background-color:#262626;"></td></tr>
     </table>
 
     <!-- CTA -->
@@ -149,13 +150,13 @@ export function buildWelcomeEmail({ name, email, inboxUrl }: WelcomeEmailParams)
     </table>
 
     <!-- Trial note -->
-    <p style="margin:0 0 20px;font-family:${F};font-size:13px;line-height:1.55;color:#a1a1aa;">
-      You have <strong style="color:#3f3f46;">7 days free</strong>. Your card won&rsquo;t be charged until day 8. Cancel anytime before then from Settings &rarr; Billing. Questions? Just reply here.
+    <p style="margin:0 0 20px;font-family:${F};font-size:13px;line-height:1.55;color:#71717a;">
+      You have <strong style="color:#a1a1aa;">7 days free</strong>. Your card won&rsquo;t be charged until day 8. Cancel anytime before then from Settings &rarr; Billing.
     </p>
 
     <!-- Sign-off -->
-    <p style="margin:0;font-family:${F};font-size:14px;color:#3f3f46;">
-      &mdash; Dirac
+    <p style="margin:0;font-family:${F};font-size:14px;color:#a1a1aa;">
+      &mdash; Peter | Founder of Dirac
     </p>`;
 
   const html = emailShell(bodyHtml);
@@ -208,16 +209,16 @@ export function buildCancelDuringTrialEmail({
   const bodyHtml = `
     <p style="margin:0 0 6px;font-family:${F};font-size:13px;color:#71717a;">Hi ${firstName},</p>
 
-    <h1 style="margin:0 0 8px;font-family:${F};font-size:22px;font-weight:700;letter-spacing:-0.02em;line-height:1.25;color:#111111;">No hard feelings.</h1>
-    <p style="margin:0 0 24px;font-family:${F};font-size:15px;line-height:1.6;color:#3f3f46;">
-      You&rsquo;ve cancelled your Dirac trial. Your access will continue until <strong>${trialEndDate}</strong> &mdash; nothing changes until then.
+    <h1 style="margin:0 0 8px;font-family:${F};font-size:22px;font-weight:700;letter-spacing:-0.02em;line-height:1.25;color:#f4f4f5;">No hard feelings.</h1>
+    <p style="margin:0 0 24px;font-family:${F};font-size:15px;line-height:1.6;color:#a1a1aa;">
+      You&rsquo;ve cancelled your Dirac trial. Your access will continue until <strong style="color:#f4f4f5;">${trialEndDate}</strong> &mdash; nothing changes until then.
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
       <tr>
-        <td style="background-color:#f9fafb;border:1px solid #e4e4e7;border-radius:5px;padding:14px 18px;">
-          <p style="margin:0;font-family:${F};font-size:13px;line-height:1.55;color:#3f3f46;">
-            Your card <strong>won&rsquo;t be charged</strong>. If you change your mind before ${trialEndDate}, you can reactivate below and pick up right where you left off.
+        <td style="background-color:#1a1a1a;border:1px solid #262626;border-radius:5px;padding:14px 18px;">
+          <p style="margin:0;font-family:${F};font-size:13px;line-height:1.55;color:#a1a1aa;">
+            Your card <strong style="color:#f4f4f5;">won&rsquo;t be charged</strong>. If you change your mind before ${trialEndDate}, you can reactivate below and pick up right where you left off.
           </p>
         </td>
       </tr>
@@ -225,8 +226,8 @@ export function buildCancelDuringTrialEmail({
 
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
       <tr>
-        <td style="border:1px solid #e4e4e7;border-radius:5px;">
-          <a href="${reactivateUrl}" style="display:inline-block;padding:11px 22px;font-family:${F};font-size:14px;font-weight:600;color:#111111;text-decoration:none;">Reactivate &rarr;</a>
+        <td style="border:1px solid #3f3f46;border-radius:5px;">
+          <a href="${reactivateUrl}" style="display:inline-block;padding:11px 22px;font-family:${F};font-size:14px;font-weight:600;color:#f4f4f5;text-decoration:none;">Reactivate &rarr;</a>
         </td>
       </tr>
     </table>
@@ -235,7 +236,7 @@ export function buildCancelDuringTrialEmail({
       Was there something we could have done better? Just reply here &mdash; I read every message.
     </p>
 
-    <p style="margin:0;font-family:${F};font-size:14px;color:#3f3f46;">&mdash; Peter</p>`;
+    <p style="margin:0;font-family:${F};font-size:14px;color:#a1a1aa;">&mdash; Peter | Founder of Dirac</p>`;
 
   const html = emailShell(bodyHtml);
 
@@ -276,16 +277,16 @@ export function buildCancelAfterTrialEmail({
   const bodyHtml = `
     <p style="margin:0 0 6px;font-family:${F};font-size:13px;color:#71717a;">Hi ${firstName},</p>
 
-    <h1 style="margin:0 0 8px;font-family:${F};font-size:22px;font-weight:700;letter-spacing:-0.02em;line-height:1.25;color:#111111;">Your subscription has been cancelled.</h1>
-    <p style="margin:0 0 24px;font-family:${F};font-size:15px;line-height:1.6;color:#3f3f46;">
+    <h1 style="margin:0 0 8px;font-family:${F};font-size:22px;font-weight:700;letter-spacing:-0.02em;line-height:1.25;color:#f4f4f5;">Your subscription has been cancelled.</h1>
+    <p style="margin:0 0 24px;font-family:${F};font-size:15px;line-height:1.6;color:#a1a1aa;">
       Access will continue until the end of your current billing period. After that, your inbox history and settings stay safe &mdash; everything will be here if you come back.
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
       <tr>
-        <td style="background-color:#f9fafb;border:1px solid #e4e4e7;border-radius:5px;padding:14px 18px;">
-          <p style="margin:0;font-family:${F};font-size:13px;line-height:1.55;color:#3f3f46;">
-            You can reactivate anytime from <strong>Settings &rarr; Billing</strong>. No new setup needed.
+        <td style="background-color:#1a1a1a;border:1px solid #262626;border-radius:5px;padding:14px 18px;">
+          <p style="margin:0;font-family:${F};font-size:13px;line-height:1.55;color:#a1a1aa;">
+            You can reactivate anytime from <strong style="color:#f4f4f5;">Account &rarr; Plan</strong> or the link below. No new setup needed.
           </p>
         </td>
       </tr>
@@ -293,8 +294,8 @@ export function buildCancelAfterTrialEmail({
 
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
       <tr>
-        <td style="border:1px solid #e4e4e7;border-radius:5px;">
-          <a href="${reactivateUrl}" style="display:inline-block;padding:11px 22px;font-family:${F};font-size:14px;font-weight:600;color:#111111;text-decoration:none;">Reactivate &rarr;</a>
+        <td style="border:1px solid #3f3f46;border-radius:5px;">
+          <a href="${reactivateUrl}" style="display:inline-block;padding:11px 22px;font-family:${F};font-size:14px;font-weight:600;color:#f4f4f5;text-decoration:none;">Reactivate &rarr;</a>
         </td>
       </tr>
     </table>
@@ -303,7 +304,7 @@ export function buildCancelAfterTrialEmail({
       Why did you cancel? I&rsquo;d genuinely like to know &mdash; just reply here.
     </p>
 
-    <p style="margin:0;font-family:${F};font-size:14px;color:#3f3f46;">&mdash; Peter</p>`;
+    <p style="margin:0;font-family:${F};font-size:14px;color:#a1a1aa;">&mdash; Peter | Founder of Dirac</p>`;
 
   const html = emailShell(bodyHtml);
 
@@ -313,7 +314,7 @@ Your subscription has been cancelled.
 
 Access will continue until the end of your current billing period. After that, your inbox history and settings stay safe — everything will be here if you come back.
 
-You can reactivate anytime from Settings → Billing. No new setup needed.
+You can reactivate anytime from Account → Plan or the link below. No new setup needed.
 
 Reactivate: ${reactivateUrl}
 

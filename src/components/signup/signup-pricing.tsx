@@ -4,9 +4,9 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 
 const BENEFITS = [
-  "Unified inbox with AI triage and reply drafts",
-  "Morning Brief — what matters and what to do next",
-  "Sort, archive, and respond in plain language",
+  "Unlimited Ai usage. Triage, bulk actions, and more.",
+  "Morning Brief — what matters for the day.",
+  "Draft replies in your voice, but 10x faster.",
 ] as const;
 
 interface SignupPricingProps {
@@ -45,7 +45,7 @@ export function SignupPricing({ onCheckoutRedirecting }: SignupPricingProps) {
         Start your free trial.
       </h1>
       <p className="mt-3 text-sm leading-relaxed text-zinc-400">
-        7 days free — card required, nothing charged until day 8.
+        7 days free. If it doesn't save you time, don't pay.
       </p>
 
       <ul className="mt-8 space-y-2.5">
@@ -95,9 +95,6 @@ export function SignupPricing({ onCheckoutRedirecting }: SignupPricingProps) {
         </button>
       </div>
 
-      <p className="mt-5 text-center text-[11px] text-zinc-600">
-        7-day free trial · Cancel anytime · You won&apos;t be charged today
-      </p>
       <p className="mt-1 text-center text-[11px] text-zinc-600">
         Limited to first 100 founding users.
       </p>

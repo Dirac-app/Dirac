@@ -108,9 +108,7 @@ import {
 
 function MorningBriefingSettingsSection() {
   const [enabled, setEnabled] = useState(true);
-  const [weekdaysOnly, setWeekdaysOnly] = useState(false);
-  const [morningOnly, setMorningOnly] = useState(true);
-  const [maxItems, setMaxItems] = useState("5");
+  const [briefMode, setBriefMode] = useState<"page" | "modal">("page");
 
   useEffect(() => {
     try {
@@ -118,34 +116,23 @@ function MorningBriefingSettingsSection() {
       if (!raw) return;
       const parsed = JSON.parse(raw) as {
         enabled?: boolean;
-        weekdaysOnly?: boolean;
-        morningOnly?: boolean;
-        maxItems?: number;
+        briefMode?: "page" | "modal";
       };
       setEnabled(parsed.enabled ?? true);
-      setWeekdaysOnly(parsed.weekdaysOnly ?? false);
-      setMorningOnly(parsed.morningOnly ?? true);
-      setMaxItems(String(parsed.maxItems ?? 5));
+      setBriefMode(parsed.briefMode ?? "page");
     } catch {}
   }, []);
 
   const save = useCallback((next: {
     enabled?: boolean;
-    weekdaysOnly?: boolean;
-    morningOnly?: boolean;
-    maxItems?: number;
+    briefMode?: "page" | "modal";
   }) => {
     try {
-      const current = {
-        enabled,
-        weekdaysOnly,
-        morningOnly,
-        maxItems: Number(maxItems) || 5,
-      };
+      const current = { enabled, briefMode };
       localStorage.setItem("dirac_morning_brief_settings", JSON.stringify({ ...current, ...next }));
       window.dispatchEvent(new StorageEvent("storage", { key: "dirac_morning_brief_settings" }));
     } catch {}
-  }, [enabled, weekdaysOnly, morningOnly, maxItems]);
+  }, [enabled, briefMode]);
 
   return (
     <section>
@@ -161,28 +148,32 @@ function MorningBriefingSettingsSection() {
           </div>
           <input type="checkbox" checked={enabled} onChange={(e) => { setEnabled(e.target.checked); save({ enabled: e.target.checked }); }} />
         </label>
-        <label className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-sm font-medium text-foreground">Only show in the morning</div>
-            <p className="text-xs text-muted-foreground">Auto-open only before midday. You can still reopen it manually.</p>
+
+        {/* Brief format */}
+        <div className="pt-1">
+          <p className="text-xs text-muted-foreground mb-2">Brief format</p>
+          <div className="flex gap-2">
+            {(["page", "modal"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => { setBriefMode(mode); save({ briefMode: mode }); }}
+                className={cn(
+                  "flex-1 rounded-md border px-3 py-2 text-xs font-medium transition-colors",
+                  briefMode === mode
+                    ? "border-primary bg-primary/5 text-primary"
+                    : "border-border text-muted-foreground hover:border-muted-foreground/40",
+                )}
+              >
+                {mode === "page" ? "Page /brief (default)" : "Modal overlay"}
+              </button>
+            ))}
           </div>
-          <input type="checkbox" checked={morningOnly} onChange={(e) => { setMorningOnly(e.target.checked); save({ morningOnly: e.target.checked }); }} />
-        </label>
-        <label className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-sm font-medium text-foreground">Weekdays only</div>
-            <p className="text-xs text-muted-foreground">Useful if you want the briefing to feel more like a workday ritual.</p>
-          </div>
-          <input type="checkbox" checked={weekdaysOnly} onChange={(e) => { setWeekdaysOnly(e.target.checked); save({ weekdaysOnly: e.target.checked }); }} />
-        </label>
-        <div>
-          <label className="text-xs text-muted-foreground">Max items in briefing</label>
-          <Input
-            value={maxItems}
-            onChange={(e) => setMaxItems(e.target.value)}
-            onBlur={() => save({ maxItems: Math.min(8, Math.max(3, Number(maxItems) || 5)) })}
-            className="mt-1 w-24 text-sm"
-          />
+          <p className="mt-1.5 text-[11px] text-muted-foreground/60">
+            {briefMode === "page"
+              ? "Opens as a full page with background tasks, auto-grouped emails, and draft actions."
+              : "Opens as an inline dialog. Simpler but no background group tasks."}
+          </p>
         </div>
       </div>
     </section>
@@ -1130,8 +1121,6 @@ interface SettingsSection {
 }
 
 const SETTINGS_SECTIONS: SettingsSection[] = [
-  { id: "profile",          label: "Profile",           icon: User },
-  { id: "accounts",         label: "Email accounts",    icon: Mail },
   { id: "appearance",       label: "Appearance",        icon: Monitor },
   { id: "tone",             label: "Writing tone",      icon: Sparkles },
   { id: "ai",               label: "AI settings",       icon: Sparkles },
@@ -1350,148 +1339,16 @@ function SettingsContent() {
 
           {/* Right content — same width cap as before so existing sections lay out identically */}
           <div className="flex-1 min-w-0 max-w-xl space-y-8">
-        {/* Profile */}
-        <section id="profile">
-          <div className="flex items-center gap-2 mb-4">
-            <User className="h-4 w-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold text-foreground">Profile</h2>
-          </div>
-          <div className="space-y-3">
-            <div>
-              <label className="text-xs text-muted-foreground">Name</label>
-              <Input
-                defaultValue={session?.user?.name ?? ""}
-                placeholder="Your name"
-                className="mt-1 text-sm"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Email</label>
-              <Input
-                value={session?.user?.email ?? ""}
-                className="mt-1 text-sm"
-                disabled
-                placeholder="Connect an email to populate"
-              />
-            </div>
-          </div>
-        </section>
+
+        {/* Account pointer */}
+        <div className="rounded-lg border border-border px-4 py-3 flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">Profile, connected accounts, and billing have moved.</p>
+          <a href="/account" className="text-xs font-medium text-primary underline-offset-2 hover:underline">Account →</a>
+        </div>
 
         <Separator />
 
-        {/* Connected accounts */}
-        <section id="accounts">
-          <div className="flex items-center gap-2 mb-4">
-            <Plus className="h-4 w-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold text-foreground">
-              Email accounts
-            </h2>
-          </div>
-          <div className="space-y-3">
-            {connectors.map((c) => (
-              <div
-                key={c.platform}
-                className="flex items-center justify-between rounded-lg border border-border px-4 py-3"
-              >
-                <div className="flex items-center gap-3">
-                  <c.icon className="h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-foreground">
-                        {c.platform}
-                      </span>
-                      {c.comingSoon && (
-                        <Badge
-                          variant="secondary"
-                          className="text-[10px] font-normal"
-                        >
-                          Coming soon
-                        </Badge>
-                      )}
-                      {c.connected && (
-                        <Badge
-                          variant="secondary"
-                          className="gap-1 text-[10px] font-normal text-green-600"
-                        >
-                          <CheckCircle2 className="h-2.5 w-2.5" />
-                          Connected
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {c.connected && c.connectedDetail
-                        ? c.connectedDetail
-                        : c.description}
-                    </p>
-                  </div>
-                </div>
-
-                {c.platform === "Gmail" ? (
-                  <Button
-                    variant={c.connected ? "outline" : "default"}
-                    size="sm"
-                    className="text-xs"
-                    onClick={
-                      c.connected ? handleGmailDisconnect : handleGmailConnect
-                    }
-                    disabled={isLoading}
-                  >
-                    {isLoading ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : c.connected ? (
-                      "Disconnect"
-                    ) : (
-                      "Connect"
-                    )}
-                  </Button>
-                ) : c.platform === "Outlook" ? (
-                  <Button
-                    variant={outlookStatus.connected ? "outline" : "default"}
-                    size="sm"
-                    className="text-xs"
-                    onClick={
-                      outlookStatus.connected
-                        ? handleOutlookDisconnect
-                        : handleOutlookConnect
-                    }
-                    disabled={outlookLoading}
-                  >
-                    {outlookLoading ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : outlookStatus.connected ? (
-                      "Disconnect"
-                    ) : (
-                      "Connect"
-                    )}
-                  </Button>
-                ) : (
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="text-xs"
-                    disabled={c.comingSoon}
-                  >
-                    Connect
-                  </Button>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* Connection guidance */}
-          {!gmailConnected && !outlookStatus.connected && (
-            <p className="mt-3 text-xs text-muted-foreground/60">
-              Connect at least one email account to start using Dirac.
-            </p>
-          )}
-          {gmailConnected && outlookStatus.connected && (
-            <p className="mt-3 text-xs text-muted-foreground/60">
-              Both accounts synced. All emails appear in a unified inbox.
-            </p>
-          )}
-        </section>
-
-        <Separator />
+        
 
         {/* Appearance */}
         <div id="appearance"><AppearanceSection /></div>
