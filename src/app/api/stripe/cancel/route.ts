@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSupabaseUser } from "@/lib/api-auth";
 import { getUserById, updateSubscriptionStatus } from "@/lib/users-db";
-import { getStripe } from "@/lib/stripe";
+import { getStripe, getSubscriptionPeriodEnd } from "@/lib/stripe";
 import { sendEmail } from "@/lib/email-utils";
 import { insertCancellationFeedback } from "@/lib/cancellation-feedback-db";
 import {
@@ -72,9 +72,10 @@ export async function POST(request: Request) {
       cancel_at_period_end: true,
       metadata,
     });
-    if (updated.current_period_end) {
-      cancelAtIso = new Date(updated.current_period_end * 1000).toISOString();
-      cancelAt = new Date(updated.current_period_end * 1000).toLocaleDateString("en-US", {
+    const periodEnd = getSubscriptionPeriodEnd(updated);
+    if (periodEnd) {
+      cancelAtIso = new Date(periodEnd * 1000).toISOString();
+      cancelAt = new Date(periodEnd * 1000).toLocaleDateString("en-US", {
         month: "long",
         day: "numeric",
         year: "numeric",

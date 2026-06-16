@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSupabaseUser } from "@/lib/api-auth";
 import { getUserById } from "@/lib/users-db";
-import { getStripe } from "@/lib/stripe";
+import { getStripe, getSubscriptionPeriodEnd } from "@/lib/stripe";
 
 function fmt(ts: number) {
   return new Date(ts * 1000).toLocaleDateString("en-US", {
@@ -50,8 +50,9 @@ export async function GET() {
       if (active) {
         stripeStatus = active.status;
         cancelAtPeriodEnd = active.cancel_at_period_end;
-        currentPeriodEndRaw = active.current_period_end;
-        currentPeriodEnd = active.current_period_end ? fmt(active.current_period_end) : null;
+        const periodEnd = getSubscriptionPeriodEnd(active);
+        currentPeriodEndRaw = periodEnd;
+        currentPeriodEnd = periodEnd ? fmt(periodEnd) : null;
         subscriptionCreated = active.created ? fmt(active.created) : null;
 
         const price = active.items.data[0]?.price;
