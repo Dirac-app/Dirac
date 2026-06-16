@@ -5,13 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { UpgradeShell } from "@/components/upgrade/upgrade-shell";
-import { PromoCodeField } from "@/components/billing/promo-code-field";
 
 export default function UpgradePage() {
   const router = useRouter();
   const [loadingPlan, setLoadingPlan] = useState<"monthly" | "annual" | null>(null);
   const [authReady, setAuthReady] = useState(false);
-  const [promoCode, setPromoCode] = useState("");
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
@@ -27,13 +25,7 @@ export default function UpgradePage() {
   async function startCheckout(plan: "monthly" | "annual") {
     setLoadingPlan(plan);
     try {
-      const res = await fetch(`/api/stripe/checkout?plan=${plan}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...(promoCode.trim() ? { promoCode: promoCode.trim() } : {}),
-        }),
-      });
+      const res = await fetch(`/api/stripe/checkout?plan=${plan}`, { method: "POST" });
       const data = (await res.json()) as { url?: string; error?: string };
       if (data.url) {
         window.location.href = data.url;
@@ -77,12 +69,6 @@ export default function UpgradePage() {
           {loadingPlan === "annual" ? "Redirecting…" : "$200 / year"}
         </button>
       </div>
-
-      <PromoCodeField
-        value={promoCode}
-        onChange={setPromoCode}
-        disabled={loadingPlan !== null}
-      />
 
       <p className="mt-8 text-center text-sm text-zinc-500">
         <Link

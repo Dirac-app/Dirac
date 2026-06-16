@@ -64,9 +64,10 @@ type Step = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 /** Step 0 — tap-through intro (one sentence per screen). */
 const INTRO_SCREENS = [
   "Welcome to Dirac!",
-  "Your inbox isn't your to-do list — it's everyone else's priorities landing in your lap.",
-  "Most founders start the day just figuring out what actually needs them.",
-  "The average founder spends 11+ hours a week on email — about 28% of the workweek.",
+  "Email is a productivity tool,",
+  "Not a productivity problem.",
+  "But the average founder spends 11+ hours a week on email (~1/4 of the workweek).",
+  "Does this sound like you? You're in the right place.",
 ] as const;
 
 function hasSeenIntro(): boolean {

@@ -87,48 +87,20 @@ Repeat steps in **live mode** before launch and use live `price_...` IDs in prod
 
 ---
 
-## 3b. Promo codes
+## 3b. Promo codes (Stripe Checkout only)
 
-Dirac has **two plan-specific codes** (configured in Stripe — no extra env vars required):
+Promo codes are **not shown in the Dirac app**. Users enter them on Stripe’s hosted Checkout page (“Add promotion code”). Checkout is created with `allow_promotion_codes: true`.
 
-| Plan | Code | Discount |
-|------|------|----------|
-| **Monthly** | `TRYDIRAC50` | 50% off for **2 months** |
-| **Annual** | `TRYDIRAC25` | 25% off (**first year** invoice) |
+Create coupons and promotion codes in the [Stripe Dashboard](https://dashboard.stripe.com/coupons). Share codes privately (email, DM, etc.) — not on the signup screen.
 
-The app validates that each code is used with the matching plan. Wrong combo → clear error before Checkout.
+### Recommended setup
 
-Optional env overrides (only if you rename codes in Stripe):
+| Plan | Code (example) | Coupon |
+|------|----------------|--------|
+| Monthly | `TRYDIRAC50` | 50% off, repeating **2 months**, restrict to **Dirac Monthly** product |
+| Annual | `TRYDIRAC25` | 25% off, **once**, restrict to **Dirac Annual** product |
 
-```bash
-STRIPE_MONTHLY_PROMO_CODE=TRYDIRAC50
-STRIPE_ANNUAL_PROMO_CODE=TRYDIRAC25
-```
-
-### Monthly coupon — `TRYDIRAC50`
-
-1. [Stripe → Coupons](https://dashboard.stripe.com/coupons) → **+ New**.
-2. **50%** off · **Duration**: **Repeating** → **2 months**.
-3. **Apply to specific products** → select **Dirac Monthly** only (recommended).
-4. **Promotion codes** → add code `TRYDIRAC50`.
-
-### Annual coupon — `TRYDIRAC25`
-
-1. **+ New** coupon.
-2. **25%** off · **Duration**: **Once** (first invoice after trial).
-3. **Apply to specific products** → select **Dirac Annual** only (recommended).
-4. **Promotion codes** → add code `TRYDIRAC25`.
-
-Repeat both in **live mode** before sharing publicly.
-
-### After the 7-day trial
-
-| Plan | With code | Then |
-|------|-----------|------|
-| Monthly + `TRYDIRAC50` | $10/mo for 2 months | $20/mo |
-| Annual + `TRYDIRAC25` | $150 first year | $200/yr on renewal |
-
-Codes are looked up from Stripe at runtime — the string name only needs to match what you created in the Dashboard.
+Repeat in **test** and **live** mode. No extra env vars.
 
 ---
 

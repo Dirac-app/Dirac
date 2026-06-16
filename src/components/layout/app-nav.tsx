@@ -18,6 +18,7 @@ import {
   CircleUser,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DiracLogo } from "@/components/ui/dirac-logo";
 import { useAppState } from "@/lib/store";
 import {
   Tooltip,
@@ -193,7 +194,7 @@ export function AppNav() {
 
         {/* Logo */}
         <div className="flex items-center gap-2 mr-auto">
-          <span className="text-sm font-semibold text-foreground tracking-tight">Dirac</span>
+          <DiracLogo size={24} invertOnLight />
         </div>
 
         {/* Right actions */}
@@ -309,7 +310,7 @@ export function AppNav() {
           </div>
         </div>
 
-        <span className="text-sm font-semibold text-foreground tracking-tight">Dirac</span>
+        <DiracLogo size={24} invertOnLight />
 
         <div className="flex items-center gap-1 ml-auto">
           <button

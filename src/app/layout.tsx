@@ -25,22 +25,26 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Dirac — Your intelligent Inbox",
+  title: "Dirac, Your Inbox",
   description:
-    "A unified inbox with AI built in. Triage, understand, and respond to Gmail, Outlook, and Discord — fast.",
-  metadataBase: new URL("https://dirac.app"),
+    "The first inbox built for founders.",
+  metadataBase: new URL("https://app.dirac.app"),
   manifest: "/manifest.json",
+  icons: {
+    icon: "/favicon.png",
+    apple: "/icon-192.png",
+  },
   openGraph: {
-    title: "Dirac — Your intelligent Inbox",
-    description: "A unified inbox with AI built in.",
-    url: "https://dirac.app",
-    siteName: "Dirac",
+    title: "Dirac, Your Inbox",
+    description: "The first inbox built for founders.",
+    url: "https://app.dirac.app",
+    siteName: "Dirac, Your Inbox",
     type: "website",
   },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Dirac",
+    title: "Dirac, Your Inbox",
   },
 };
 

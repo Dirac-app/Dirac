@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getStripe } from "@/lib/stripe";
-import { resolvePromotionCode, validatePromoForCheckout } from "@/lib/stripe-promo";
 import { getUserById } from "@/lib/users-db";
 
 const PLANS = {
@@ -24,14 +23,6 @@ export async function POST(request: Request) {
   const plan = searchParams.get("plan");
   // signup=true: create customer if needed, add trial period, use signup redirect URLs
   const isSignup = searchParams.get("signup") === "true";
-
-  let promoCodeInput: string | undefined;
-  try {
-    const body = (await request.json()) as { promoCode?: string };
-    promoCodeInput = body.promoCode?.trim();
-  } catch {
-    promoCodeInput = searchParams.get("promo")?.trim() || undefined;
-  }
 
   if (plan !== "monthly" && plan !== "annual") {
     return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
@@ -77,21 +68,6 @@ export async function POST(request: Request) {
     allow_promotion_codes: true,
     metadata: { supabase_user_id: authUser.id },
   };
-
-  if (promoCodeInput) {
-    const promo = await resolvePromotionCode(stripe, promoCodeInput);
-    if (!promo) {
-      return NextResponse.json(
-        { error: "Invalid or expired promo code" },
-        { status: 400 },
-      );
-    }
-    const promoCheck = await validatePromoForCheckout(stripe, promo, plan, priceId);
-    if (!promoCheck.ok) {
-      return NextResponse.json({ error: promoCheck.error }, { status: 400 });
-    }
-    sessionParams.discounts = [{ promotion_code: promo.id }];
-  }
 
   if (isSignup) {
     sessionParams.subscription_data = {
