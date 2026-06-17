@@ -6,7 +6,10 @@ export type WelcomeEmailResult =
   | { ok: false; error: string };
 
 /** Send the trial welcome email once per user (after checkout). */
-export async function sendWelcomeEmailIfNeeded(userId: string): Promise<WelcomeEmailResult> {
+export async function sendWelcomeEmailIfNeeded(
+  userId: string,
+  options?: { force?: boolean },
+): Promise<WelcomeEmailResult> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     console.error("[welcome-email] RESEND_API_KEY missing on web server");
@@ -17,7 +20,7 @@ export async function sendWelcomeEmailIfNeeded(userId: string): Promise<WelcomeE
   if (!user?.email) {
     return { ok: false, error: "User email not found" };
   }
-  if (user.welcome_email_sent_at) {
+  if (!options?.force && user.welcome_email_sent_at) {
     return { ok: true, sent: false };
   }
 

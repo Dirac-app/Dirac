@@ -56,6 +56,29 @@ export async function getUserById(id: string): Promise<AppUser | null> {
   return data ? mapUser(data) : null;
 }
 
+/** Paid/trialing users who never received the welcome email. */
+export async function getUsersNeedingWelcomeEmail(): Promise<AppUser[]> {
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("users")
+    .select("*")
+    .not("stripe_customer_id", "is", null)
+    .is("welcome_email_sent_at", null);
+  if (error) throw error;
+  return (data ?? []).map(mapUser);
+}
+
+export async function getUserByEmail(email: string): Promise<AppUser | null> {
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("users")
+    .select("*")
+    .eq("email", email)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? mapUser(data) : null;
+}
+
 export async function getUserByStripeCustomerId(customerId: string): Promise<AppUser | null> {
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase
