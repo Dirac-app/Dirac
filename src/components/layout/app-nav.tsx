@@ -18,7 +18,6 @@ import {
   CircleUser,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { DiracLogo } from "@/components/ui/dirac-logo";
 import { useAppState } from "@/lib/store";
 import {
   Tooltip,
@@ -128,7 +127,7 @@ export function AppNav() {
 
   // Render desktop nav (slide-in drawer)
   const renderDesktopNav = () => (
-    <div className="relative flex items-center" ref={navRef}>
+    <div className="relative mr-auto flex items-center" ref={navRef}>
       <Tooltip delayDuration={0}>
         <TooltipTrigger asChild>
           <button
@@ -191,11 +190,6 @@ export function AppNav() {
       {/* Desktop header */}
       <header className="dirac-panel hidden md:flex h-12 items-center gap-2 px-3">
         {renderDesktopNav()}
-
-        {/* Logo */}
-        <div className="flex items-center gap-2 mr-auto">
-          <DiracLogo size={24} invertOnLight />
-        </div>
 
         {/* Right actions */}
         <div className="flex items-center gap-0.5">
@@ -309,8 +303,6 @@ export function AppNav() {
             </nav>
           </div>
         </div>
-
-        <DiracLogo size={24} invertOnLight />
 
         <div className="flex items-center gap-1 ml-auto">
           <button
