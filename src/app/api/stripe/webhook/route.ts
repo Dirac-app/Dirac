@@ -11,6 +11,7 @@ import {
   formatTrialEndDate,
   subscriptionCancelledDuringTrial,
 } from "@/lib/cancellation-email";
+import { sendWelcomeEmailIfNeeded } from "@/lib/welcome-email";
 
 export const runtime = "nodejs";
 
@@ -67,10 +68,20 @@ export async function POST(request: Request) {
         const supabaseUserId = session.metadata?.supabase_user_id;
         if (customerId && supabaseUserId) {
           await completeTrialSetup(supabaseUserId, customerId);
+          const welcome = await sendWelcomeEmailIfNeeded(supabaseUserId);
+          if (!welcome.ok) {
+            console.error("[stripe/webhook] welcome email:", welcome.error);
+          }
         } else if (customerId) {
           // metadata missing — try to find user by customer ID
           const appUser = await getUserByStripeCustomerId(customerId);
-          if (appUser) await completeTrialSetup(appUser.id, customerId);
+          if (appUser) {
+            await completeTrialSetup(appUser.id, customerId);
+            const welcome = await sendWelcomeEmailIfNeeded(appUser.id);
+            if (!welcome.ok) {
+              console.error("[stripe/webhook] welcome email:", welcome.error);
+            }
+          }
         }
         break;
       }

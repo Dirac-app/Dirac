@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireSupabaseUser } from "@/lib/api-auth";
 import { getStripe } from "@/lib/stripe";
 import { completeTrialSetup } from "@/lib/users-db";
+import { sendWelcomeEmailIfNeeded } from "@/lib/welcome-email";
 
 /**
  * Called by the signup flow after Stripe redirects to /signup?payment=success&session_id=xxx.
@@ -51,5 +52,10 @@ export async function GET(request: Request) {
 
   await completeTrialSetup(auth.user.id, customerId);
 
-  return NextResponse.json({ ok: true });
+  const welcome = await sendWelcomeEmailIfNeeded(auth.user.id);
+  if (!welcome.ok) {
+    console.error("[verify-payment] welcome email:", welcome.error);
+  }
+
+  return NextResponse.json({ ok: true, welcomeEmailSent: welcome.ok && welcome.sent });
 }

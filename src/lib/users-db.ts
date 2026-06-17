@@ -19,6 +19,7 @@ export interface AppUser {
   main_pain_point: MainPainPoint | null;
   shown_tooltips: string[];
   onboarding_completed_at: string | null;
+  welcome_email_sent_at: string | null;
   emails_processed_count: number;
   ai_drafts_count: number;
   trial_reminders_sent: string[];
@@ -39,6 +40,7 @@ function mapUser(row: Record<string, unknown>): AppUser {
     main_pain_point: (row.main_pain_point as MainPainPoint | null) ?? null,
     shown_tooltips: Array.isArray(tooltips) ? (tooltips as string[]) : [],
     onboarding_completed_at: (row.onboarding_completed_at as string | null) ?? null,
+    welcome_email_sent_at: (row.welcome_email_sent_at as string | null) ?? null,
     emails_processed_count: Number(row.emails_processed_count ?? 0),
     ai_drafts_count: Number(row.ai_drafts_count ?? 0),
     trial_reminders_sent: Array.isArray(row.trial_reminders_sent)
@@ -131,6 +133,15 @@ export async function markOnboardingComplete(userId: string): Promise<void> {
   const { error } = await supabase
     .from("users")
     .update({ onboarding_completed_at: new Date().toISOString() })
+    .eq("id", userId);
+  if (error) throw error;
+}
+
+export async function markWelcomeEmailSent(userId: string): Promise<void> {
+  const supabase = createSupabaseAdminClient();
+  const { error } = await supabase
+    .from("users")
+    .update({ welcome_email_sent_at: new Date().toISOString() })
     .eq("id", userId);
   if (error) throw error;
 }
